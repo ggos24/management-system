@@ -95,9 +95,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin }) => {
                         <div className="absolute inset-0 flex items-center">
                             <div className="w-full border-t border-zinc-200 dark:border-zinc-800"></div>
                         </div>
-                        <div className="relative flex justify-center text-xs uppercase">
-                            <span className="bg-white dark:bg-zinc-900 px-2 text-zinc-500">Or continue with</span>
-                        </div>
+                        <div className="relative flex justify-center text-xs uppercase" />
                     </div>
 
                     <div className="mt-6">
