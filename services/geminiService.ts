@@ -3,7 +3,7 @@ import { GoogleGenAI } from "@google/genai";
 import { Task } from "../types";
 
 const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
+const ai = apiKey ? new GoogleGenAI({ apiKey }) : null;
 
 export const generateContentIdeas = async (topic: string, team: string) => {
   if (!apiKey) {
@@ -15,7 +15,7 @@ export const generateContentIdeas = async (topic: string, team: string) => {
     Generate 3 creative, high-engagement content ideas for the '${team}' team based on the topic: "${topic}".
     Format the output as a simple list. Keep it concise.`;
 
-    const response = await ai.models.generateContent({
+    const response = await ai!.models.generateContent({
       model: 'gemini-3-flash-preview',
       contents: prompt,
     });
@@ -49,7 +49,7 @@ export const chatWithArchive = async (message: string, tasks: Task[]) => {
         - Be professional, concise, and helpful.
         `;
 
-        const response = await ai.models.generateContent({
+        const response = await ai!.models.generateContent({
             model: 'gemini-3-flash-preview',
             contents: prompt,
         });
