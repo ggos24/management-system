@@ -1,0 +1,516 @@
+
+import React, { useState, useMemo, useRef } from 'react';
+import { Member, Absence, Team, Shift, UserRole } from '../types';
+import { ChevronLeft, ChevronRight, Palmtree, Thermometer, Briefcase, Calendar, Clock, X, Trash2, Globe, ChevronDown, User, Filter } from 'lucide-react';
+import { SimpleDatePicker } from './SimpleDatePicker';
+import { CustomSelect } from './CustomSelect';
+
+interface ScheduleProps {
+  members: Member[];
+  absences: Absence[];
+  shifts: Shift[];
+  teams: Team[];
+  userRole: UserRole;
+  onUpdateAbsence: (absence: Absence) => void;
+  onDeleteAbsence: (id: string) => void;
+  onUpdateShift: (shift: Shift) => void;
+  onDeleteShift: (id: string) => void;
+}
+
+// Helper duplicated here for isolation (or could be imported if moved to utils)
+const calculateAbsenceStats = (memberId: string, absences: Absence[]) => {
+    let holidayDays = 0;
+    let sickDays = 0;
+    let businessDays = 0;
+    let daysOff = 0;
+
+    absences.filter(a => a.memberId === memberId).forEach(a => {
+        const start = new Date(a.startDate);
+        const end = new Date(a.endDate);
+        const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24)) + 1;
+        
+        switch(a.type) {
+            case 'holiday': holidayDays += days; break;
+            case 'sick': sickDays += days; break;
+            case 'business_trip': businessDays += days; break;
+            case 'day_off': daysOff += days; break;
+        }
+    });
+
+    return { holidayDays, sickDays, businessDays, daysOff };
+};
+
+const Schedule: React.FC<ScheduleProps> = ({ 
+    members, absences, shifts, teams, userRole, 
+    onUpdateAbsence, onDeleteAbsence, onUpdateShift, onDeleteShift 
+}) => {
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedCell, setSelectedCell] = useState<{ member: Member, day: number, type: 'absence-only' | 'shift-based' } | null>(null);
+  
+  // Drag Selection State
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState<{ memberId: string, day: number } | null>(null);
+  const [dragEnd, setDragEnd] = useState<{ memberId: string, day: number } | null>(null);
+
+  // Edit Modal State
+  const [editType, setEditType] = useState<'absence' | 'shift'>('absence');
+  const [absenceType, setAbsenceType] = useState<Absence['type']>('holiday');
+  
+  // Member Stats Modal State
+  const [selectedMemberStats, setSelectedMemberStats] = useState<Member | null>(null);
+
+  // Date Range State for Absences
+  const [rangeStartDate, setRangeStartDate] = useState('');
+  const [rangeEndDate, setRangeEndDate] = useState('');
+
+  // Shift Times
+  const [startTime, setStartTime] = useState('09:00');
+  const [endTime, setEndTime] = useState('17:00');
+  
+  // Collapsed Teams State
+  const [collapsedTeams, setCollapsedTeams] = useState<Record<string, boolean>>({});
+
+  // Filters
+  const [filterPerson, setFilterPerson] = useState('all');
+  const [filterAbsenceType, setFilterAbsenceType] = useState('all');
+
+  // Correctly get days in month
+  const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
+  const daysCount = getDaysInMonth(currentDate.getFullYear(), currentDate.getMonth());
+  const days = Array.from({ length: daysCount }, (_, i) => i + 1);
+  const monthName = currentDate.toLocaleString('en-US', { month: 'long' });
+  const year = currentDate.getFullYear();
+
+  const changeMonth = (offset: number) => {
+      const newDate = new Date(currentDate);
+      newDate.setMonth(newDate.getMonth() + offset);
+      setCurrentDate(newDate);
+  }
+
+  const getDateStr = (day: number) => {
+      return `${year}-${(currentDate.getMonth() + 1).toString().padStart(2, '0')}-${day.toString().padStart(2, '0')}`;
+  };
+
+  const getDayShortName = (day: number) => {
+      const date = new Date(year, currentDate.getMonth(), day);
+      return date.toLocaleDateString('en-US', { weekday: 'short' });
+  };
+
+  const getAbsenceForDay = (memberId: string, day: number) => {
+      const dateStr = getDateStr(day);
+      return absences.find(a => 
+          a.memberId === memberId && 
+          dateStr >= a.startDate && 
+          dateStr <= a.endDate
+      );
+  };
+
+  const getShiftForDay = (memberId: string, day: number) => {
+      const dateStr = getDateStr(day);
+      return shifts.find(s => s.memberId === memberId && s.date === dateStr);
+  };
+
+  const handleMouseDown = (member: Member, day: number, teamScheduleType: 'absence-only' | 'shift-based') => {
+      if (userRole !== 'admin') return;
+      setIsDragging(true);
+      setDragStart({ memberId: member.id, day });
+      setDragEnd({ memberId: member.id, day });
+  };
+
+  const handleMouseEnter = (member: Member, day: number) => {
+      if (isDragging && dragStart && dragStart.memberId === member.id) {
+          setDragEnd({ memberId: member.id, day });
+      }
+  };
+
+  const handleMouseUp = (member: Member, day: number, teamScheduleType: 'absence-only' | 'shift-based') => {
+      if (!isDragging || !dragStart) return;
+      setIsDragging(false);
+
+      const startDay = Math.min(dragStart.day, dragEnd?.day || day);
+      const endDay = Math.max(dragStart.day, dragEnd?.day || day);
+      
+      const startStr = getDateStr(startDay);
+      const endStr = getDateStr(endDay);
+
+      setRangeStartDate(startStr);
+      setRangeEndDate(endStr);
+      
+      const existingAbsence = getAbsenceForDay(member.id, startDay);
+      const existingShift = getShiftForDay(member.id, startDay);
+
+      setSelectedCell({ member, day: startDay, type: teamScheduleType });
+      
+      if (teamScheduleType === 'absence-only') {
+          setEditType('absence');
+          if (existingAbsence) {
+             setAbsenceType(existingAbsence.type);
+             if (startDay === endDay) {
+                 setRangeStartDate(existingAbsence.startDate);
+                 setRangeEndDate(existingAbsence.endDate);
+             }
+          } else {
+             setAbsenceType('holiday');
+          }
+      } else {
+          if (startDay !== endDay) {
+              setEditType('absence');
+              setAbsenceType('holiday');
+          } else {
+              setEditType('shift');
+              if (existingShift) {
+                  setStartTime(existingShift.startTime);
+                  setEndTime(existingShift.endTime);
+              } else {
+                  setStartTime('09:00');
+                  setEndTime('17:00');
+              }
+          }
+      }
+      
+      setDragStart(null);
+      setDragEnd(null);
+  };
+
+  const handleSave = () => {
+      if (!selectedCell) return;
+
+      if (editType === 'absence') {
+          if (!rangeStartDate || !rangeEndDate) return;
+          const existing = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
+          
+          const newAbsence: Absence = {
+              id: existing?.id || Date.now().toString(),
+              memberId: selectedCell.member.id,
+              type: absenceType,
+              startDate: rangeStartDate,
+              endDate: rangeEndDate,
+              approved: true
+          };
+          onUpdateAbsence(newAbsence);
+
+      } else {
+          const dateStr = getDateStr(selectedCell.day);
+          const newShift: Shift = {
+              id: getShiftForDay(selectedCell.member.id, selectedCell.day)?.id || Date.now().toString(),
+              memberId: selectedCell.member.id,
+              date: dateStr,
+              startTime,
+              endTime
+          };
+          onUpdateShift(newShift);
+      }
+      setSelectedCell(null);
+  };
+
+  const handleDelete = () => {
+      if (!selectedCell) return;
+      
+      if (editType === 'absence') {
+          const existing = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
+          if (existing) onDeleteAbsence(existing.id);
+      } else {
+          const existing = getShiftForDay(selectedCell.member.id, selectedCell.day);
+          if (existing) onDeleteShift(existing.id);
+      }
+      setSelectedCell(null);
+  };
+
+  const toggleTeamCollapse = (teamId: string) => {
+      setCollapsedTeams(prev => ({ ...prev, [teamId]: !prev[teamId] }));
+  };
+
+  const membersByTeam = useMemo(() => {
+      return teams.map(team => {
+          let teamMembers = members.filter(m => m.teamId === team.id);
+          if (filterPerson !== 'all') {
+              teamMembers = teamMembers.filter(m => m.id === filterPerson);
+          }
+          if (filterAbsenceType !== 'all') {
+              teamMembers = teamMembers.filter(m => {
+                  return absences.some(a => 
+                      a.memberId === m.id && 
+                      a.type === filterAbsenceType &&
+                      (new Date(a.startDate).getMonth() === currentDate.getMonth() || new Date(a.endDate).getMonth() === currentDate.getMonth())
+                  );
+              });
+          }
+          return { team, members: teamMembers };
+      }).filter(group => group.members.length > 0);
+  }, [teams, members, filterPerson, filterAbsenceType, absences, currentDate]);
+
+  return (
+    <div className="p-8 h-full flex flex-col bg-white dark:bg-black relative">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8 flex-shrink-0">
+        <div>
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">Schedule</h1>
+            <p className="text-zinc-500 mt-1 text-sm">Team availability & shifts for {monthName} {year}.</p>
+        </div>
+        
+        <div className="flex items-center gap-3 flex-wrap">
+            <div className="w-[140px]">
+                <CustomSelect 
+                    icon={User}
+                    options={[{value: 'all', label: 'All People'}, ...members.map(m => ({value: m.id, label: m.name}))]}
+                    value={filterPerson}
+                    onChange={setFilterPerson}
+                    placeholder="All People"
+                />
+            </div>
+            <div className="w-[140px]">
+                <CustomSelect 
+                    icon={Filter}
+                    options={[
+                        {value: 'all', label: 'All Absences'},
+                        {value: 'holiday', label: 'Holiday'},
+                        {value: 'sick', label: 'Sick Leave'},
+                        {value: 'business_trip', label: 'Business Trip'},
+                        {value: 'day_off', label: 'Day Off'}
+                    ]}
+                    value={filterAbsenceType}
+                    onChange={setFilterAbsenceType}
+                    placeholder="Absence Type"
+                />
+            </div>
+            <div className="flex items-center gap-4 bg-white dark:bg-zinc-900 p-1.5 rounded border border-zinc-200 dark:border-zinc-800">
+                <button onClick={() => changeMonth(-1)} className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-600 dark:text-zinc-400"><ChevronLeft size={16} /></button>
+                <span className="font-medium text-sm w-32 text-center text-zinc-900 dark:text-zinc-100 flex items-center justify-center gap-2">
+                    <Calendar size={14} className="text-zinc-400"/> {monthName}
+                </span>
+                <button onClick={() => changeMonth(1)} className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-600 dark:text-zinc-400"><ChevronRight size={16} /></button>
+            </div>
+        </div>
+      </div>
+
+      <div className="bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 flex-1 flex flex-col overflow-hidden shadow-sm relative">
+         <div className="flex-1 overflow-auto custom-scrollbar relative">
+             <div style={{ width: 'max-content', minWidth: '100%' }}>
+                 <div className="flex sticky top-0 z-30 bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 h-14">
+                     <div className="sticky left-0 z-40 w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 p-3 text-[10px] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
+                         Team Member
+                     </div>
+                     {days.map(day => {
+                         const isToday = day === new Date().getDate() && currentDate.getMonth() === new Date().getMonth() && currentDate.getFullYear() === new Date().getFullYear();
+                         return (
+                             <div key={day} className={`w-10 flex-shrink-0 text-center flex flex-col items-center justify-center border-r border-zinc-100 dark:border-zinc-800 text-[10px] text-zinc-400 font-medium last:border-r-0 select-none ${isToday ? 'bg-red-50/50 dark:bg-red-900/20' : ''}`}>
+                                 <span className={`text-zinc-900 dark:text-white font-bold ${isToday ? 'text-red-600 dark:text-red-400' : ''}`}>{day}</span>
+                                 <span className={`text-[8px] uppercase ${isToday ? 'text-red-500 dark:text-red-400' : ''}`}>{getDayShortName(day)}</span>
+                             </div>
+                         )
+                     })}
+                 </div>
+
+                 {membersByTeam.map((group) => (
+                    <div key={group.team.id}>
+                        <div className="flex border-b border-zinc-200 dark:border-zinc-800">
+                            <div 
+                                className="sticky left-0 z-20 w-64 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur-sm border-r border-zinc-200 dark:border-zinc-800 px-3 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-zinc-200/95 dark:hover:bg-zinc-700/95 transition-colors shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]"
+                                onClick={() => toggleTeamCollapse(group.team.id)}
+                            >
+                                <ChevronDown size={14} className={`text-zinc-500 transition-transform duration-200 ${collapsedTeams[group.team.id] ? '-rotate-90' : ''}`} />
+                                <span className="text-[10px] font-bold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider">{group.team.name}</span>
+                            </div>
+                            <div className="flex-1 min-w-0 bg-zinc-50/50 dark:bg-zinc-900/50"></div>
+                        </div>
+                        
+                        {!collapsedTeams[group.team.id] && group.members.map(member => (
+                            <div key={member.id} className="flex border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors h-14">
+                                <div 
+                                    className="sticky left-0 z-10 w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 p-2 flex items-center gap-3 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                                    onClick={() => setSelectedMemberStats(member)}
+                                >
+                                    <img src={member.avatar} alt="" className="w-8 h-8 rounded-full grayscale opacity-80" />
+                                    <div className="min-w-0">
+                                        <p className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate group-hover:underline">{member.name}</p>
+                                        <p className="text-[9px] text-zinc-400 uppercase tracking-wider truncate">{member.jobTitle}</p>
+                                    </div>
+                                </div>
+                                {days.map(day => {
+                                    const absence = getAbsenceForDay(member.id, day);
+                                    const shift = getShiftForDay(member.id, day);
+                                    const isToday = day === new Date().getDate() && currentDate.getMonth() === new Date().getMonth() && currentDate.getFullYear() === new Date().getFullYear();
+                                    
+                                    let content = null;
+                                    let cellClass = "hover:bg-zinc-100 dark:hover:bg-zinc-800";
+                                    
+                                    const inSelection = dragStart && dragStart.memberId === member.id && (
+                                        (day >= Math.min(dragStart.day, dragEnd?.day || day)) && 
+                                        (day <= Math.max(dragStart.day, dragEnd?.day || day))
+                                    );
+                                    
+                                    if (absence) {
+                                        let bgClass = '';
+                                        let text = '';
+                                        switch(absence.type) {
+                                            case 'holiday': bgClass = 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300'; text = 'HOLS'; break; 
+                                            case 'sick': bgClass = 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400'; text = 'SICK'; break;
+                                            case 'business_trip': bgClass = 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400'; text = 'TRIP'; break;
+                                            case 'day_off': bgClass = 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300'; text = 'OFF'; break;
+                                            default: bgClass = 'bg-zinc-100'; text = 'OUT';
+                                        }
+
+                                        content = (
+                                            <div className={`w-full h-full flex items-center justify-center ${bgClass} text-[9px] font-bold tracking-tight select-none`}>
+                                                {text}
+                                            </div>
+                                        );
+                                        cellClass = ""; 
+                                    } else if (shift && group.team.scheduleType === 'shift-based') {
+                                        content = (
+                                            <div className={`flex flex-col items-center justify-center h-full w-full select-none ${isToday ? 'bg-red-50/20 dark:bg-red-900/10' : 'bg-zinc-50 dark:bg-zinc-900'}`}>
+                                                <span className="text-[8px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">{shift.startTime}</span>
+                                                <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-0.5"></div>
+                                                <span className="text-[8px] text-zinc-500 leading-none">{shift.endTime}</span>
+                                            </div>
+                                        );
+                                    }
+
+                                    return (
+                                        <div 
+                                            key={day} 
+                                            onMouseDown={() => handleMouseDown(member, day, group.team.scheduleType)}
+                                            onMouseEnter={() => handleMouseEnter(member, day)}
+                                            onMouseUp={() => handleMouseUp(member, day, group.team.scheduleType)}
+                                            className={`w-10 flex-shrink-0 border-r border-zinc-100 dark:border-zinc-800 relative cursor-pointer last:border-r-0 transition-colors ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : ''}`}
+                                        >
+                                            {content}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        ))}
+                    </div>
+                 ))}
+             </div>
+         </div>
+      </div>
+      
+      <div className="mt-6 flex gap-6 text-xs uppercase tracking-wider font-medium text-zinc-500 flex-shrink-0">
+          <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-red-100 dark:bg-red-900/40 rounded-sm"></div> Sick Leave
+          </div>
+          <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-blue-100 dark:bg-blue-900/40 rounded-sm"></div> Business Trip
+          </div>
+          <div className="flex items-center gap-2">
+              <div className="w-3 h-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-sm"></div> Holiday
+          </div>
+           <div className="flex items-center gap-2 ml-4 border-l pl-4 border-zinc-200 dark:border-zinc-700">
+              <Clock size={14} className="text-zinc-500" /> Working Hours
+          </div>
+      </div>
+
+      {selectedMemberStats && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setSelectedMemberStats(null)}>
+            <div className="bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 w-96 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                <div className="flex justify-between items-start mb-6">
+                    <div className="flex items-center gap-3">
+                         <img src={selectedMemberStats.avatar} alt="" className="w-12 h-12 rounded-full object-cover grayscale" />
+                         <div>
+                             <h3 className="font-bold text-lg text-zinc-900 dark:text-white">{selectedMemberStats.name}</h3>
+                             <p className="text-xs text-zinc-500">{selectedMemberStats.jobTitle}</p>
+                         </div>
+                    </div>
+                    <button onClick={() => setSelectedMemberStats(null)} className="text-zinc-400 hover:text-black dark:hover:text-white"><X size={16} /></button>
+                </div>
+                
+                <h4 className="text-xs font-bold text-zinc-500 uppercase mb-3">Absence Statistics (Current Year)</h4>
+                 {(() => {
+                     const stats = calculateAbsenceStats(selectedMemberStats.id, absences);
+                     return (
+                        <div className="grid grid-cols-2 gap-4">
+                            <div className="p-3 bg-emerald-50 dark:bg-emerald-900/20 rounded border border-emerald-100 dark:border-emerald-900/40">
+                                <p className="text-xs font-bold text-emerald-800 dark:text-emerald-300 uppercase">Holidays</p>
+                                <div className="flex justify-between items-end mt-1">
+                                    <span className="text-xl font-bold text-emerald-900 dark:text-emerald-100">{stats.holidayDays}/24</span>
+                                    <span className="text-xs text-emerald-600 dark:text-emerald-400">{24 - stats.holidayDays} left</span>
+                                </div>
+                            </div>
+                            <div className="p-3 bg-red-50 dark:bg-red-900/20 rounded border border-red-100 dark:border-red-900/40">
+                                <p className="text-xs font-bold text-red-800 dark:text-red-300 uppercase">Sick Leave</p>
+                                <p className="text-xl font-bold text-red-900 dark:text-red-100 mt-1">{stats.sickDays} <span className="text-xs font-normal opacity-70">days</span></p>
+                            </div>
+                            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded border border-blue-100 dark:border-blue-900/40">
+                                <p className="text-xs font-bold text-blue-800 dark:text-blue-300 uppercase">Business Trip</p>
+                                <p className="text-xl font-bold text-blue-900 dark:text-blue-100 mt-1">{stats.businessDays} <span className="text-xs font-normal opacity-70">days</span></p>
+                            </div>
+                            <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded border border-zinc-200 dark:border-zinc-700">
+                                <p className="text-xs font-bold text-zinc-600 dark:text-zinc-400 uppercase">Day Off</p>
+                                <p className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mt-1">{stats.daysOff} <span className="text-xs font-normal opacity-70">days</span></p>
+                            </div>
+                        </div>
+                     )
+                 })()}
+            </div>
+        </div>
+      )}
+
+      {selectedCell && (
+          <div className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center" onClick={() => setSelectedCell(null)}>
+              <div className="bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 w-96 animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+                  <div className="flex justify-between items-center mb-4">
+                      <h3 className="font-bold text-sm text-zinc-900 dark:text-white">Edit Schedule</h3>
+                      <button onClick={() => setSelectedCell(null)} className="text-zinc-400 hover:text-black dark:hover:text-white"><X size={16} /></button>
+                  </div>
+                  <p className="text-xs text-zinc-500 mb-4 font-medium">{selectedCell.member.name} • {rangeStartDate === rangeEndDate ? rangeStartDate : `${rangeStartDate} to ${rangeEndDate}`}</p>
+                  
+                  <div className="space-y-4">
+                      {selectedCell.type === 'shift-based' && (
+                          <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded mb-4">
+                              <button onClick={() => setEditType('shift')} className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'shift' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}>Shift</button>
+                              <button onClick={() => setEditType('absence')} className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'absence' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}>Absence</button>
+                          </div>
+                      )}
+
+                      {editType === 'absence' ? (
+                          <div className="space-y-4">
+                               <div className="space-y-1">
+                                   <CustomSelect 
+                                        label="Absence Type"
+                                        options={[
+                                            {value: 'holiday', label: 'Holiday'},
+                                            {value: 'sick', label: 'Sick Leave'},
+                                            {value: 'business_trip', label: 'Business Trip'},
+                                            {value: 'day_off', label: 'Day Off'}
+                                        ]}
+                                        value={absenceType}
+                                        onChange={(v) => setAbsenceType(v as any)}
+                                   />
+                               </div>
+                               <div className="grid grid-cols-2 gap-3">
+                                  <div>
+                                      <label className="text-xs font-semibold mb-1 block text-zinc-600 dark:text-zinc-400">From</label>
+                                      <SimpleDatePicker value={rangeStartDate} onChange={setRangeStartDate} placeholder="Select Date" />
+                                  </div>
+                                  <div>
+                                      <label className="text-xs font-semibold mb-1 block text-zinc-600 dark:text-zinc-400">To</label>
+                                      <SimpleDatePicker value={rangeEndDate} onChange={setRangeEndDate} placeholder="Select Date" />
+                                  </div>
+                              </div>
+                          </div>
+                      ) : (
+                          <div className="grid grid-cols-2 gap-3">
+                              <div>
+                                  <label className="text-xs font-semibold mb-1 block text-zinc-600 dark:text-zinc-400">Start Time</label>
+                                  <input type="time" value={startTime} onChange={e => setStartTime(e.target.value)} className="w-full p-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-sm outline-none text-zinc-900 dark:text-zinc-100" />
+                              </div>
+                              <div>
+                                  <label className="text-xs font-semibold mb-1 block text-zinc-600 dark:text-zinc-400">End Time</label>
+                                  <input type="time" value={endTime} onChange={e => setEndTime(e.target.value)} className="w-full p-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-sm outline-none text-zinc-900 dark:text-zinc-100" />
+                              </div>
+                          </div>
+                      )}
+
+                      <div className="flex gap-2 pt-2">
+                          <button onClick={handleDelete} className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded border border-zinc-200 dark:border-zinc-700 hover:border-red-200"><Trash2 size={18} /></button>
+                          <button onClick={handleSave} className="flex-1 bg-black dark:bg-white text-white dark:text-black rounded text-sm font-medium hover:opacity-90">Save</button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      )}
+    </div>
+  );
+};
+
+export default Schedule;
