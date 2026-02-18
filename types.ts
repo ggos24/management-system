@@ -1,4 +1,3 @@
-
 export type TeamType = 'editorial' | 'video' | 'social' | 'management' | string;
 export type TaskStatus = string; // Was specific union, now string to support custom columns
 export type Priority = 'low' | 'medium' | 'high';
@@ -20,6 +19,7 @@ export interface Team {
   scheduleType: 'absence-only' | 'shift-based';
   hidden?: boolean; // New property to hide from sidebar
   archived?: boolean; // New property for archived teams
+  sortOrder?: number;
 }
 
 export interface TaskLink {
@@ -51,15 +51,15 @@ export interface Task {
   id: string;
   title: string;
   description: string;
-  type: string; // correlates to Team ID
+  teamId: string; // was 'type' — correlates to Team ID
   status: TaskStatus;
-  assigneeIds: string[]; // Changed to array for multiple authors
+  assigneeIds: string[];
   priority: Priority;
-  dueDate: string; // ISO date string
-  placements: string[]; // Renamed from tags
+  dueDate: string;
+  placements: string[];
   links?: TaskLink[];
-  contentInfo?: ContentInfo; // Extended fields for Editorial and others
-  customFieldValues?: Record<string, any>; // Store values for custom properties
+  contentInfo?: ContentInfo;
+  customFieldValues?: Record<string, any>;
 }
 
 export interface Absence {
