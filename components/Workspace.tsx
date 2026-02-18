@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { toast } from 'sonner';
 import { Task, TaskStatus, TeamType, Member, Priority, Team, CustomProperty, UserRole } from '../types';
-import { STATUS_COLORS, PRIORITY_COLORS } from '../constants';
+import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent } from '../constants';
 import {
   Plus,
   MoreHorizontal,
@@ -37,6 +37,7 @@ import {
 import { generateContentIdeas } from '../services/geminiService';
 import { MultiSelect } from './MultiSelect';
 import { CustomSelect } from './CustomSelect';
+import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
 
 // Shared column context menu used in both board and table views
@@ -481,22 +482,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
           {/* Actions: AI & New Task */}
           <div className="flex gap-2 items-center">
-            {teamFilter !== 'my-work' && (
-              <button
-                onClick={() => setShowArchivedStatuses(!showArchivedStatuses)}
-                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${showArchivedStatuses ? 'bg-yellow-50 text-yellow-600 dark:bg-yellow-900/20 dark:text-yellow-400' : 'text-zinc-500 hover:bg-zinc-100 dark:hover:bg-zinc-800'}`}
-              >
-                <FolderArchive size={14} />
-                {showArchivedStatuses ? 'Hide Archived' : 'Show Archived'}
-              </button>
-            )}
-            <button
-              onClick={onOpenAiChat}
-              className="flex items-center gap-1.5 text-zinc-500 hover:text-purple-600 px-3 py-1.5 rounded-md text-xs font-medium transition-colors"
-            >
-              <Wand2 size={14} />
-              AI Assist
-            </button>
+            {/* Show Archived and AI Assist hidden for now */}
             <button
               onClick={() => onAddTask()}
               className="flex items-center gap-1.5 bg-black dark:bg-white text-white dark:text-black px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
@@ -878,7 +864,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   {!isCollapsed && (
                     <>
                       <div
-                        className={`overflow-x-auto border border-zinc-200 dark:border-zinc-800 rounded-lg cursor-default ${isArchived ? 'bg-yellow-50/10' : ''}`}
+                        className={`overflow-visible border border-zinc-200 dark:border-zinc-800 rounded-lg cursor-default ${isArchived ? 'bg-yellow-50/10' : ''}`}
                       >
                         {/* Added table-fixed and specific widths for alignment */}
                         <table className="w-full text-left text-sm border-collapse min-w-[800px] table-fixed">
@@ -941,8 +927,6 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900/40">
                             {colTasks.length > 0 ? (
                               colTasks.map((task) => {
-                                const authors = getMembersByIds(task.assigneeIds);
-
                                 return (
                                   <tr
                                     key={task.id}
@@ -951,6 +935,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     className="hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group cursor-grab active:cursor-grabbing"
                                     onClick={() => onTaskClick(task)}
                                   >
+                                    {/* Title — read-only, opens modal */}
                                     <td className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 flex items-center gap-2 truncate">
                                       <GripVertical
                                         size={12}
@@ -958,30 +943,95 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       />
                                       <span className="truncate">{task.title}</span>
                                     </td>
+                                    {/* Type — read-only */}
                                     <td className="p-3 text-zinc-600 dark:text-zinc-400 text-xs truncate">
                                       {task.contentInfo?.type || task.teamId}
                                     </td>
-                                    <td className="p-3">
-                                      <div className="flex flex-col gap-1">
-                                        {authors.map((a) => (
-                                          <div key={a.id} className="flex items-center gap-1.5">
-                                            <Avatar src={a.avatar} alt={a.name} size="xs" className="flex-shrink-0" />
-                                            <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
-                                              {a.name}
-                                            </span>
-                                          </div>
-                                        ))}
-                                        {authors.length === 0 && <span className="text-xs text-zinc-400">-</span>}
-                                      </div>
+                                    {/* Assignee — inline MultiSelect with avatar trigger */}
+                                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                                      <MultiSelect
+                                        icon={User}
+                                        label=""
+                                        options={members.map((m) => ({ value: m.id, label: m.name }))}
+                                        selected={task.assigneeIds}
+                                        onChange={(ids) => onUpdateTask({ ...task, assigneeIds: ids })}
+                                        placeholder="—"
+                                        className="min-w-0"
+                                        compact
+                                        renderTrigger={(onClick, selectedIds) => {
+                                          const assignees = members.filter((m) => selectedIds.includes(m.id));
+                                          return (
+                                            <div
+                                              onClick={onClick}
+                                              className="flex flex-col gap-1 cursor-pointer rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-h-[24px]"
+                                            >
+                                              {assignees.length > 0 ? (
+                                                assignees.map((a) => (
+                                                  <div key={a.id} className="flex items-center gap-1.5">
+                                                    <Avatar
+                                                      src={a.avatar}
+                                                      alt={a.name}
+                                                      size="sm"
+                                                      className="flex-shrink-0"
+                                                    />
+                                                    <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
+                                                      {a.name}
+                                                    </span>
+                                                  </div>
+                                                ))
+                                              ) : (
+                                                <span className="text-xs text-zinc-400">—</span>
+                                              )}
+                                            </div>
+                                          );
+                                        }}
+                                      />
                                     </td>
-                                    <td className={`p-3 text-xs ${PRIORITY_COLORS[task.priority]} capitalize truncate`}>
-                                      {task.priority}
+                                    {/* Priority — inline CustomSelect */}
+                                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                                      <CustomSelect
+                                        compact
+                                        options={[
+                                          { value: 'low', label: 'Low' },
+                                          { value: 'medium', label: 'Medium' },
+                                          { value: 'high', label: 'High' },
+                                        ]}
+                                        value={task.priority}
+                                        onChange={(val) => onUpdateTask({ ...task, priority: val as Priority })}
+                                        renderValue={(val) => (
+                                          <span
+                                            className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[val] || ''}`}
+                                          >
+                                            <span
+                                              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[val] || ''}`}
+                                            />
+                                            {val}
+                                          </span>
+                                        )}
+                                      />
                                     </td>
-                                    <td className="p-3 text-zinc-500 text-xs truncate">
-                                      {new Date(task.dueDate).toLocaleDateString('en-US')}
+                                    {/* Due Date — inline SimpleDatePicker */}
+                                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                                      <SimpleDatePicker
+                                        value={task.dueDate ? task.dueDate.split('T')[0] : ''}
+                                        onChange={(date) =>
+                                          onUpdateTask({ ...task, dueDate: new Date(date).toISOString() })
+                                        }
+                                        placeholder="Set date"
+                                        renderTrigger={(onClick, value) => (
+                                          <span
+                                            onClick={onClick}
+                                            className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
+                                          >
+                                            {value
+                                              ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
+                                              : 'Set date'}
+                                          </span>
+                                        )}
+                                      />
                                     </td>
 
-                                    {/* Custom Properties Render */}
+                                    {/* Custom Properties — read-only */}
                                     {customProperties.map((prop) => (
                                       <td
                                         key={prop.id}
@@ -993,14 +1043,17 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       </td>
                                     ))}
 
-                                    <td className="p-3 text-zinc-500 text-xs">
-                                      <div className="flex gap-1 overflow-hidden">
-                                        {task.placements.map((tag) => (
-                                          <span key={tag} className="truncate">
-                                            #{tag}
-                                          </span>
-                                        ))}
-                                      </div>
+                                    {/* Placements — inline MultiSelect */}
+                                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
+                                      <MultiSelect
+                                        icon={MapPin}
+                                        label=""
+                                        options={allPlacements.map((p) => ({ value: p, label: p }))}
+                                        selected={task.placements}
+                                        onChange={(tags) => onUpdateTask({ ...task, placements: tags })}
+                                        placeholder="—"
+                                        compact
+                                      />
                                     </td>
                                     <td className="p-3"></td>
                                   </tr>
@@ -1208,13 +1261,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   return (
                     <div
                       key={i}
-                      className={`flex flex-col min-h-[100px] relative transition-colors border-b border-r border-zinc-200 dark:border-zinc-800 group/cell last:border-r-0 ${isToday ? 'bg-red-50/50 dark:bg-red-900/20' : 'bg-white dark:bg-black hover:bg-zinc-50 dark:hover:bg-zinc-900/20'}`}
+                      className={`flex flex-col min-h-[100px] relative transition-colors border-b border-r border-zinc-200 dark:border-zinc-800 group/cell last:border-r-0 ${isToday ? 'bg-blue-50/50 dark:bg-blue-900/20' : 'bg-white dark:bg-black hover:bg-zinc-50 dark:hover:bg-zinc-900/20'}`}
                       onClick={() => onAddTask({ dueDate: dateStr })}
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDropDate(e, dateStr)}
                     >
                       <div
-                        className={`p-1 text-[10px] font-medium text-right ${isToday ? 'text-red-500 font-bold' : 'text-zinc-400'} group-hover/cell:text-zinc-900 dark:group-hover/cell:text-zinc-100`}
+                        className={`p-1 text-[10px] font-medium text-right ${isToday ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-zinc-400'} group-hover/cell:text-zinc-900 dark:group-hover/cell:text-zinc-100`}
                       >
                         {dateObj.day}
                       </div>
@@ -1231,7 +1284,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             className="group cursor-grab active:cursor-grabbing"
                           >
                             <div
-                              className={`text-[9px] px-1.5 py-1 rounded border shadow-sm flex flex-col gap-0.5 ${STATUS_COLORS[t.status] || 'bg-white border-zinc-200'}`}
+                              className={`text-[9px] px-1.5 py-1 rounded border border-zinc-200 dark:border-zinc-700 border-l-[3px] shadow-sm bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 ${getStatusAccent(t.status)}`}
                             >
                               <span className="font-medium truncate leading-tight">{t.title}</span>
                             </div>

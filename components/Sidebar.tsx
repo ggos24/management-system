@@ -181,7 +181,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <nav className="space-y-0.5">
               {teams
-                .filter((t) => !t.hidden && !t.archived)
+                .filter((t) => !t.hidden && !t.archived && (!t.adminOnly || userRole === 'admin'))
                 .map((team) => {
                   const isActive = currentView === team.id;
                   return (

@@ -19,6 +19,7 @@ export interface Team {
   scheduleType: 'absence-only' | 'shift-based';
   hidden?: boolean; // New property to hide from sidebar
   archived?: boolean; // New property for archived teams
+  adminOnly?: boolean;
   sortOrder?: number;
 }
 

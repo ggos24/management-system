@@ -86,9 +86,20 @@ const getInitialView = () => {
   return hash || 'dashboard';
 };
 
+const getInitialDarkMode = () => {
+  const stored = localStorage.getItem('theme');
+  if (stored) return stored === 'dark';
+  return window.matchMedia('(prefers-color-scheme: dark)').matches;
+};
+
+// Apply dark class immediately to avoid flash
+if (getInitialDarkMode()) {
+  document.documentElement.classList.add('dark');
+}
+
 export const useUiStore = create<UiState>((set, get) => ({
   currentView: getInitialView(),
-  isDarkMode: false,
+  isDarkMode: getInitialDarkMode(),
   sidebarCollapsed: false,
   mobileSidebarOpen: false,
   searchQuery: '',
@@ -135,6 +146,7 @@ export const useUiStore = create<UiState>((set, get) => ({
     const newMode = !get().isDarkMode;
     set({ isDarkMode: newMode });
     document.documentElement.classList.toggle('dark');
+    localStorage.setItem('theme', newMode ? 'dark' : 'light');
   },
   setSidebarCollapsed: (collapsed) => set({ sidebarCollapsed: collapsed }),
   setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),

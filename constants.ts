@@ -42,8 +42,86 @@ export const STATUS_COLORS: Record<string, string> = {
   Published: 'bg-black text-white border border-black dark:bg-white dark:text-black',
 };
 
+// Fallback palette for statuses not in STATUS_COLORS (custom/dynamic statuses)
+const FALLBACK_PALETTE = [
+  'bg-sky-50 border-sky-200 text-sky-700 dark:bg-sky-900/20 dark:border-sky-800 dark:text-sky-300',
+  'bg-violet-50 border-violet-200 text-violet-700 dark:bg-violet-900/20 dark:border-violet-800 dark:text-violet-300',
+  'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-900/20 dark:border-amber-800 dark:text-amber-300',
+  'bg-teal-50 border-teal-200 text-teal-700 dark:bg-teal-900/20 dark:border-teal-800 dark:text-teal-300',
+  'bg-rose-50 border-rose-200 text-rose-700 dark:bg-rose-900/20 dark:border-rose-800 dark:text-rose-300',
+  'bg-lime-50 border-lime-200 text-lime-700 dark:bg-lime-900/20 dark:border-lime-800 dark:text-lime-300',
+  'bg-cyan-50 border-cyan-200 text-cyan-700 dark:bg-cyan-900/20 dark:border-cyan-800 dark:text-cyan-300',
+  'bg-fuchsia-50 border-fuchsia-200 text-fuchsia-700 dark:bg-fuchsia-900/20 dark:border-fuchsia-800 dark:text-fuchsia-300',
+];
+
+/** Deterministic hash to pick a palette color for any string */
+function hashString(str: string): number {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = ((hash << 5) - hash + str.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
+/** Returns a consistent color class string for any status — known or custom */
+export function getStatusColor(status: string): string {
+  return STATUS_COLORS[status] || FALLBACK_PALETTE[hashString(status) % FALLBACK_PALETTE.length];
+}
+
+// Left-border accent colors for calendar pills (neutral bg, colored left stripe)
+const STATUS_ACCENTS: Record<string, string> = {
+  'To Do': 'border-l-zinc-400',
+  'In Progress': 'border-l-blue-500',
+  Done: 'border-l-emerald-500',
+  'Pre-Production': 'border-l-orange-400',
+  Production: 'border-l-blue-400',
+  'Post-Production': 'border-l-purple-500',
+  'Ready to be Taken': 'border-l-sky-500',
+  'In Writing': 'border-l-indigo-500',
+  'In Design': 'border-l-pink-500',
+  'In Approvals': 'border-l-amber-500',
+  'Urgent Important': 'border-l-red-500',
+  'Urgent Not Important': 'border-l-orange-500',
+  'Important Not Urgent': 'border-l-blue-500',
+  'Not Urgent Not Important': 'border-l-zinc-400',
+  Dropped: 'border-l-zinc-400',
+  Archive: 'border-l-zinc-400',
+  Stuck: 'border-l-red-400',
+  Pitch: 'border-l-pink-400',
+  Approved: 'border-l-teal-500',
+  'Working on Next Week': 'border-l-indigo-400',
+  'Working on This Week': 'border-l-blue-400',
+  'Working on Today': 'border-l-orange-500',
+  'Ready for Editing': 'border-l-purple-400',
+  'Published This Week': 'border-l-black dark:border-l-white',
+  Published: 'border-l-black dark:border-l-white',
+  'Need to Update (SEO)': 'border-l-yellow-500',
+};
+
+const ACCENT_FALLBACK = [
+  'border-l-sky-500',
+  'border-l-violet-500',
+  'border-l-amber-500',
+  'border-l-teal-500',
+  'border-l-rose-500',
+  'border-l-lime-500',
+  'border-l-cyan-500',
+  'border-l-fuchsia-500',
+];
+
+/** Returns a left-border accent class for calendar/compact pill views */
+export function getStatusAccent(status: string): string {
+  return STATUS_ACCENTS[status] || ACCENT_FALLBACK[hashString(status) % ACCENT_FALLBACK.length];
+}
+
 export const PRIORITY_COLORS: Record<string, string> = {
-  low: 'text-zinc-400',
-  medium: 'text-zinc-600 dark:text-zinc-400',
-  high: 'text-black dark:text-white font-medium',
+  low: 'text-zinc-500 dark:text-zinc-400',
+  medium: 'text-yellow-600 dark:text-yellow-400',
+  high: 'text-red-600 dark:text-red-400 font-medium',
+};
+
+export const PRIORITY_DOT: Record<string, string> = {
+  low: 'bg-zinc-400',
+  medium: 'bg-yellow-500',
+  high: 'bg-red-500',
 };

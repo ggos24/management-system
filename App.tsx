@@ -241,7 +241,7 @@ const App: React.FC = () => {
       );
     } else {
       const team = teams.find((t) => t.id === currentView);
-      if (team) {
+      if (team && (!team.adminOnly || currentUser.role === 'admin')) {
         return (
           <Workspace
             tasks={tasks}

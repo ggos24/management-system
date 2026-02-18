@@ -52,6 +52,7 @@ interface DataState {
   archiveTeam: (id: string) => void;
   saveTeamEdit: (id: string, newName: string, newIcon: string) => void;
   toggleTeamVisibility: (id: string) => void;
+  toggleTeamAdminOnly: (id: string) => void;
   reorderTeams: (draggedId: string, targetId: string) => void;
 
   // Status/Type actions
@@ -246,6 +247,13 @@ export const useDataStore = create<DataState>((set, get) => ({
     set({ teams: updatedTeams });
     const team = updatedTeams.find((t) => t.id === id);
     if (team) db.upsertTeam(team).catch(() => toast.error('Failed to update team visibility'));
+  },
+
+  toggleTeamAdminOnly: (id) => {
+    const updatedTeams = get().teams.map((t) => (t.id === id ? { ...t, adminOnly: !t.adminOnly } : t));
+    set({ teams: updatedTeams });
+    const team = updatedTeams.find((t) => t.id === id);
+    if (team) db.upsertTeam(team).catch(() => toast.error('Failed to update team'));
   },
 
   reorderTeams: (draggedId, targetId) => {

@@ -1,20 +1,6 @@
 import React, { useState, useMemo, useRef } from 'react';
 import { Member, Absence, Team, Shift, UserRole } from '../types';
-import {
-  ChevronLeft,
-  ChevronRight,
-  Palmtree,
-  Thermometer,
-  Briefcase,
-  Calendar,
-  Clock,
-  X,
-  Trash2,
-  Globe,
-  ChevronDown,
-  User,
-  Filter,
-} from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, X, Trash2, ChevronDown, User, Filter } from 'lucide-react';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
 import { SimpleDatePicker } from './SimpleDatePicker';
@@ -141,31 +127,31 @@ const Schedule: React.FC<ScheduleProps> = ({
 
     setSelectedCell({ member, day: startDay, type: teamScheduleType });
 
-    if (teamScheduleType === 'absence-only') {
-      setEditType('absence');
-      if (existingAbsence) {
-        setAbsenceType(existingAbsence.type);
-        if (startDay === endDay) {
-          setRangeStartDate(existingAbsence.startDate);
-          setRangeEndDate(existingAbsence.endDate);
-        }
-      } else {
-        setAbsenceType('holiday');
+    // Always pre-populate absence state
+    if (existingAbsence) {
+      setAbsenceType(existingAbsence.type);
+      if (startDay === endDay) {
+        setRangeStartDate(existingAbsence.startDate);
+        setRangeEndDate(existingAbsence.endDate);
       }
     } else {
-      if (startDay !== endDay) {
-        setEditType('absence');
-        setAbsenceType('holiday');
-      } else {
-        setEditType('shift');
-        if (existingShift) {
-          setStartTime(existingShift.startTime);
-          setEndTime(existingShift.endTime);
-        } else {
-          setStartTime('09:00');
-          setEndTime('17:00');
-        }
-      }
+      setAbsenceType('holiday');
+    }
+
+    // Always pre-populate shift state
+    if (existingShift) {
+      setStartTime(existingShift.startTime);
+      setEndTime(existingShift.endTime);
+    } else {
+      setStartTime('09:00');
+      setEndTime('17:00');
+    }
+
+    // Determine which tab to show
+    if (teamScheduleType === 'absence-only') {
+      setEditType('absence');
+    } else {
+      setEditType(existingAbsence ? 'absence' : 'shift');
     }
 
     setDragStart(null);
@@ -180,7 +166,7 @@ const Schedule: React.FC<ScheduleProps> = ({
       const existing = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
 
       const newAbsence: Absence = {
-        id: existing?.id || Date.now().toString(),
+        id: existing?.id || crypto.randomUUID(),
         memberId: selectedCell.member.id,
         type: absenceType,
         startDate: rangeStartDate,
@@ -189,15 +175,21 @@ const Schedule: React.FC<ScheduleProps> = ({
       };
       onUpdateAbsence(newAbsence);
     } else {
-      const dateStr = getDateStr(selectedCell.day);
-      const newShift: Shift = {
-        id: getShiftForDay(selectedCell.member.id, selectedCell.day)?.id || Date.now().toString(),
-        memberId: selectedCell.member.id,
-        date: dateStr,
-        startTime,
-        endTime,
-      };
-      onUpdateShift(newShift);
+      const start = new Date(rangeStartDate);
+      const end = new Date(rangeEndDate);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const dateStr = d.toISOString().split('T')[0];
+        const dayNum = d.getDate();
+        const existingShift = getShiftForDay(selectedCell.member.id, dayNum);
+        const newShift: Shift = {
+          id: existingShift?.id || crypto.randomUUID(),
+          memberId: selectedCell.member.id,
+          date: dateStr,
+          startTime,
+          endTime,
+        };
+        onUpdateShift(newShift);
+      }
     }
     setSelectedCell(null);
   };
@@ -209,8 +201,12 @@ const Schedule: React.FC<ScheduleProps> = ({
       const existing = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
       if (existing) onDeleteAbsence(existing.id);
     } else {
-      const existing = getShiftForDay(selectedCell.member.id, selectedCell.day);
-      if (existing) onDeleteShift(existing.id);
+      const start = new Date(rangeStartDate);
+      const end = new Date(rangeEndDate);
+      for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
+        const existing = getShiftForDay(selectedCell.member.id, d.getDate());
+        if (existing) onDeleteShift(existing.id);
+      }
     }
     setSelectedCell(null);
   };
@@ -277,21 +273,21 @@ const Schedule: React.FC<ScheduleProps> = ({
               placeholder="Absence Type"
             />
           </div>
-          <div className="flex items-center gap-4 bg-white dark:bg-zinc-900 p-1.5 rounded border border-zinc-200 dark:border-zinc-800">
+          <div className="flex items-center gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[32px] px-2 py-1.5">
             <button
               onClick={() => changeMonth(-1)}
-              className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-600 dark:text-zinc-400"
+              className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400"
             >
-              <ChevronLeft size={16} />
+              <ChevronLeft size={14} />
             </button>
-            <span className="font-medium text-sm w-32 text-center text-zinc-900 dark:text-zinc-100 flex items-center justify-center gap-2">
+            <span className="text-sm w-28 text-center text-zinc-900 dark:text-zinc-100 flex items-center justify-center gap-1.5">
               <Calendar size={14} className="text-zinc-400" /> {monthName}
             </span>
             <button
               onClick={() => changeMonth(1)}
-              className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-600 dark:text-zinc-400"
+              className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400"
             >
-              <ChevronRight size={16} />
+              <ChevronRight size={14} />
             </button>
           </div>
         </div>
@@ -420,11 +416,13 @@ const Schedule: React.FC<ScheduleProps> = ({
                             <div
                               className={`flex flex-col items-center justify-center h-full w-full select-none ${isToday ? 'bg-red-50/20 dark:bg-red-900/10' : 'bg-zinc-50 dark:bg-zinc-900'}`}
                             >
-                              <span className="text-[8px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
-                                {shift.startTime}
+                              <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
+                                {shift.startTime.slice(0, 5)}
                               </span>
                               <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-0.5"></div>
-                              <span className="text-[8px] text-zinc-500 leading-none">{shift.endTime}</span>
+                              <span className="text-[10px] text-zinc-500 leading-none">
+                                {shift.endTime.slice(0, 5)}
+                              </span>
                             </div>
                           );
                         }
@@ -446,21 +444,6 @@ const Schedule: React.FC<ScheduleProps> = ({
               </div>
             ))}
           </div>
-        </div>
-      </div>
-
-      <div className="mt-6 flex gap-6 text-xs uppercase tracking-wider font-medium text-zinc-500 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-red-100 dark:bg-red-900/40 rounded-sm"></div> Sick Leave
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-blue-100 dark:bg-blue-900/40 rounded-sm"></div> Business Trip
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="w-3 h-3 bg-emerald-100 dark:bg-emerald-900/30 rounded-sm"></div> Holiday
-        </div>
-        <div className="flex items-center gap-2 ml-4 border-l pl-4 border-zinc-200 dark:border-zinc-700">
-          <Clock size={14} className="text-zinc-500" /> Working Hours
         </div>
       </div>
 
@@ -539,10 +522,7 @@ const Schedule: React.FC<ScheduleProps> = ({
       >
         {selectedCell && (
           <div>
-            <p className="text-xs text-zinc-500 mb-4 font-medium">
-              {selectedCell.member.name} •{' '}
-              {rangeStartDate === rangeEndDate ? rangeStartDate : `${rangeStartDate} to ${rangeEndDate}`}
-            </p>
+            <p className="text-xs text-zinc-500 mb-4 font-medium">{selectedCell.member.name}</p>
 
             <div className="space-y-4">
               {selectedCell.type === 'shift-based' && (
@@ -562,31 +542,30 @@ const Schedule: React.FC<ScheduleProps> = ({
                 </div>
               )}
 
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium mb-1 block text-zinc-500">From</label>
+                  <SimpleDatePicker value={rangeStartDate} onChange={setRangeStartDate} placeholder="Select Date" />
+                </div>
+                <div>
+                  <label className="text-xs font-medium mb-1 block text-zinc-500">To</label>
+                  <SimpleDatePicker value={rangeEndDate} onChange={setRangeEndDate} placeholder="Select Date" />
+                </div>
+              </div>
+
               {editType === 'absence' ? (
-                <div className="space-y-4">
-                  <div className="space-y-1">
-                    <CustomSelect
-                      label="Absence Type"
-                      options={[
-                        { value: 'holiday', label: 'Holiday' },
-                        { value: 'sick', label: 'Sick Leave' },
-                        { value: 'business_trip', label: 'Business Trip' },
-                        { value: 'day_off', label: 'Day Off' },
-                      ]}
-                      value={absenceType}
-                      onChange={(v) => setAbsenceType(v as any)}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-medium mb-1 block text-zinc-500">From</label>
-                      <SimpleDatePicker value={rangeStartDate} onChange={setRangeStartDate} placeholder="Select Date" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium mb-1 block text-zinc-500">To</label>
-                      <SimpleDatePicker value={rangeEndDate} onChange={setRangeEndDate} placeholder="Select Date" />
-                    </div>
-                  </div>
+                <div>
+                  <CustomSelect
+                    label="Absence Type"
+                    options={[
+                      { value: 'holiday', label: 'Holiday' },
+                      { value: 'sick', label: 'Sick Leave' },
+                      { value: 'business_trip', label: 'Business Trip' },
+                      { value: 'day_off', label: 'Day Off' },
+                    ]}
+                    value={absenceType}
+                    onChange={(v) => setAbsenceType(v as any)}
+                  />
                 </div>
               ) : (
                 <div className="grid grid-cols-2 gap-3">

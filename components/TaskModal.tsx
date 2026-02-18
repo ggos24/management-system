@@ -29,6 +29,7 @@ import { useUiStore } from '../stores/uiStore';
 import { useDataStore } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
 import { Task, CustomProperty } from '../types';
+import { PRIORITY_COLORS, PRIORITY_DOT } from '../constants';
 
 export const TaskModal: React.FC = () => {
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
@@ -253,9 +254,8 @@ export const TaskModal: React.FC = () => {
               value={taskModalData.priority || 'medium'}
               onChange={(val) => setTaskModalData({ ...taskModalData, priority: val as Task['priority'] })}
               renderValue={(v) => (
-                <span
-                  className={`capitalize ${v === 'high' ? 'text-red-500 font-bold' : v === 'medium' ? 'text-yellow-500' : 'text-zinc-500'}`}
-                >
+                <span className={`capitalize inline-flex items-center gap-1.5 ${PRIORITY_COLORS[v] || ''}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[v] || 'bg-zinc-400'}`} />
                   {v}
                 </span>
               )}

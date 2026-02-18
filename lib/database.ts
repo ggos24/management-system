@@ -23,6 +23,7 @@ function mapTeam(row: any): Team {
     scheduleType: row.schedule_type || 'shift-based',
     hidden: row.hidden || false,
     archived: row.archived || false,
+    adminOnly: row.admin_only || false,
     sortOrder: row.sort_order || 0,
   };
 }
@@ -366,6 +367,7 @@ export async function upsertTeam(team: Team) {
     schedule_type: team.scheduleType,
     hidden: team.hidden || false,
     archived: team.archived || false,
+    admin_only: team.adminOnly || false,
     sort_order: team.sortOrder || 0,
   };
   const { data, error } = await supabase.from('teams').upsert(row, { onConflict: 'id' }).select().single();
@@ -481,6 +483,26 @@ export async function upsertCustomProperty(teamId: string, prop: CustomProperty)
 export async function deleteCustomProperty(id: string) {
   const { error } = await supabase.from('custom_properties').delete().eq('id', id);
   return { error };
+}
+
+// === Avatar upload ===
+
+export async function uploadAvatar(memberId: string, file: File): Promise<string> {
+  const ext = file.name.split('.').pop() || 'jpg';
+  const path = `avatars/${memberId}.${ext}`;
+
+  const { error: uploadError } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
+  if (uploadError) throw uploadError;
+
+  const { data } = supabase.storage.from('avatars').getPublicUrl(path);
+  // Append cache-buster so the browser loads the new image
+  const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
+
+  // Persist the URL directly via UPDATE (not upsert) so RLS update policy applies
+  const { error: updateError } = await supabase.from('profiles').update({ avatar: publicUrl }).eq('id', memberId);
+  if (updateError) throw updateError;
+
+  return publicUrl;
 }
 
 // === Integration mutations ===

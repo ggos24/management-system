@@ -16,6 +16,7 @@ interface CustomSelectProps {
   placeholder?: string;
   className?: string;
   renderValue?: (value: string) => React.ReactNode;
+  compact?: boolean;
 }
 
 export const CustomSelect: React.FC<CustomSelectProps> = ({
@@ -28,6 +29,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   placeholder = 'Select...',
   className,
   renderValue,
+  compact,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [newItem, setNewItem] = useState('');
@@ -59,14 +61,20 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       )}
       <div
         onClick={() => setIsOpen(!isOpen)}
-        className="w-full min-h-[32px] pl-2 pr-8 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm cursor-pointer flex items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 relative"
+        className={
+          compact
+            ? 'w-full min-h-[24px] px-1.5 py-0.5 rounded cursor-pointer flex items-center transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 relative text-sm'
+            : 'w-full min-h-[32px] pl-2 pr-8 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm cursor-pointer flex items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 relative'
+        }
       >
         <span className={`truncate ${value ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400'}`}>
           {renderValue ? renderValue(value) : selectedOption?.label || value || placeholder}
         </span>
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
-          <ChevronDown size={14} />
-        </div>
+        {!compact && (
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
+            <ChevronDown size={14} />
+          </div>
+        )}
       </div>
       {isOpen && (
         <div className="absolute top-full left-0 w-full min-w-[150px] mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-[60] max-h-60 overflow-y-auto p-1 animate-in fade-in zoom-in-95 duration-100">

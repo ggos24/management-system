@@ -208,7 +208,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
           </p>
         </div>
         <div className="flex flex-wrap gap-3 items-center">
-          <div className="flex items-center gap-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-md px-3 py-1.5 shadow-sm hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">
+          <div className="flex items-center gap-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[32px] px-2 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors">
             <CalendarIcon size={14} className="text-zinc-500" />
             <SimpleDatePicker
               value={startDate}
@@ -217,7 +217,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
               renderTrigger={(onClick, value, placeholder) => (
                 <button
                   onClick={onClick}
-                  className="text-xs font-medium text-zinc-900 dark:text-zinc-100 px-1 py-0.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus:outline-none"
+                  className="text-sm text-zinc-900 dark:text-zinc-100 px-1 py-0.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus:outline-none"
                 >
                   {value || placeholder}
                 </button>
@@ -231,7 +231,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
               renderTrigger={(onClick, value, placeholder) => (
                 <button
                   onClick={onClick}
-                  className="text-xs font-medium text-zinc-900 dark:text-zinc-100 px-1 py-0.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus:outline-none"
+                  className="text-sm text-zinc-900 dark:text-zinc-100 px-1 py-0.5 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors focus:outline-none"
                 >
                   {value || placeholder}
                 </button>
@@ -249,7 +249,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
               </button>
             )}
           </div>
-          <div className="w-[160px]">
+          <div className="w-[220px]">
             <CustomSelect
               icon={Briefcase}
               options={teams

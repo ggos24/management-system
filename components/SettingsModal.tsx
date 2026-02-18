@@ -1,10 +1,11 @@
-import React from 'react';
-import { Send } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { Send, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
-import { Toggle } from './Toggle';
 import { AbsenceStatsCard } from './AbsenceStatsCard';
 import { calculateAbsenceStats } from '../lib/utils';
+import { uploadAvatar } from '../lib/database';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
@@ -13,12 +14,42 @@ export const SettingsModal: React.FC = () => {
   const { isSettingsModalOpen, setIsSettingsModalOpen, activeSettingsTab, setActiveSettingsTab, setIsInviteModalOpen } =
     useUiStore();
   const currentUser = useAuthStore((s) => s.currentUser);
-  const { members, absences, logs, permissions, togglePermission, removeMember, updateMemberAvatar } = useDataStore();
+  const setCurrentUser = useAuthStore((s) => s.setCurrentUser);
+  const { members, absences, logs, removeMember, updateMemberAvatar } = useDataStore();
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [uploading, setUploading] = useState(false);
 
   const handleChangeAvatar = () => {
-    if (!currentUser) return;
-    const newAvatar = `https://picsum.photos/100/100?random=${Math.floor(Math.random() * 1000)}`;
-    updateMemberAvatar(currentUser.id, newAvatar);
+    fileInputRef.current?.click();
+  };
+
+  const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file || !currentUser) return;
+
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+    if (file.size > 2 * 1024 * 1024) {
+      toast.error('Image must be under 2 MB');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const publicUrl = await uploadAvatar(currentUser.id, file);
+      updateMemberAvatar(currentUser.id, publicUrl);
+      setCurrentUser({ ...currentUser, avatar: publicUrl });
+      toast.success('Avatar updated');
+    } catch {
+      toast.error('Failed to upload avatar');
+    } finally {
+      setUploading(false);
+      // Reset so re-selecting the same file triggers onChange
+      e.target.value = '';
+    }
   };
 
   const renderSettingsContent = () => {
@@ -38,8 +69,20 @@ export const SettingsModal: React.FC = () => {
                   </span>
                 </div>
                 <p className="text-zinc-500 text-sm">{currentUser.jobTitle}</p>
-                <button onClick={handleChangeAvatar} className="text-sm text-blue-600 hover:underline mt-2">
-                  Change Avatar
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileSelected}
+                />
+                <button
+                  onClick={handleChangeAvatar}
+                  disabled={uploading}
+                  className="text-sm text-blue-600 hover:underline mt-2 flex items-center gap-1.5 disabled:opacity-50"
+                >
+                  {uploading && <Loader2 size={14} className="animate-spin" />}
+                  {uploading ? 'Uploading...' : 'Change Avatar'}
                 </button>
               </div>
             </div>
@@ -50,59 +93,6 @@ export const SettingsModal: React.FC = () => {
           </div>
         );
       }
-      case 'Permissions':
-        return (
-          <div className="space-y-4">
-            {currentUser.role !== 'admin' && (
-              <div className="bg-yellow-50 dark:bg-yellow-900/20 p-3 rounded text-sm text-yellow-800 dark:text-yellow-200">
-                Only administrators can modify permissions.
-              </div>
-            )}
-            <div className="border border-zinc-200 dark:border-zinc-800 rounded-lg overflow-hidden">
-              <table className="w-full text-sm text-left">
-                <thead className="bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
-                  <tr>
-                    <th className="p-3 font-medium text-zinc-500">Member</th>
-                    <th className="p-3 font-medium text-zinc-500 text-center">Can Create</th>
-                    <th className="p-3 font-medium text-zinc-500 text-center">Can Edit</th>
-                    <th className="p-3 font-medium text-zinc-500 text-center">Can Delete</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                  {members.map((m) => (
-                    <tr key={m.id}>
-                      <td className="p-3 flex items-center gap-2">
-                        <Avatar src={m.avatar} size="sm" />
-                        <span className="font-medium">{m.name}</span>
-                      </td>
-                      <td className="p-3 text-center">
-                        <Toggle
-                          checked={permissions[m.id]?.canCreate ?? true}
-                          onChange={() => togglePermission(m.id, 'canCreate')}
-                          disabled={currentUser.role !== 'admin'}
-                        />
-                      </td>
-                      <td className="p-3 text-center">
-                        <Toggle
-                          checked={permissions[m.id]?.canEdit ?? m.role === 'admin'}
-                          onChange={() => togglePermission(m.id, 'canEdit')}
-                          disabled={currentUser.role !== 'admin'}
-                        />
-                      </td>
-                      <td className="p-3 text-center">
-                        <Toggle
-                          checked={permissions[m.id]?.canDelete ?? m.role === 'admin'}
-                          onChange={() => togglePermission(m.id, 'canDelete')}
-                          disabled={currentUser.role !== 'admin'}
-                        />
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        );
       case 'Notifications':
         return (
           <div className="space-y-4">
@@ -195,7 +185,7 @@ export const SettingsModal: React.FC = () => {
     <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="Settings">
       <div className="flex gap-6 min-h-[400px]">
         <div className="w-48 border-r border-zinc-100 dark:border-zinc-800 pr-4 space-y-1">
-          {['My Profile', 'Permissions', 'Notifications', 'Team Members', 'Logs History'].map((tab) => (
+          {['My Profile', 'Notifications', 'Team Members', 'Logs History'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveSettingsTab(tab)}

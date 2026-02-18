@@ -1,6 +1,6 @@
 import React from 'react';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Edit2, Archive, Trash2 } from 'lucide-react';
+import { Eye, EyeOff, Edit2, Archive, Trash2, Shield } from 'lucide-react';
 import { Modal } from './Modal';
 import { IconComponent, ICONS } from './IconComponent';
 import { useUiStore } from '../stores/uiStore';
@@ -27,7 +27,8 @@ export const ManageTeamsModal: React.FC = () => {
   } = useUiStore();
 
   const currentUser = useAuthStore((s) => s.currentUser);
-  const { teams, addTeam, deleteTeam, archiveTeam, saveTeamEdit, toggleTeamVisibility } = useDataStore();
+  const { teams, addTeam, deleteTeam, archiveTeam, saveTeamEdit, toggleTeamVisibility, toggleTeamAdminOnly } =
+    useDataStore();
 
   const handleAddTeam = () => {
     if (!newTeamName) return;
@@ -142,6 +143,11 @@ export const ManageTeamsModal: React.FC = () => {
                     ) : (
                       <p className="text-sm font-bold">
                         {team.name}{' '}
+                        {team.adminOnly && (
+                          <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400 uppercase ml-2 bg-purple-100 dark:bg-purple-900/30 px-1.5 py-0.5 rounded">
+                            Admin
+                          </span>
+                        )}
                         {team.archived && (
                           <span className="text-[10px] font-normal text-zinc-400 uppercase ml-2">(Archived)</span>
                         )}
@@ -149,6 +155,13 @@ export const ManageTeamsModal: React.FC = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => toggleTeamAdminOnly(team.id)}
+                      className={`p-1.5 text-zinc-400 hover:text-purple-500 ${team.adminOnly ? 'text-purple-500' : ''}`}
+                      title={team.adminOnly ? 'Visible to all' : 'Admin only'}
+                    >
+                      <Shield size={14} />
+                    </button>
                     <button
                       onClick={() => toggleTeamVisibility(team.id)}
                       className="p-1.5 text-zinc-400 hover:text-black dark:hover:text-white"
