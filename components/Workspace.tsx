@@ -1022,17 +1022,16 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     {task.contentInfo?.type || task.teamId}
                                   </td>
                                   <td className="p-3">
-                                    <div className="flex -space-x-1.5">
+                                    <div className="flex flex-col gap-1">
                                       {authors.map((a) => (
-                                        <Avatar
-                                          key={a.id}
-                                          src={a.avatar}
-                                          alt={a.name}
-                                          size="sm"
-                                          className="!w-5 !h-5 !border-white dark:!border-zinc-900 flex-shrink-0"
-                                        />
+                                        <div key={a.id} className="flex items-center gap-1.5">
+                                          <Avatar src={a.avatar} alt={a.name} size="xs" className="flex-shrink-0" />
+                                          <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
+                                            {a.name}
+                                          </span>
+                                        </div>
                                       ))}
-                                      {authors.length === 0 && '-'}
+                                      {authors.length === 0 && <span className="text-xs text-zinc-400">-</span>}
                                     </div>
                                   </td>
                                   <td className={`p-3 text-xs ${PRIORITY_COLORS[task.priority]} capitalize truncate`}>
