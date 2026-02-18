@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { toast } from 'sonner';
 import {
   Trash2,
@@ -14,6 +14,11 @@ import {
   Globe,
   Palette,
   Link as LinkIcon,
+  Type,
+  List as ListIcon,
+  Users,
+  MoreHorizontal,
+  Edit2,
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { RichTextEditor } from './RichTextEditor';
@@ -23,9 +28,15 @@ import { SimpleDatePicker } from './SimpleDatePicker';
 import { useUiStore } from '../stores/uiStore';
 import { useDataStore } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
-import { Task } from '../types';
+import { Task, CustomProperty } from '../types';
 
 export const TaskModal: React.FC = () => {
+  const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
+  const [newPropName, setNewPropName] = useState('');
+  const [newPropType, setNewPropType] = useState<CustomProperty['type']>('text');
+  const [editingPropId, setEditingPropId] = useState<string | null>(null);
+  const [editingPropName, setEditingPropName] = useState('');
+  const [propMenuId, setPropMenuId] = useState<string | null>(null);
   const { isTaskModalOpen, taskModalData, isShareOpen, setIsTaskModalOpen, setTaskModalData, setIsShareOpen } =
     useUiStore();
 
@@ -42,6 +53,8 @@ export const TaskModal: React.FC = () => {
     addStatus,
     addType,
     updateProperty,
+    addProperty,
+    deleteProperty,
   } = useDataStore();
 
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -274,10 +287,95 @@ export const TaskModal: React.FC = () => {
 
             {/* Custom Properties Inputs */}
             {(teamProperties[taskModalData.teamId || 'default'] || []).map((prop) => (
-              <div key={prop.id} className="space-y-1">
-                <label className="text-xs font-medium text-zinc-500 flex items-center gap-1.5 capitalize">
-                  {prop.name}
-                </label>
+              <div key={prop.id} className="space-y-1 relative">
+                <div className="flex items-center justify-between group/prop">
+                  {editingPropId === prop.id ? (
+                    <input
+                      autoFocus
+                      className="text-xs font-medium bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 outline-none w-full"
+                      value={editingPropName}
+                      onChange={(e) => setEditingPropName(e.target.value)}
+                      onBlur={() => {
+                        if (editingPropName.trim()) {
+                          updateProperty(taskModalData.teamId || 'default', { ...prop, name: editingPropName.trim() });
+                        }
+                        setEditingPropId(null);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          if (editingPropName.trim()) {
+                            updateProperty(taskModalData.teamId || 'default', {
+                              ...prop,
+                              name: editingPropName.trim(),
+                            });
+                          }
+                          setEditingPropId(null);
+                        }
+                        if (e.key === 'Escape') setEditingPropId(null);
+                      }}
+                    />
+                  ) : (
+                    <label className="text-xs font-medium text-zinc-500 flex items-center gap-1.5 capitalize">
+                      {prop.name}
+                    </label>
+                  )}
+                  {editingPropId !== prop.id && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPropMenuId(propMenuId === prop.id ? null : prop.id);
+                      }}
+                      className="opacity-0 group-hover/prop:opacity-100 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-opacity p-0.5"
+                    >
+                      <MoreHorizontal size={14} />
+                    </button>
+                  )}
+                </div>
+                {propMenuId === prop.id && (
+                  <div className="absolute right-0 top-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 w-44">
+                    <button
+                      onClick={() => {
+                        setEditingPropId(prop.id);
+                        setEditingPropName(prop.name);
+                        setPropMenuId(null);
+                      }}
+                      className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
+                    >
+                      <Edit2 size={12} /> Rename
+                    </button>
+                    <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
+                    <p className="px-3 py-1 text-[10px] font-bold text-zinc-400 uppercase">Change Type</p>
+                    {[
+                      { type: 'text' as const, icon: Type, label: 'Text' },
+                      { type: 'select' as const, icon: ListIcon, label: 'Select' },
+                      { type: 'date' as const, icon: Calendar, label: 'Date' },
+                      { type: 'person' as const, icon: Users, label: 'Person' },
+                    ].map(({ type, icon: Icon, label }) => (
+                      <button
+                        key={type}
+                        onClick={() => {
+                          updateProperty(taskModalData.teamId || 'default', { ...prop, type });
+                          setPropMenuId(null);
+                        }}
+                        className={`w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs ${prop.type === type ? 'text-black dark:text-white font-medium' : ''}`}
+                      >
+                        <Icon size={12} /> {label} {prop.type === type && '(current)'}
+                      </button>
+                    ))}
+                    <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
+                    <button
+                      onClick={() => {
+                        if (confirm(`Delete "${prop.name}" property?`)) {
+                          deleteProperty(taskModalData.teamId || 'default', prop.id);
+                        }
+                        setPropMenuId(null);
+                      }}
+                      className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs text-red-500"
+                    >
+                      <Trash2 size={12} /> Delete
+                    </button>
+                  </div>
+                )}
                 {prop.type === 'text' && (
                   <input
                     className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400"
@@ -340,6 +438,65 @@ export const TaskModal: React.FC = () => {
                 )}
               </div>
             ))}
+
+            <div className="md:col-span-2 relative">
+              {isAddPropertyOpen ? (
+                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-xs font-bold text-zinc-900 dark:text-white">New Property</h4>
+                    <button onClick={() => setIsAddPropertyOpen(false)} className="text-zinc-400 hover:text-zinc-600">
+                      <X size={14} />
+                    </button>
+                  </div>
+                  <input
+                    className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400"
+                    placeholder="Property Name"
+                    value={newPropName}
+                    onChange={(e) => setNewPropName(e.target.value)}
+                    autoFocus
+                  />
+                  <div className="space-y-1">
+                    {[
+                      { type: 'text' as const, icon: Type, label: 'Text' },
+                      { type: 'select' as const, icon: ListIcon, label: 'Select' },
+                      { type: 'date' as const, icon: Calendar, label: 'Date' },
+                      { type: 'person' as const, icon: Users, label: 'Person' },
+                    ].map(({ type, icon: Icon, label }) => (
+                      <button
+                        key={type}
+                        onClick={() => setNewPropType(type)}
+                        className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === type ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                      >
+                        <Icon size={12} /> {label}
+                      </button>
+                    ))}
+                  </div>
+                  <button
+                    onClick={() => {
+                      if (!newPropName || !addProperty) return;
+                      addProperty(taskModalData.teamId || 'default', {
+                        id: crypto.randomUUID(),
+                        name: newPropName,
+                        type: newPropType,
+                        options: [],
+                      });
+                      setNewPropName('');
+                      setIsAddPropertyOpen(false);
+                    }}
+                    className="w-full bg-black dark:bg-white text-white dark:text-black py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
+                  >
+                    Create
+                  </button>
+                </div>
+              ) : (
+                <button
+                  onClick={() => setIsAddPropertyOpen(true)}
+                  className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 font-medium transition-colors"
+                >
+                  <Plus size={14} /> Add Property
+                </button>
+              )}
+            </div>
           </div>
         </div>
 

@@ -144,7 +144,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const [showArchivedStatuses, setShowArchivedStatuses] = useState(false);
 
   // Property Creation State
-  const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
+  const [isAddPropertyOpen, setIsAddPropertyOpen] = useState<string | null>(null);
   const [newPropName, setNewPropName] = useState('');
   const [newPropType, setNewPropType] = useState<CustomProperty['type']>('text');
 
@@ -378,14 +378,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const handleCreateProperty = () => {
     if (!newPropName || !onAddProperty) return;
     const newProp: CustomProperty = {
-      id: Date.now().toString(),
+      id: crypto.randomUUID(),
       name: newPropName,
       type: newPropType,
       options: [], // Default empty options for select types
     };
     onAddProperty(newProp);
     setNewPropName('');
-    setIsAddPropertyOpen(false);
+    setIsAddPropertyOpen(null);
   };
 
   // Calendar Helpers
@@ -442,6 +442,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
     const closeMenu = () => {
       setActiveColumnMenu(null);
       setActivePropertyMenu(null);
+      setIsAddPropertyOpen(null);
     };
     document.addEventListener('click', closeMenu);
     return () => document.removeEventListener('click', closeMenu);
@@ -795,7 +796,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               return (
                 <div
                   key={col.id}
-                  className={`space-y-2 group/section ${isArchived ? 'opacity-70' : ''}`}
+                  className={`space-y-2 group/section relative ${isArchived ? 'opacity-70' : ''}`}
                   draggable={!searchQuery}
                   onDragStart={(e) => handleColumnDragStart(e, col.id)}
                   onDrop={(e) => {
@@ -875,221 +876,261 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   </div>
 
                   {!isCollapsed && (
-                    <div
-                      className={`overflow-x-auto border border-zinc-200 dark:border-zinc-800 rounded-lg cursor-default ${isArchived ? 'bg-yellow-50/10' : ''}`}
-                    >
-                      {/* Added table-fixed and specific widths for alignment */}
-                      <table className="w-full text-left text-sm border-collapse min-w-[800px] table-fixed">
-                        <thead className="bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
-                          <tr>
-                            <th className="p-3 font-medium text-zinc-400 text-xs w-[25%]">Title</th>
-                            <th className="p-3 font-medium text-zinc-400 text-xs w-32">Type</th>
-                            <th className="p-3 font-medium text-zinc-400 text-xs w-32">Assignee</th>
-                            <th className="p-3 font-medium text-zinc-400 text-xs w-24">Priority</th>
-                            <th className="p-3 font-medium text-zinc-400 text-xs w-24">Deadline</th>
-                            {customProperties.map((prop) => (
-                              <th
-                                key={prop.id}
-                                className="p-3 font-medium text-zinc-400 text-xs w-32 group/prop cursor-pointer relative"
-                              >
-                                {editingColumnId === prop.id ? (
-                                  <input
-                                    autoFocus
-                                    className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1 py-0.5 text-xs font-bold w-full outline-none"
-                                    value={tempColumnName}
-                                    onChange={(e) => setTempColumnName(e.target.value)}
-                                    onBlur={handleSaveRename}
-                                    onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
-                                ) : (
-                                  <div
-                                    className="flex items-center justify-between"
-                                    onClick={() => handleStartRename(prop.id, prop.name)}
-                                  >
-                                    {prop.name}
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setActivePropertyMenu(activePropertyMenu === prop.id ? null : prop.id);
-                                      }}
-                                      className="opacity-0 group-hover/prop:opacity-100 hover:text-zinc-900 dark:hover:text-white"
-                                    >
-                                      <MoreHorizontal size={12} />
-                                    </button>
-                                  </div>
-                                )}
-                                {activePropertyMenu === prop.id && (
-                                  <div className="absolute top-8 right-0 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 w-32">
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleStartRename(prop.id, prop.name);
-                                      }}
-                                      className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
-                                    >
-                                      <Edit2 size={12} /> Rename
-                                    </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleDeleteProperty(prop.id);
-                                      }}
-                                      className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs text-red-500"
-                                    >
-                                      <Trash2 size={12} /> Delete
-                                    </button>
-                                  </div>
-                                )}
-                              </th>
-                            ))}
-                            <th className="p-3 font-medium text-zinc-400 text-xs w-32">Placements</th>
-                            <th className="p-2 w-10 text-center relative">
-                              <button
-                                onClick={() => setIsAddPropertyOpen(!isAddPropertyOpen)}
-                                className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400"
-                              >
-                                <Plus size={14} />
-                              </button>
-                              {isAddPropertyOpen && (
-                                <div className="absolute right-0 top-8 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left">
-                                  <h4 className="text-xs font-bold text-zinc-900 dark:text-white mb-2">New Property</h4>
-                                  <input
-                                    className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 mb-2"
-                                    placeholder="Property Name"
-                                    value={newPropName}
-                                    onChange={(e) => setNewPropName(e.target.value)}
-                                    autoFocus
-                                  />
-                                  <div className="space-y-1 mb-3">
-                                    <button
-                                      onClick={() => setNewPropType('text')}
-                                      className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'text' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
-                                    >
-                                      <Type size={12} /> Text
-                                    </button>
-                                    <button
-                                      onClick={() => setNewPropType('select')}
-                                      className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'select' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
-                                    >
-                                      <ListIcon size={12} /> Select
-                                    </button>
-                                    <button
-                                      onClick={() => setNewPropType('date')}
-                                      className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'date' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
-                                    >
-                                      <CalendarIcon size={12} /> Date
-                                    </button>
-                                    <button
-                                      onClick={() => setNewPropType('person')}
-                                      className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'person' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
-                                    >
-                                      <Users size={12} /> Person
-                                    </button>
-                                  </div>
-                                  <button
-                                    onClick={handleCreateProperty}
-                                    className="w-full bg-black dark:bg-white text-white dark:text-black py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
-                                  >
-                                    Create
-                                  </button>
-                                </div>
-                              )}
-                            </th>
-                          </tr>
-                        </thead>
-                        <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900/40">
-                          {colTasks.length > 0 ? (
-                            colTasks.map((task) => {
-                              const authors = getMembersByIds(task.assigneeIds);
-
-                              return (
-                                <tr
-                                  key={task.id}
-                                  draggable
-                                  onDragStart={(e) => handleDragStart(e, task.id)}
-                                  className="hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group cursor-grab active:cursor-grabbing"
-                                  onClick={() => onTaskClick(task)}
-                                >
-                                  <td className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 flex items-center gap-2 truncate">
-                                    <GripVertical
-                                      size={12}
-                                      className="text-zinc-300 opacity-0 group-hover:opacity-100 flex-shrink-0"
-                                    />
-                                    <span className="truncate">{task.title}</span>
-                                  </td>
-                                  <td className="p-3 text-zinc-600 dark:text-zinc-400 text-xs truncate">
-                                    {task.contentInfo?.type || task.teamId}
-                                  </td>
-                                  <td className="p-3">
-                                    <div className="flex flex-col gap-1">
-                                      {authors.map((a) => (
-                                        <div key={a.id} className="flex items-center gap-1.5">
-                                          <Avatar src={a.avatar} alt={a.name} size="xs" className="flex-shrink-0" />
-                                          <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
-                                            {a.name}
-                                          </span>
-                                        </div>
-                                      ))}
-                                      {authors.length === 0 && <span className="text-xs text-zinc-400">-</span>}
-                                    </div>
-                                  </td>
-                                  <td className={`p-3 text-xs ${PRIORITY_COLORS[task.priority]} capitalize truncate`}>
-                                    {task.priority}
-                                  </td>
-                                  <td className="p-3 text-zinc-500 text-xs truncate">
-                                    {new Date(task.dueDate).toLocaleDateString('en-US')}
-                                  </td>
-
-                                  {/* Custom Properties Render */}
-                                  {customProperties.map((prop) => (
-                                    <td key={prop.id} className="p-3 text-xs text-zinc-600 dark:text-zinc-400 truncate">
-                                      {task.customFieldValues?.[prop.id]
-                                        ? String(task.customFieldValues[prop.id])
-                                        : '-'}
-                                    </td>
-                                  ))}
-
-                                  <td className="p-3 text-zinc-500 text-xs">
-                                    <div className="flex gap-1 overflow-hidden">
-                                      {task.placements.map((tag) => (
-                                        <span key={tag} className="truncate">
-                                          #{tag}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </td>
-                                  <td className="p-3"></td>
-                                </tr>
-                              );
-                            })
-                          ) : (
+                    <>
+                      <div
+                        className={`overflow-x-auto border border-zinc-200 dark:border-zinc-800 rounded-lg cursor-default ${isArchived ? 'bg-yellow-50/10' : ''}`}
+                      >
+                        {/* Added table-fixed and specific widths for alignment */}
+                        <table className="w-full text-left text-sm border-collapse min-w-[800px] table-fixed">
+                          <thead className="bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
                             <tr>
-                              <td
-                                colSpan={6 + customProperties.length}
-                                className="p-4 text-center text-xs text-zinc-400 italic"
-                              >
-                                No tasks in this step
-                              </td>
+                              <th className="p-3 font-medium text-zinc-400 text-xs w-[25%]">Title</th>
+                              <th className="p-3 font-medium text-zinc-400 text-xs w-32">Type</th>
+                              <th className="p-3 font-medium text-zinc-400 text-xs w-32">Assignee</th>
+                              <th className="p-3 font-medium text-zinc-400 text-xs w-24">Priority</th>
+                              <th className="p-3 font-medium text-zinc-400 text-xs w-24">Deadline</th>
+                              {customProperties.map((prop) => (
+                                <th
+                                  key={prop.id}
+                                  className="p-3 font-medium text-zinc-400 text-xs w-32 group/prop cursor-pointer relative"
+                                >
+                                  {editingColumnId === prop.id ? (
+                                    <input
+                                      autoFocus
+                                      className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1 py-0.5 text-xs font-bold w-full outline-none"
+                                      value={tempColumnName}
+                                      onChange={(e) => setTempColumnName(e.target.value)}
+                                      onBlur={handleSaveRename}
+                                      onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
+                                      onClick={(e) => e.stopPropagation()}
+                                    />
+                                  ) : (
+                                    <div
+                                      className="flex items-center justify-between"
+                                      onClick={() => handleStartRename(prop.id, prop.name)}
+                                    >
+                                      {prop.name}
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const key = `${col.id}:${prop.id}`;
+                                          setActivePropertyMenu(activePropertyMenu === key ? null : key);
+                                        }}
+                                        className="opacity-0 group-hover/prop:opacity-100 hover:text-zinc-900 dark:hover:text-white"
+                                      >
+                                        <MoreHorizontal size={12} />
+                                      </button>
+                                    </div>
+                                  )}
+                                </th>
+                              ))}
+                              <th className="p-3 font-medium text-zinc-400 text-xs w-32">Placements</th>
+                              <th className="p-2 w-10 text-center">
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsAddPropertyOpen(isAddPropertyOpen === col.id ? null : col.id);
+                                  }}
+                                  className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                              </th>
                             </tr>
-                          )}
-                          {/* Add Task Row */}
-                          {!searchQuery && (
-                            <tr
-                              className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
-                              onClick={() => onAddTask({ status: col.id })}
+                          </thead>
+                          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900/40">
+                            {colTasks.length > 0 ? (
+                              colTasks.map((task) => {
+                                const authors = getMembersByIds(task.assigneeIds);
+
+                                return (
+                                  <tr
+                                    key={task.id}
+                                    draggable
+                                    onDragStart={(e) => handleDragStart(e, task.id)}
+                                    className="hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group cursor-grab active:cursor-grabbing"
+                                    onClick={() => onTaskClick(task)}
+                                  >
+                                    <td className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 flex items-center gap-2 truncate">
+                                      <GripVertical
+                                        size={12}
+                                        className="text-zinc-300 opacity-0 group-hover:opacity-100 flex-shrink-0"
+                                      />
+                                      <span className="truncate">{task.title}</span>
+                                    </td>
+                                    <td className="p-3 text-zinc-600 dark:text-zinc-400 text-xs truncate">
+                                      {task.contentInfo?.type || task.teamId}
+                                    </td>
+                                    <td className="p-3">
+                                      <div className="flex flex-col gap-1">
+                                        {authors.map((a) => (
+                                          <div key={a.id} className="flex items-center gap-1.5">
+                                            <Avatar src={a.avatar} alt={a.name} size="xs" className="flex-shrink-0" />
+                                            <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
+                                              {a.name}
+                                            </span>
+                                          </div>
+                                        ))}
+                                        {authors.length === 0 && <span className="text-xs text-zinc-400">-</span>}
+                                      </div>
+                                    </td>
+                                    <td className={`p-3 text-xs ${PRIORITY_COLORS[task.priority]} capitalize truncate`}>
+                                      {task.priority}
+                                    </td>
+                                    <td className="p-3 text-zinc-500 text-xs truncate">
+                                      {new Date(task.dueDate).toLocaleDateString('en-US')}
+                                    </td>
+
+                                    {/* Custom Properties Render */}
+                                    {customProperties.map((prop) => (
+                                      <td
+                                        key={prop.id}
+                                        className="p-3 text-xs text-zinc-600 dark:text-zinc-400 truncate"
+                                      >
+                                        {task.customFieldValues?.[prop.id]
+                                          ? String(task.customFieldValues[prop.id])
+                                          : '-'}
+                                      </td>
+                                    ))}
+
+                                    <td className="p-3 text-zinc-500 text-xs">
+                                      <div className="flex gap-1 overflow-hidden">
+                                        {task.placements.map((tag) => (
+                                          <span key={tag} className="truncate">
+                                            #{tag}
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </td>
+                                    <td className="p-3"></td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              <tr>
+                                <td
+                                  colSpan={6 + customProperties.length}
+                                  className="p-4 text-center text-xs text-zinc-400 italic"
+                                >
+                                  No tasks in this step
+                                </td>
+                              </tr>
+                            )}
+                            {/* Add Task Row */}
+                            {!searchQuery && (
+                              <tr
+                                className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                                onClick={() => onAddTask({ status: col.id })}
+                              >
+                                <td
+                                  colSpan={6 + customProperties.length}
+                                  className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium flex items-center gap-2"
+                                >
+                                  <Plus size={14} /> Add Task
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      {activePropertyMenu?.startsWith(`${col.id}:`) &&
+                        (() => {
+                          const propId = activePropertyMenu.split(':')[1];
+                          const prop = customProperties.find((p) => p.id === propId);
+                          if (!prop) return null;
+                          return (
+                            <div
+                              className="absolute right-12 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 w-44"
+                              onClick={(e) => e.stopPropagation()}
                             >
-                              <td
-                                colSpan={6 + customProperties.length}
-                                className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium flex items-center gap-2"
+                              <button
+                                onClick={() => {
+                                  handleStartRename(prop.id, prop.name);
+                                  setActivePropertyMenu(null);
+                                }}
+                                className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
                               >
-                                <Plus size={14} /> Add Task
-                              </td>
-                            </tr>
-                          )}
-                        </tbody>
-                      </table>
-                    </div>
+                                <Edit2 size={12} /> Rename
+                              </button>
+                              <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
+                              <p className="px-3 py-1 text-[10px] font-bold text-zinc-400 uppercase">Change Type</p>
+                              {[
+                                { type: 'text' as const, icon: Type, label: 'Text' },
+                                { type: 'select' as const, icon: ListIcon, label: 'Select' },
+                                { type: 'date' as const, icon: CalendarIcon, label: 'Date' },
+                                { type: 'person' as const, icon: Users, label: 'Person' },
+                              ].map(({ type, icon: Icon, label }) => (
+                                <button
+                                  key={type}
+                                  onClick={() => {
+                                    if (onUpdateProperty) {
+                                      onUpdateProperty({ ...prop, type });
+                                    }
+                                    setActivePropertyMenu(null);
+                                  }}
+                                  className={`w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs ${prop.type === type ? 'text-black dark:text-white font-medium' : ''}`}
+                                >
+                                  <Icon size={12} /> {label} {prop.type === type && '(current)'}
+                                </button>
+                              ))}
+                              <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
+                              <button
+                                onClick={() => handleDeleteProperty(prop.id)}
+                                className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs text-red-500"
+                              >
+                                <Trash2 size={12} /> Delete
+                              </button>
+                            </div>
+                          );
+                        })()}
+                      {isAddPropertyOpen === col.id && (
+                        <div
+                          className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <h4 className="text-xs font-bold text-zinc-900 dark:text-white mb-2">New Property</h4>
+                          <input
+                            className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 mb-2"
+                            placeholder="Property Name"
+                            value={newPropName}
+                            onChange={(e) => setNewPropName(e.target.value)}
+                            autoFocus
+                          />
+                          <div className="space-y-1 mb-3">
+                            <button
+                              onClick={() => setNewPropType('text')}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'text' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                            >
+                              <Type size={12} /> Text
+                            </button>
+                            <button
+                              onClick={() => setNewPropType('select')}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'select' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                            >
+                              <ListIcon size={12} /> Select
+                            </button>
+                            <button
+                              onClick={() => setNewPropType('date')}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'date' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                            >
+                              <CalendarIcon size={12} /> Date
+                            </button>
+                            <button
+                              onClick={() => setNewPropType('person')}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'person' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                            >
+                              <Users size={12} /> Person
+                            </button>
+                          </div>
+                          <button
+                            onClick={handleCreateProperty}
+                            className="w-full bg-black dark:bg-white text-white dark:text-black py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
+                          >
+                            Create
+                          </button>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               );

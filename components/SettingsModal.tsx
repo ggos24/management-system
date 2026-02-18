@@ -13,17 +13,7 @@ export const SettingsModal: React.FC = () => {
   const { isSettingsModalOpen, setIsSettingsModalOpen, activeSettingsTab, setActiveSettingsTab, setIsInviteModalOpen } =
     useUiStore();
   const currentUser = useAuthStore((s) => s.currentUser);
-  const {
-    members,
-    absences,
-    logs,
-    permissions,
-    integrations,
-    togglePermission,
-    removeMember,
-    updateMemberAvatar,
-    toggleIntegration,
-  } = useDataStore();
+  const { members, absences, logs, permissions, togglePermission, removeMember, updateMemberAvatar } = useDataStore();
 
   const handleChangeAvatar = () => {
     if (!currentUser) return;
@@ -115,20 +105,14 @@ export const SettingsModal: React.FC = () => {
         );
       case 'Notifications':
         return (
-          <div className="space-y-6">
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Email Notifications</span>
-                <Toggle checked={true} onChange={() => {}} />
+          <div className="space-y-4">
+            <div className="p-3 border border-zinc-200 dark:border-zinc-700 rounded flex justify-between items-center">
+              <div className="flex items-center gap-2">
+                <Send size={16} className="text-[#0088cc]" /> <span className="text-sm font-medium">Telegram</span>
               </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Web Notifications</span>
-                <Toggle checked={true} onChange={() => {}} />
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-medium">Telegram Notifications</span>
-                <Toggle checked={true} onChange={() => {}} />
-              </div>
+              <span className="text-[10px] font-bold uppercase tracking-wider bg-zinc-100 dark:bg-zinc-800 text-zinc-500 px-2 py-1 rounded-full">
+                Coming Soon
+              </span>
             </div>
           </div>
         );
@@ -173,23 +157,6 @@ export const SettingsModal: React.FC = () => {
             )}
           </div>
         );
-      case 'Integrations':
-        return (
-          <div className="space-y-4">
-            <div className="p-3 border border-zinc-200 dark:border-zinc-700 rounded flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Send size={16} className="text-[#0088cc]" /> <span>Telegram</span>
-              </div>
-              <button
-                onClick={() => toggleIntegration('telegram', currentUser.id)}
-                disabled={currentUser.role !== 'admin'}
-                className={`text-xs px-2 py-1 rounded transition-colors ${integrations.telegram ? 'text-green-600 font-medium bg-green-50 dark:bg-green-900/20' : 'bg-zinc-900 text-white'} ${currentUser.role !== 'admin' ? 'opacity-50 cursor-not-allowed' : ''}`}
-              >
-                {integrations.telegram ? 'Connected' : 'Connect'}
-              </button>
-            </div>
-          </div>
-        );
       case 'Logs History':
         return (
           <div className="space-y-4 h-[400px] overflow-hidden flex flex-col">
@@ -228,7 +195,7 @@ export const SettingsModal: React.FC = () => {
     <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="Settings">
       <div className="flex gap-6 min-h-[400px]">
         <div className="w-48 border-r border-zinc-100 dark:border-zinc-800 pr-4 space-y-1">
-          {['My Profile', 'Permissions', 'Notifications', 'Team Members', 'Integrations', 'Logs History'].map((tab) => (
+          {['My Profile', 'Permissions', 'Notifications', 'Team Members', 'Logs History'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveSettingsTab(tab)}
