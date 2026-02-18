@@ -81,8 +81,13 @@ interface UiState {
   setAiChatLoading: (loading: boolean) => void;
 }
 
+const getInitialView = () => {
+  const hash = window.location.hash.replace('#', '');
+  return hash || 'dashboard';
+};
+
 export const useUiStore = create<UiState>((set, get) => ({
-  currentView: 'dashboard',
+  currentView: getInitialView(),
   isDarkMode: false,
   sidebarCollapsed: false,
   mobileSidebarOpen: false,
@@ -120,7 +125,12 @@ export const useUiStore = create<UiState>((set, get) => ({
   aiChatLoading: false,
 
   // Actions
-  setCurrentView: (view) => set({ currentView: view }),
+  setCurrentView: (view) => {
+    if (window.location.hash !== `#${view}`) {
+      window.location.hash = view;
+    }
+    set({ currentView: view });
+  },
   toggleTheme: () => {
     const newMode = !get().isDarkMode;
     set({ isDarkMode: newMode });

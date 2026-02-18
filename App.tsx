@@ -1,4 +1,4 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Toaster } from 'sonner';
 import { X } from 'lucide-react';
 import Sidebar from './components/Sidebar';
@@ -116,6 +116,18 @@ const App: React.FC = () => {
     await logout();
     setCurrentView('dashboard');
   };
+
+  // Sync browser back/forward with view state
+  useEffect(() => {
+    const onHashChange = () => {
+      const hash = window.location.hash.replace('#', '');
+      if (hash && hash !== currentView) {
+        setCurrentView(hash);
+      }
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, [currentView, setCurrentView]);
 
   // Loading state
   if (isLoading) {
