@@ -15,6 +15,8 @@ import {
   User,
   Filter,
 } from 'lucide-react';
+import { Modal } from './Modal';
+import { Avatar } from './Avatar';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { CustomSelect } from './CustomSelect';
 import { calculateAbsenceStats } from '../lib/utils';
@@ -353,7 +355,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                         className="sticky left-0 z-10 w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 p-2 flex items-center gap-3 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800"
                         onClick={() => setSelectedMemberStats(member)}
                       >
-                        <img src={member.avatar} alt="" className="w-8 h-8 rounded-full grayscale opacity-80" />
+                        <Avatar src={member.avatar} size="md" />
                         <div className="min-w-0">
                           <p className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate group-hover:underline">
                             {member.name}
@@ -462,33 +464,15 @@ const Schedule: React.FC<ScheduleProps> = ({
         </div>
       </div>
 
-      {selectedMemberStats && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center"
-          onClick={() => setSelectedMemberStats(null)}
-        >
-          <div
-            className="bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 w-96 animate-in fade-in zoom-in duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-start mb-6">
-              <div className="flex items-center gap-3">
-                <img
-                  src={selectedMemberStats.avatar}
-                  alt=""
-                  className="w-12 h-12 rounded-full object-cover grayscale"
-                />
-                <div>
-                  <h3 className="font-bold text-lg text-zinc-900 dark:text-white">{selectedMemberStats.name}</h3>
-                  <p className="text-xs text-zinc-500">{selectedMemberStats.jobTitle}</p>
-                </div>
+      <Modal isOpen={!!selectedMemberStats} onClose={() => setSelectedMemberStats(null)} title="">
+        {selectedMemberStats && (
+          <div>
+            <div className="flex items-center gap-3 mb-6">
+              <Avatar src={selectedMemberStats.avatar} size="lg" className="!w-12 !h-12" />
+              <div>
+                <h3 className="font-bold text-lg text-zinc-900 dark:text-white">{selectedMemberStats.name}</h3>
+                <p className="text-xs text-zinc-500">{selectedMemberStats.jobTitle}</p>
               </div>
-              <button
-                onClick={() => setSelectedMemberStats(null)}
-                className="text-zinc-400 hover:text-black dark:hover:text-white"
-              >
-                <X size={16} />
-              </button>
             </div>
 
             <h4 className="text-xs font-bold text-zinc-500 uppercase mb-3">Absence Statistics (Current Year)</h4>
@@ -529,27 +513,32 @@ const Schedule: React.FC<ScheduleProps> = ({
               );
             })()}
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
-      {selectedCell && (
-        <div
-          className="fixed inset-0 bg-black/40 backdrop-blur-sm z-50 flex items-center justify-center"
-          onClick={() => setSelectedCell(null)}
-        >
-          <div
-            className="bg-white dark:bg-zinc-900 p-6 rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 w-96 animate-in fade-in zoom-in duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-sm text-zinc-900 dark:text-white">Edit Schedule</h3>
-              <button
-                onClick={() => setSelectedCell(null)}
-                className="text-zinc-400 hover:text-black dark:hover:text-white"
-              >
-                <X size={16} />
-              </button>
-            </div>
+      <Modal
+        isOpen={!!selectedCell}
+        onClose={() => setSelectedCell(null)}
+        title="Edit Schedule"
+        actions={
+          <>
+            <button
+              onClick={handleDelete}
+              className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-red-200"
+            >
+              <Trash2 size={18} />
+            </button>
+            <button
+              onClick={handleSave}
+              className="flex-1 bg-black dark:bg-white text-white dark:text-black rounded-lg text-sm font-semibold py-2 hover:opacity-90 transition-opacity"
+            >
+              Save
+            </button>
+          </>
+        }
+      >
+        {selectedCell && (
+          <div>
             <p className="text-xs text-zinc-500 mb-4 font-medium">
               {selectedCell.member.name} •{' '}
               {rangeStartDate === rangeEndDate ? rangeStartDate : `${rangeStartDate} to ${rangeEndDate}`}
@@ -590,11 +579,11 @@ const Schedule: React.FC<ScheduleProps> = ({
                   </div>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-xs font-semibold mb-1 block text-zinc-600 dark:text-zinc-400">From</label>
+                      <label className="text-xs font-medium mb-1 block text-zinc-500">From</label>
                       <SimpleDatePicker value={rangeStartDate} onChange={setRangeStartDate} placeholder="Select Date" />
                     </div>
                     <div>
-                      <label className="text-xs font-semibold mb-1 block text-zinc-600 dark:text-zinc-400">To</label>
+                      <label className="text-xs font-medium mb-1 block text-zinc-500">To</label>
                       <SimpleDatePicker value={rangeEndDate} onChange={setRangeEndDate} placeholder="Select Date" />
                     </div>
                   </div>
@@ -602,48 +591,29 @@ const Schedule: React.FC<ScheduleProps> = ({
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-semibold mb-1 block text-zinc-600 dark:text-zinc-400">
-                      Start Time
-                    </label>
+                    <label className="text-xs font-medium mb-1 block text-zinc-500">Start Time</label>
                     <input
                       type="time"
                       value={startTime}
                       onChange={(e) => setStartTime(e.target.value)}
-                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-sm outline-none text-zinc-900 dark:text-zinc-100"
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400 text-zinc-900 dark:text-zinc-100"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-semibold mb-1 block text-zinc-600 dark:text-zinc-400">
-                      End Time
-                    </label>
+                    <label className="text-xs font-medium mb-1 block text-zinc-500">End Time</label>
                     <input
                       type="time"
                       value={endTime}
                       onChange={(e) => setEndTime(e.target.value)}
-                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-sm outline-none text-zinc-900 dark:text-zinc-100"
+                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400 text-zinc-900 dark:text-zinc-100"
                     />
                   </div>
                 </div>
               )}
-
-              <div className="flex gap-2 pt-2">
-                <button
-                  onClick={handleDelete}
-                  className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded border border-zinc-200 dark:border-zinc-700 hover:border-red-200"
-                >
-                  <Trash2 size={18} />
-                </button>
-                <button
-                  onClick={handleSave}
-                  className="flex-1 bg-black dark:bg-white text-white dark:text-black rounded text-sm font-medium hover:opacity-90"
-                >
-                  Save
-                </button>
-              </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
     </div>
   );
 };

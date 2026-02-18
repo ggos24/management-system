@@ -214,7 +214,7 @@ export const TaskModal: React.FC = () => {
           </button>
           <button
             onClick={handleSaveTask}
-            className="px-6 py-2 bg-black dark:bg-white text-white dark:text-black text-sm font-bold rounded-md hover:opacity-90 transition-opacity"
+            className="px-6 py-2 bg-black dark:bg-white text-white dark:text-black text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
           >
             {taskModalData.id ? 'Save Changes' : 'Create Task'}
           </button>
@@ -350,7 +350,7 @@ export const TaskModal: React.FC = () => {
                 </label>
                 {prop.type === 'text' && (
                   <input
-                    className="w-full p-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-sm"
+                    className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400"
                     value={taskModalData.customFieldValues?.[prop.id] || ''}
                     onChange={(e) =>
                       setTaskModalData({
@@ -441,13 +441,13 @@ export const TaskModal: React.FC = () => {
           {taskModalData.links?.map((link, idx) => (
             <div key={idx} className="flex gap-2 mb-2">
               <input
-                className="flex-1 p-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-xs outline-none"
+                className="flex-1 p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400"
                 placeholder="Title (e.g. Reference)"
                 value={link.title}
                 onChange={(e) => handleUpdateLink(idx, 'title', e.target.value)}
               />
               <input
-                className="flex-[2] p-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-xs outline-none font-mono text-blue-600 dark:text-blue-400"
+                className="flex-[2] p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 font-mono text-blue-600 dark:text-blue-400"
                 placeholder="URL (https://...)"
                 value={link.url}
                 onChange={(e) => handleUpdateLink(idx, 'url', e.target.value)}

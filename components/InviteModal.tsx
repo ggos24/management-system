@@ -1,6 +1,7 @@
 import React from 'react';
-import { X } from 'lucide-react';
 import { Modal } from './Modal';
+import { AlertBanner } from './AlertBanner';
+import { CustomSelect } from './CustomSelect';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
@@ -106,7 +107,7 @@ export const InviteModal: React.FC = () => {
           <button
             onClick={handleInviteMember}
             disabled={inviteLoading || !inviteForm.email || !inviteForm.name}
-            className="px-6 py-2 bg-black dark:bg-white text-white dark:text-black text-sm font-bold rounded-md hover:opacity-90 transition-opacity disabled:opacity-50"
+            className="px-6 py-2 bg-black dark:bg-white text-white dark:text-black text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity disabled:opacity-50"
           >
             {inviteLoading ? 'Sending...' : 'Send Invitation'}
           </button>
@@ -114,12 +115,7 @@ export const InviteModal: React.FC = () => {
       }
     >
       <div className="space-y-4">
-        {inviteError && (
-          <div className="p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-sm text-red-700 dark:text-red-300">
-            <X size={16} className="flex-shrink-0" />
-            {inviteError}
-          </div>
-        )}
+        {inviteError && <AlertBanner message={inviteError} />}
         <div className="space-y-1.5">
           <label className="text-xs font-semibold uppercase text-zinc-500 tracking-wider">Email *</label>
           <input
@@ -127,7 +123,7 @@ export const InviteModal: React.FC = () => {
             required
             value={inviteForm.email}
             onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-            className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
+            className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
             placeholder="colleague@company.com"
           />
         </div>
@@ -138,48 +134,39 @@ export const InviteModal: React.FC = () => {
             required
             value={inviteForm.name}
             onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
-            className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
+            className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
             placeholder="John Doe"
           />
         </div>
         <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase text-zinc-500 tracking-wider">Role</label>
-            <select
-              value={inviteForm.role}
-              onChange={(e) => setInviteForm({ ...inviteForm, role: e.target.value })}
-              className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
-            >
-              <option value="user">User</option>
-              <option value="admin">Admin</option>
-            </select>
-          </div>
+          <CustomSelect
+            label="Role"
+            options={[
+              { value: 'user', label: 'User' },
+              { value: 'admin', label: 'Admin' },
+            ]}
+            value={inviteForm.role || 'user'}
+            onChange={(val) => setInviteForm({ ...inviteForm, role: val })}
+            placeholder="Select role..."
+          />
           <div className="space-y-1.5">
             <label className="text-xs font-semibold uppercase text-zinc-500 tracking-wider">Job Title</label>
             <input
               type="text"
               value={inviteForm.jobTitle}
               onChange={(e) => setInviteForm({ ...inviteForm, jobTitle: e.target.value })}
-              className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
+              className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
               placeholder="e.g. Senior Editor"
             />
           </div>
         </div>
-        <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase text-zinc-500 tracking-wider">Team</label>
-          <select
-            value={inviteForm.teamId}
-            onChange={(e) => setInviteForm({ ...inviteForm, teamId: e.target.value })}
-            className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
-          >
-            <option value="">Select a team...</option>
-            {teams.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        <CustomSelect
+          label="Team"
+          options={[{ value: '', label: 'Select a team...' }, ...teams.map((t) => ({ value: t.id, label: t.name }))]}
+          value={inviteForm.teamId || ''}
+          onChange={(val) => setInviteForm({ ...inviteForm, teamId: val })}
+          placeholder="Select a team..."
+        />
       </div>
     </Modal>
   );

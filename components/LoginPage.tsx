@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Check, ArrowRight, AlertCircle, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, Check, ArrowRight, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
+import { AlertBanner } from './AlertBanner';
 import type { Session } from '@supabase/supabase-js';
 
 interface LoginPageProps {
@@ -106,9 +107,8 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
         </div>
 
         {error && (
-          <div className="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg flex items-center gap-2 text-sm text-red-700 dark:text-red-300">
-            <AlertCircle size={16} />
-            {error}
+          <div className="mb-4">
+            <AlertBanner message={error} />
           </div>
         )}
 
@@ -121,7 +121,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all text-sm text-zinc-900 dark:text-white"
+                className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 transition-all text-sm text-zinc-900 dark:text-white"
                 placeholder="name@company.com"
               />
             </div>
@@ -138,7 +138,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-3 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all text-sm text-zinc-900 dark:text-white"
+                  className="w-full pl-3 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 transition-all text-sm text-zinc-900 dark:text-white"
                   placeholder={currentMode === 'set-password' ? 'Choose a strong password' : '••••••••'}
                   minLength={6}
                 />
@@ -162,7 +162,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
                   required
                   value={confirmPassword}
                   onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full pl-3 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-950 border border-zinc-200 dark:border-zinc-800 rounded-lg outline-none focus:ring-2 focus:ring-black dark:focus:ring-white transition-all text-sm text-zinc-900 dark:text-white"
+                  className="w-full pl-3 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 transition-all text-sm text-zinc-900 dark:text-white"
                   placeholder="Re-enter your password"
                   minLength={6}
                 />
@@ -208,7 +208,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-black dark:bg-white text-white dark:text-black font-bold py-2.5 rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-70"
+            className="w-full bg-black dark:bg-white text-white dark:text-black text-sm font-semibold py-2.5 rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-70"
           >
             {isLoading
               ? currentMode === 'set-password'

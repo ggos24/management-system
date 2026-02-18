@@ -1,6 +1,8 @@
 import React from 'react';
 import { Send } from 'lucide-react';
 import { Modal } from './Modal';
+import { Avatar } from './Avatar';
+import { Toggle } from './Toggle';
 import { AbsenceStatsCard } from './AbsenceStatsCard';
 import { calculateAbsenceStats } from '../lib/utils';
 import { useUiStore } from '../stores/uiStore';
@@ -37,7 +39,7 @@ export const SettingsModal: React.FC = () => {
         return (
           <div className="space-y-6">
             <div className="flex items-center gap-4 border-b border-zinc-100 dark:border-zinc-800 pb-6">
-              <img src={currentUser.avatar} alt="" className="w-20 h-20 rounded-full bg-zinc-100 object-cover" />
+              <Avatar src={currentUser.avatar} size="lg" className="!w-20 !h-20" />
               <div>
                 <div className="flex items-center gap-3">
                   <h3 className="text-lg font-bold">{currentUser.name}</h3>
@@ -80,28 +82,25 @@ export const SettingsModal: React.FC = () => {
                   {members.map((m) => (
                     <tr key={m.id}>
                       <td className="p-3 flex items-center gap-2">
-                        <img src={m.avatar} className="w-6 h-6 rounded-full grayscale" />
+                        <Avatar src={m.avatar} size="sm" />
                         <span className="font-medium">{m.name}</span>
                       </td>
                       <td className="p-3 text-center">
-                        <input
-                          type="checkbox"
+                        <Toggle
                           checked={permissions[m.id]?.canCreate ?? true}
                           onChange={() => togglePermission(m.id, 'canCreate')}
                           disabled={currentUser.role !== 'admin'}
                         />
                       </td>
                       <td className="p-3 text-center">
-                        <input
-                          type="checkbox"
+                        <Toggle
                           checked={permissions[m.id]?.canEdit ?? m.role === 'admin'}
                           onChange={() => togglePermission(m.id, 'canEdit')}
                           disabled={currentUser.role !== 'admin'}
                         />
                       </td>
                       <td className="p-3 text-center">
-                        <input
-                          type="checkbox"
+                        <Toggle
                           checked={permissions[m.id]?.canDelete ?? m.role === 'admin'}
                           onChange={() => togglePermission(m.id, 'canDelete')}
                           disabled={currentUser.role !== 'admin'}
@@ -120,15 +119,15 @@ export const SettingsModal: React.FC = () => {
             <div className="space-y-4">
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Email Notifications</span>
-                <input type="checkbox" className="toggle" defaultChecked />
+                <Toggle checked={true} onChange={() => {}} />
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Web Notifications</span>
-                <input type="checkbox" className="toggle" defaultChecked />
+                <Toggle checked={true} onChange={() => {}} />
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium">Telegram Notifications</span>
-                <input type="checkbox" className="toggle" defaultChecked />
+                <Toggle checked={true} onChange={() => {}} />
               </div>
             </div>
           </div>
@@ -142,7 +141,7 @@ export const SettingsModal: React.FC = () => {
                 className="flex items-center justify-between p-2 border border-zinc-100 dark:border-zinc-800 rounded hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
               >
                 <div className="flex items-center gap-3">
-                  <img src={m.avatar} className="w-8 h-8 rounded-full object-cover grayscale" />
+                  <Avatar src={m.avatar} size="md" />
                   <div>
                     <p className="text-sm font-medium">{m.name}</p>
                     <p className="text-xs text-zinc-500">
@@ -211,7 +210,7 @@ export const SettingsModal: React.FC = () => {
                     </div>
                     <p className="text-sm text-zinc-800 dark:text-zinc-200">{log.details}</p>
                     <div className="flex items-center gap-1.5 mt-2">
-                      <img src={user?.avatar} className="w-4 h-4 rounded-full grayscale" />
+                      <Avatar src={user?.avatar} size="xs" />
                       <span className="text-xs text-zinc-500">{user?.name || 'Unknown User'}</span>
                     </div>
                   </div>

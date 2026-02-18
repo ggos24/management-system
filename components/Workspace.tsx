@@ -37,6 +37,59 @@ import {
 import { generateContentIdeas } from '../services/geminiService';
 import { MultiSelect } from './MultiSelect';
 import { CustomSelect } from './CustomSelect';
+import { Avatar } from './Avatar';
+
+// Shared column context menu used in both board and table views
+const ColumnMenu: React.FC<{
+  isOpen: boolean;
+  onClose: () => void;
+  onRename: () => void;
+  onDuplicateEmpty: () => void;
+  onDuplicateWithData: () => void;
+  onArchive: () => void;
+  onDelete: () => void;
+  isArchived: boolean;
+}> = ({ isOpen, onClose, onRename, onDuplicateEmpty, onDuplicateWithData, onArchive, onDelete, isArchived }) => {
+  if (!isOpen) return null;
+  return (
+    <div
+      className="absolute right-0 top-6 w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 flex flex-col text-xs"
+      onClick={(e) => e.stopPropagation()}
+    >
+      <button
+        onClick={onRename}
+        className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+      >
+        <Edit2 size={12} /> Rename
+      </button>
+      <button
+        onClick={onDuplicateEmpty}
+        className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+      >
+        <Copy size={12} /> Duplicate (Empty)
+      </button>
+      <button
+        onClick={onDuplicateWithData}
+        className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
+      >
+        <Copy size={12} /> Duplicate (With Data)
+      </button>
+      <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
+      <button
+        onClick={onArchive}
+        className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-yellow-600 dark:text-yellow-400"
+      >
+        <Archive size={12} /> {isArchived ? 'Unarchive' : 'Archive'}
+      </button>
+      <button
+        onClick={onDelete}
+        className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-red-600"
+      >
+        <Trash2 size={12} /> Delete
+      </button>
+    </div>
+  );
+};
 
 interface WorkspaceProps {
   tasks: Task[];
@@ -445,7 +498,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
             </button>
             <button
               onClick={() => onAddTask()}
-              className="flex items-center gap-1.5 bg-black dark:bg-white text-white dark:text-black px-3 py-1.5 rounded-md text-xs font-medium hover:opacity-90 transition-opacity"
+              className="flex items-center gap-1.5 bg-black dark:bg-white text-white dark:text-black px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
             >
               <Plus size={14} />
               New
@@ -605,53 +658,25 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               </button>
                             </div>
 
-                            {activeColumnMenu === col.id && (
-                              <div
-                                className="absolute right-0 top-6 w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 flex flex-col text-xs"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <button
-                                  onClick={() => handleStartRename(col.id, col.label)}
-                                  className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
-                                >
-                                  <Edit2 size={12} /> Rename
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    onDuplicateStatus(teamFilter, col.id, false);
-                                    setActiveColumnMenu(null);
-                                  }}
-                                  className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
-                                >
-                                  <Copy size={12} /> Duplicate (Empty)
-                                </button>
-                                <button
-                                  onClick={() => {
-                                    onDuplicateStatus(teamFilter, col.id, true);
-                                    setActiveColumnMenu(null);
-                                  }}
-                                  className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
-                                >
-                                  <Copy size={12} /> Duplicate (With Data)
-                                </button>
-                                <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
-                                <button
-                                  onClick={() => {
-                                    onArchiveStatus(teamFilter, col.id);
-                                    setActiveColumnMenu(null);
-                                  }}
-                                  className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-yellow-600 dark:text-yellow-400"
-                                >
-                                  <Archive size={12} /> {isArchived ? 'Unarchive' : 'Archive'}
-                                </button>
-                                <button
-                                  onClick={() => handleDeleteColumn(col.id)}
-                                  className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-red-600"
-                                >
-                                  <Trash2 size={12} /> Delete
-                                </button>
-                              </div>
-                            )}
+                            <ColumnMenu
+                              isOpen={activeColumnMenu === col.id}
+                              onClose={() => setActiveColumnMenu(null)}
+                              onRename={() => handleStartRename(col.id, col.label)}
+                              onDuplicateEmpty={() => {
+                                onDuplicateStatus(teamFilter, col.id, false);
+                                setActiveColumnMenu(null);
+                              }}
+                              onDuplicateWithData={() => {
+                                onDuplicateStatus(teamFilter, col.id, true);
+                                setActiveColumnMenu(null);
+                              }}
+                              onArchive={() => {
+                                onArchiveStatus(teamFilter, col.id);
+                                setActiveColumnMenu(null);
+                              }}
+                              onDelete={() => handleDeleteColumn(col.id)}
+                              isArchived={!!isArchived}
+                            />
                           </div>
                         )}
                       </>
@@ -717,12 +742,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       assignees
                                         .slice(0, 3)
                                         .map((a) => (
-                                          <img
+                                          <Avatar
                                             key={a.id}
                                             src={a.avatar}
                                             alt={a.name}
-                                            className="w-5 h-5 rounded-full border border-white dark:border-zinc-900 grayscale"
-                                            title={a.name}
+                                            size="sm"
+                                            className="!w-5 !h-5 !border-white dark:!border-zinc-900"
                                           />
                                         ))
                                     ) : (
@@ -826,53 +851,25 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           <MoreHorizontal size={14} />
                         </button>
 
-                        {activeColumnMenu === col.id && (
-                          <div
-                            className="absolute left-0 top-6 w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 flex flex-col text-xs"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <button
-                              onClick={() => handleStartRename(col.id, col.label)}
-                              className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
-                            >
-                              <Edit2 size={12} /> Rename
-                            </button>
-                            <button
-                              onClick={() => {
-                                onDuplicateStatus(teamFilter, col.id, false);
-                                setActiveColumnMenu(null);
-                              }}
-                              className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
-                            >
-                              <Copy size={12} /> Duplicate (Empty)
-                            </button>
-                            <button
-                              onClick={() => {
-                                onDuplicateStatus(teamFilter, col.id, true);
-                                setActiveColumnMenu(null);
-                              }}
-                              className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2"
-                            >
-                              <Copy size={12} /> Duplicate (With Data)
-                            </button>
-                            <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
-                            <button
-                              onClick={() => {
-                                onArchiveStatus(teamFilter, col.id);
-                                setActiveColumnMenu(null);
-                              }}
-                              className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-yellow-600 dark:text-yellow-400"
-                            >
-                              <Archive size={12} /> {isArchived ? 'Unarchive' : 'Archive'}
-                            </button>
-                            <button
-                              onClick={() => handleDeleteColumn(col.id)}
-                              className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-red-600"
-                            >
-                              <Trash2 size={12} /> Delete
-                            </button>
-                          </div>
-                        )}
+                        <ColumnMenu
+                          isOpen={activeColumnMenu === col.id}
+                          onClose={() => setActiveColumnMenu(null)}
+                          onRename={() => handleStartRename(col.id, col.label)}
+                          onDuplicateEmpty={() => {
+                            onDuplicateStatus(teamFilter, col.id, false);
+                            setActiveColumnMenu(null);
+                          }}
+                          onDuplicateWithData={() => {
+                            onDuplicateStatus(teamFilter, col.id, true);
+                            setActiveColumnMenu(null);
+                          }}
+                          onArchive={() => {
+                            onArchiveStatus(teamFilter, col.id);
+                            setActiveColumnMenu(null);
+                          }}
+                          onDelete={() => handleDeleteColumn(col.id)}
+                          isArchived={!!isArchived}
+                        />
                       </div>
                     )}
                   </div>
@@ -958,7 +955,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 <div className="absolute right-0 top-8 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left">
                                   <h4 className="text-xs font-bold text-zinc-900 dark:text-white mb-2">New Property</h4>
                                   <input
-                                    className="w-full p-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded text-xs outline-none mb-2"
+                                    className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 mb-2"
                                     placeholder="Property Name"
                                     value={newPropName}
                                     onChange={(e) => setNewPropName(e.target.value)}
@@ -992,7 +989,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   </div>
                                   <button
                                     onClick={handleCreateProperty}
-                                    className="w-full bg-black dark:bg-white text-white dark:text-black py-1.5 rounded text-xs font-bold"
+                                    className="w-full bg-black dark:bg-white text-white dark:text-black py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
                                   >
                                     Create
                                   </button>
@@ -1027,11 +1024,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   <td className="p-3">
                                     <div className="flex -space-x-1.5">
                                       {authors.map((a) => (
-                                        <img
+                                        <Avatar
                                           key={a.id}
                                           src={a.avatar}
-                                          className="w-5 h-5 rounded-full grayscale border border-white dark:border-zinc-900 flex-shrink-0"
-                                          title={a.name}
+                                          alt={a.name}
+                                          size="sm"
+                                          className="!w-5 !h-5 !border-white dark:!border-zinc-900 flex-shrink-0"
                                         />
                                       ))}
                                       {authors.length === 0 && '-'}

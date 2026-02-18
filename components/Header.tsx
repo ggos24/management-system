@@ -1,5 +1,6 @@
 import React from 'react';
 import { Sun, Moon, Bell, Search, X, Menu } from 'lucide-react';
+import { Avatar } from './Avatar';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
@@ -101,11 +102,7 @@ export const Header: React.FC = () => {
           onClick={() => setIsSettingsModalOpen(true)}
           className="flex items-center gap-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 pr-3 pl-1 py-1 rounded-full transition-colors"
         >
-          <img
-            src={currentUser?.avatar}
-            alt="User"
-            className="w-8 h-8 rounded-full border border-zinc-200 dark:border-zinc-700"
-          />
+          <Avatar src={currentUser?.avatar} alt={currentUser?.name} size="md" className="grayscale-0" />
           <div className="text-left hidden md:block">
             <p className="text-xs font-bold leading-none">{currentUser?.name}</p>
             <p className="text-[10px] text-zinc-500 leading-none mt-0.5 uppercase tracking-wide">{currentUser?.role}</p>

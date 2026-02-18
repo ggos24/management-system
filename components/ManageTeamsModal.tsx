@@ -97,11 +97,11 @@ export const ManageTeamsModal: React.FC = () => {
               placeholder="Workspace Name (e.g. Design Team)"
               value={newTeamName}
               onChange={(e) => setNewTeamName(e.target.value)}
-              className="flex-1 p-2 border border-zinc-300 dark:border-zinc-700 rounded bg-white dark:bg-zinc-800 text-sm outline-none focus:border-black dark:focus:border-white"
+              className="flex-1 p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400"
             />
             <button
               onClick={handleAddTeam}
-              className="bg-black dark:bg-white text-white dark:text-black px-4 rounded text-sm font-bold hover:opacity-90"
+              className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
             >
               Create
             </button>
@@ -199,7 +199,7 @@ export const ManageTeamsModal: React.FC = () => {
               <input
                 value={deleteConfirmationInput}
                 onChange={(e) => setDeleteConfirmationInput(e.target.value)}
-                className="flex-1 p-2 border border-red-300 dark:border-red-800 rounded bg-white dark:bg-zinc-900 text-sm outline-none"
+                className="flex-1 p-2 bg-zinc-50 dark:bg-zinc-900 border border-red-300 dark:border-red-800 rounded-lg text-sm outline-none focus:ring-1 focus:ring-red-400"
               />
               <button
                 onClick={confirmDeleteTeam}
