@@ -196,7 +196,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
     'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-white p-6 rounded-lg shadow-sm flex flex-col items-center justify-center text-center h-32 border border-zinc-200 dark:border-zinc-800';
 
   return (
-    <div className="p-8 space-y-8 animate-fade-in bg-white dark:bg-black min-h-full font-sans">
+    <div className="p-8 space-y-8 animate-fade-in bg-white dark:bg-black h-full overflow-y-auto custom-scrollbar font-sans">
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">Dashboard</h1>
