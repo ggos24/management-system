@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React from 'react';
 import { toast } from 'sonner';
 import {
   Trash2,
@@ -16,7 +16,7 @@ import {
   Link as LinkIcon,
 } from 'lucide-react';
 import { Modal } from './Modal';
-import { FormattingToolbar } from './FormattingToolbar';
+import { RichTextEditor } from './RichTextEditor';
 import { MultiSelect } from './MultiSelect';
 import { CustomSelect } from './CustomSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
@@ -26,9 +26,6 @@ import { useAuthStore } from '../stores/authStore';
 import { Task } from '../types';
 
 export const TaskModal: React.FC = () => {
-  const descriptionRef = useRef<HTMLTextAreaElement>(null);
-  const notesRef = useRef<HTMLTextAreaElement>(null);
-
   const { isTaskModalOpen, taskModalData, isShareOpen, setIsTaskModalOpen, setTaskModalData, setIsShareOpen } =
     useUiStore();
 
@@ -101,67 +98,6 @@ export const TaskModal: React.FC = () => {
     });
   };
 
-  const applyMarkdown = (field: 'description' | 'notes', action: string) => {
-    const inputRef = field === 'description' ? descriptionRef : notesRef;
-    if (!inputRef.current) return;
-
-    const textarea = inputRef.current;
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const selectedText = text.substring(start, end);
-
-    let replacement = '';
-    let cursorOffset = 0;
-
-    switch (action) {
-      case 'h2':
-        replacement = `## ${selectedText || 'Heading 2'}`;
-        cursorOffset = selectedText ? 0 : 11;
-        break;
-      case 'h3':
-        replacement = `### ${selectedText || 'Heading 3'}`;
-        cursorOffset = selectedText ? 0 : 12;
-        break;
-      case 'bold':
-        replacement = `**${selectedText || 'bold text'}**`;
-        cursorOffset = selectedText ? 0 : 11;
-        break;
-      case 'italic':
-        replacement = `*${selectedText || 'italic text'}*`;
-        cursorOffset = selectedText ? 0 : 13;
-        break;
-      case 'list':
-        replacement = `\n- ${selectedText || 'List item'}`;
-        cursorOffset = selectedText ? 0 : 12;
-        break;
-      case 'todo':
-        replacement = `\n- [ ] ${selectedText || 'To-do item'}`;
-        cursorOffset = selectedText ? 0 : 16;
-        break;
-      case 'link':
-        replacement = `[${selectedText || 'Link text'}](url)`;
-        cursorOffset = selectedText ? 5 : 14;
-        break;
-      default:
-        replacement = selectedText;
-    }
-
-    const newText = text.substring(0, start) + replacement + text.substring(end);
-
-    setTaskModalData((prev: Partial<Task>) => {
-      if (field === 'description') return { ...prev, description: newText };
-      return { ...prev, contentInfo: { ...prev.contentInfo!, notes: newText } };
-    });
-
-    setTimeout(() => {
-      if (inputRef.current) {
-        inputRef.current.focus();
-        inputRef.current.setSelectionRange(start + replacement.length - cursorOffset, start + replacement.length);
-      }
-    }, 0);
-  };
-
   const getAuthorLabel = () => (taskModalData.teamId === 'management' ? 'Executive' : 'Author');
   const getEditorLabel = () => (taskModalData.teamId === 'management' ? 'Manager' : 'Editor');
 
@@ -231,18 +167,12 @@ export const TaskModal: React.FC = () => {
           autoFocus
         />
 
-        <div className="space-y-2">
-          <div className="border border-zinc-200 dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800/50 overflow-hidden focus-within:ring-1 focus-within:ring-zinc-400">
-            <FormattingToolbar onAction={(action) => applyMarkdown('description', action)} />
-            <textarea
-              ref={descriptionRef}
-              className="w-full p-3 bg-transparent border-none outline-none text-sm min-h-[120px] resize-y"
-              placeholder="Description..."
-              value={taskModalData.description || ''}
-              onChange={(e) => setTaskModalData({ ...taskModalData, description: e.target.value })}
-            />
-          </div>
-        </div>
+        <RichTextEditor
+          value={taskModalData.description || ''}
+          onChange={(html) => setTaskModalData({ ...taskModalData, description: html })}
+          placeholder="Description..."
+          minHeight="120px"
+        />
 
         <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
@@ -414,24 +344,18 @@ export const TaskModal: React.FC = () => {
         </div>
 
         <div className="space-y-2">
-          <div className="border border-zinc-200 dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800/50 overflow-hidden focus-within:ring-1 focus-within:ring-zinc-400">
-            <div className="bg-zinc-50 dark:bg-zinc-800/50 px-3 py-2 border-b border-zinc-200 dark:border-zinc-700">
-              <span className="text-xs font-bold text-zinc-500 uppercase">Notes</span>
-            </div>
-            <FormattingToolbar onAction={(action) => applyMarkdown('notes', action)} />
-            <textarea
-              ref={notesRef}
-              className="w-full p-3 bg-transparent border-none outline-none text-sm min-h-[100px] resize-y"
-              placeholder="Add notes..."
-              value={taskModalData.contentInfo?.notes || ''}
-              onChange={(e) =>
-                setTaskModalData({
-                  ...taskModalData,
-                  contentInfo: { ...taskModalData.contentInfo!, notes: e.target.value },
-                })
-              }
-            />
-          </div>
+          <label className="text-xs font-bold text-zinc-500 uppercase">Notes</label>
+          <RichTextEditor
+            value={taskModalData.contentInfo?.notes || ''}
+            onChange={(html) =>
+              setTaskModalData({
+                ...taskModalData,
+                contentInfo: { ...taskModalData.contentInfo!, notes: html },
+              })
+            }
+            placeholder="Add notes..."
+            minHeight="100px"
+          />
         </div>
 
         <div className="space-y-2">
