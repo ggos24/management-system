@@ -49,7 +49,10 @@ Deno.serve(async (req) => {
     }
 
     const { recipientIds, message } = await req.json();
+    console.log('send-telegram called:', { recipientIds, message });
+
     if (!recipientIds?.length || !message) {
+      console.log('send-telegram: missing recipientIds or message');
       return new Response(JSON.stringify({ error: 'recipientIds and message are required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -57,13 +60,16 @@ Deno.serve(async (req) => {
     }
 
     // Look up linked chat_ids for the recipients
-    const { data: links } = await adminClient
+    const { data: links, error: linksError } = await adminClient
       .from('telegram_links')
       .select('chat_id')
       .in('profile_id', recipientIds)
       .not('chat_id', 'is', null);
 
+    console.log('send-telegram links lookup:', { links, linksError });
+
     if (!links || links.length === 0) {
+      console.log('send-telegram: no linked chats found for recipients');
       return new Response(JSON.stringify({ sent: 0 }), {
         status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -74,6 +80,7 @@ Deno.serve(async (req) => {
     let sent = 0;
     await Promise.allSettled(
       links.map(async (link) => {
+        console.log('send-telegram: sending to chat_id', link.chat_id);
         const res = await fetch(`${TELEGRAM_API}${botToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -83,10 +90,13 @@ Deno.serve(async (req) => {
             parse_mode: 'HTML',
           }),
         });
+        const resBody = await res.text();
+        console.log('send-telegram: Telegram API response:', res.status, resBody);
         if (res.ok) sent++;
       }),
     );
 
+    console.log('send-telegram: done, sent', sent);
     return new Response(JSON.stringify({ sent }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
