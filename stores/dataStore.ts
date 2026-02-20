@@ -17,7 +17,7 @@ function getCurrentUserName(): string {
 
 const PRIORITY_EMOJI: Record<string, string> = { high: '🔴', medium: '🟡', low: '🟢' };
 
-function buildTelegramMessage(message: string, entityData?: Record<string, any>): string {
+function sendTelegram(recipientIds: string[], message: string, entityData?: Record<string, any>) {
   let text = message;
   const priority = entityData?.priority;
   if (priority) {
@@ -25,16 +25,8 @@ function buildTelegramMessage(message: string, entityData?: Record<string, any>)
   }
   const teamId = entityData?.teamId;
   const taskId = entityData?.taskId;
-  if (teamId) {
-    const url = `${window.location.origin}/#${teamId}${taskId ? `?task=${taskId}` : ''}`;
-    text += `\n\n<a href="${url}">Open in app</a>`;
-  }
-  return text;
-}
-
-function sendTelegram(recipientIds: string[], message: string, entityData?: Record<string, any>) {
-  const text = buildTelegramMessage(message, entityData);
-  supabase.functions.invoke('send-telegram', { body: { recipientIds, message: text } }).catch(console.error);
+  const link = teamId ? `${window.location.origin}/#${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
+  supabase.functions.invoke('send-telegram', { body: { recipientIds, message: text, link } }).catch(console.error);
 }
 
 function notifyMany(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {

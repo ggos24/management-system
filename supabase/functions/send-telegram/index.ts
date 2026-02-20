@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       });
     }
 
-    const { recipientIds, message } = await req.json();
+    const { recipientIds, message, link } = await req.json();
     if (!recipientIds?.length || !message) {
       return new Response(JSON.stringify({ error: 'recipientIds and message are required' }), {
         status: 400,
@@ -70,18 +70,24 @@ Deno.serve(async (req) => {
       });
     }
 
+    // Build payload with optional inline keyboard button
+    const payload: Record<string, unknown> = {
+      text: message,
+    };
+    if (link) {
+      payload.reply_markup = {
+        inline_keyboard: [[{ text: '📋 Open in app', url: link }]],
+      };
+    }
+
     // Send to each linked chat (fire-and-forget, best-effort)
     let sent = 0;
     await Promise.allSettled(
-      links.map(async (link) => {
+      links.map(async (tgLink) => {
         const res = await fetch(`${TELEGRAM_API}${botToken}/sendMessage`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            chat_id: link.chat_id,
-            text: message,
-            parse_mode: 'HTML',
-          }),
+          body: JSON.stringify({ ...payload, chat_id: tgLink.chat_id }),
         });
         if (res.ok) sent++;
       }),
