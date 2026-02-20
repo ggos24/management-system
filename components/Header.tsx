@@ -111,18 +111,18 @@ export const Header: React.FC = () => {
       <div className="flex items-center gap-2">
         <button
           onClick={toggleTheme}
-          className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors"
+          className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1"
         >
           {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
         </button>
         <div className="relative">
           <button
             onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-            className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors relative"
+            className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors relative focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1"
           >
             <Bell size={18} />
             {unreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-semibold rounded-full px-1">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
@@ -130,7 +130,7 @@ export const Header: React.FC = () => {
           {isNotificationsOpen && (
             <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100">
               <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
-                <h3 className="text-sm font-bold">
+                <h3 className="text-sm font-semibold">
                   Notifications
                   {unreadCount > 0 && <span className="ml-1 text-zinc-400 font-normal">({unreadCount})</span>}
                 </h3>
@@ -183,8 +183,10 @@ export const Header: React.FC = () => {
         >
           <Avatar src={currentUser?.avatar} alt={currentUser?.name} size="md" className="grayscale-0" />
           <div className="text-left hidden md:block">
-            <p className="text-xs font-bold leading-none">{currentUser?.name}</p>
-            <p className="text-[10px] text-zinc-500 leading-none mt-0.5 uppercase tracking-wide">{currentUser?.role}</p>
+            <p className="text-xs font-semibold leading-none">{currentUser?.name}</p>
+            <p className="text-[10px] text-zinc-500 leading-none mt-0.5 uppercase tracking-wider">
+              {currentUser?.role}
+            </p>
           </div>
         </button>
       </div>

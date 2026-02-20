@@ -93,7 +93,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               {/* Fallback div if logo missing */}
               <div className="w-6 h-6 bg-zinc-900 dark:bg-zinc-100 rounded-sm flex-shrink-0 hidden"></div>
 
-              <span className="font-bold text-sm tracking-tight text-zinc-900 dark:text-white uppercase leading-none whitespace-nowrap">
+              <span className="font-semibold text-sm tracking-tight text-zinc-900 dark:text-white uppercase leading-none whitespace-nowrap">
                 MANAGEMENT SYSTEM
               </span>
             </div>
@@ -112,7 +112,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="space-y-0.5">
             <button
               onClick={() => onChangeView('my-workspace')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
                 currentView === 'my-workspace'
                   ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm border border-zinc-200 dark:border-zinc-700'
                   : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
@@ -128,7 +128,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
             <button
               onClick={() => onChangeView('dashboard')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
                 currentView === 'dashboard'
                   ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm border border-zinc-200 dark:border-zinc-700'
                   : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
@@ -144,7 +144,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
             <button
               onClick={() => onChangeView('schedule')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all ${
+              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
                 currentView === 'schedule'
                   ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm border border-zinc-200 dark:border-zinc-700'
                   : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
@@ -164,7 +164,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div>
             <div className={`px-3 flex items-center justify-between mb-2 ${isCollapsed ? 'justify-center' : ''}`}>
               {!isCollapsed && (
-                <h3 className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider">Workspaces</h3>
+                <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Workspaces</h3>
               )}
               {isCollapsed && <div className="h-px w-4 bg-zinc-200 dark:bg-zinc-800"></div>}
 
@@ -192,7 +192,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDrop(e, team.id)}
                       onClick={() => onChangeView(team.id)}
-                      className={`group w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all cursor-pointer ${
+                      className={`group w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
                         isActive
                           ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm border border-zinc-200 dark:border-zinc-700'
                           : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
@@ -225,7 +225,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="mt-auto p-2 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
           <button
             onClick={onOpenSettings}
-            className={`w-full flex items-center gap-3 text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white text-sm font-medium transition-colors px-3 py-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 ${isCollapsed ? 'justify-center px-0' : ''}`}
+            className={`w-full flex items-center gap-3 text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white text-sm font-medium transition-colors px-3 py-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${isCollapsed ? 'justify-center px-0' : ''}`}
             title="Settings"
           >
             <Settings size={18} />
@@ -237,7 +237,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
           <button
             onClick={onLogout}
-            className={`w-full flex items-center gap-3 text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400 text-sm font-medium transition-colors px-3 py-2 rounded-md hover:bg-red-50 dark:hover:bg-red-900/10 ${isCollapsed ? 'justify-center px-0' : ''}`}
+            className={`w-full flex items-center gap-3 text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400 text-sm font-medium transition-colors px-3 py-2 rounded-md hover:bg-red-50 dark:hover:bg-red-900/10 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${isCollapsed ? 'justify-center px-0' : ''}`}
             title="Logout"
           >
             <LogOut size={18} />

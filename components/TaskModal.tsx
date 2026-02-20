@@ -177,7 +177,7 @@ export const TaskModal: React.FC = () => {
           placeholder="Task Title"
           value={taskModalData.title || ''}
           onChange={(e) => setTaskModalData({ ...taskModalData, title: e.target.value })}
-          className="w-full text-3xl font-bold bg-transparent border-none outline-none placeholder-zinc-300 dark:placeholder-zinc-700"
+          className="w-full text-2xl font-bold bg-transparent border-none outline-none placeholder-zinc-300 dark:placeholder-zinc-700"
           autoFocus
         />
 
@@ -344,7 +344,7 @@ export const TaskModal: React.FC = () => {
                       <Edit2 size={12} /> Rename
                     </button>
                     <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
-                    <p className="px-3 py-1 text-[10px] font-bold text-zinc-400 uppercase">Change Type</p>
+                    <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase">Change Type</p>
                     {[
                       { type: 'text' as const, icon: Type, label: 'Text' },
                       { type: 'select' as const, icon: ListIcon, label: 'Select' },
@@ -443,7 +443,7 @@ export const TaskModal: React.FC = () => {
               {isAddPropertyOpen ? (
                 <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 space-y-2">
                   <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-bold text-zinc-900 dark:text-white">New Property</h4>
+                    <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">New Property</h4>
                     <button onClick={() => setIsAddPropertyOpen(false)} className="text-zinc-400 hover:text-zinc-600">
                       <X size={14} />
                     </button>
@@ -501,7 +501,7 @@ export const TaskModal: React.FC = () => {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-bold text-zinc-500 uppercase">Notes</label>
+          <label className="text-xs font-semibold text-zinc-500 uppercase">Notes</label>
           <RichTextEditor
             value={taskModalData.contentInfo?.notes || ''}
             onChange={(html) =>
@@ -516,7 +516,7 @@ export const TaskModal: React.FC = () => {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-bold text-zinc-500 uppercase flex items-center gap-2">
+          <label className="text-xs font-semibold text-zinc-500 uppercase flex items-center gap-2">
             <LinkIcon size={12} /> Links Attachments
           </label>
           {taskModalData.links?.map((link, idx) => (

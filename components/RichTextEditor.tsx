@@ -19,7 +19,7 @@ const ToolbarButton: React.FC<{
       e.preventDefault();
       onClick();
     }}
-    className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 ${active ? 'bg-zinc-200 dark:bg-zinc-700' : ''}`}
+    className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-md text-zinc-600 dark:text-zinc-400 ${active ? 'bg-zinc-200 dark:bg-zinc-700' : ''}`}
     title={title}
     type="button"
   >
@@ -101,8 +101,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const isEmpty = !value || value === '<br>' || value === '<div><br></div>';
 
   return (
-    <div className="border border-zinc-200 dark:border-zinc-700 rounded-md bg-white dark:bg-zinc-800/50 overflow-hidden focus-within:ring-1 focus-within:ring-zinc-400">
-      <div className="flex items-center gap-1 border-b border-zinc-200 dark:border-zinc-700 p-2 bg-zinc-50 dark:bg-zinc-800/50 rounded-t-md">
+    <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800/50 overflow-hidden focus-within:ring-1 focus-within:ring-zinc-400">
+      <div className="flex items-center gap-1 border-b border-zinc-200 dark:border-zinc-700 p-2 bg-zinc-50 dark:bg-zinc-800/50 rounded-t-lg">
         <ToolbarButton onClick={() => exec('formatBlock', 'h2')} title="Heading 2">
           <span className="text-xs font-bold">H2</span>
         </ToolbarButton>

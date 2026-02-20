@@ -17,6 +17,13 @@
 
 @variant dark (&:where(.dark, .dark *));
 
+@utility focus-ring {
+  &:focus-visible {
+    outline: 2px solid var(--color-brand-400);
+    outline-offset: 2px;
+  }
+}
+
 body {
   font-family: 'Inter', sans-serif;
   letter-spacing: -0.025em;

@@ -64,7 +64,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         className={
           compact
             ? 'w-full min-h-[24px] px-1.5 py-0.5 rounded cursor-pointer flex items-center transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 relative text-sm'
-            : 'w-full min-h-[32px] pl-2 pr-8 py-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm cursor-pointer flex items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 relative'
+            : 'w-full min-h-[32px] pl-2 pr-8 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm cursor-pointer flex items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 relative'
         }
       >
         <span className={`truncate ${value ? 'text-zinc-900 dark:text-zinc-100' : 'text-zinc-400'}`}>
@@ -99,7 +99,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
               <input
                 value={newItem}
                 onChange={(e) => setNewItem(e.target.value)}
-                className="flex-1 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1 text-xs outline-none focus:border-zinc-400 dark:focus:border-zinc-500"
+                className="flex-1 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-zinc-400"
                 placeholder="Add new..."
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && newItem) {

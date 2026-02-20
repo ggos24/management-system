@@ -117,24 +117,24 @@ export const InviteModal: React.FC = () => {
       <div className="space-y-4">
         {inviteError && <AlertBanner message={inviteError} />}
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase text-zinc-500 tracking-wider">Email *</label>
+          <label className="text-xs font-medium uppercase text-zinc-500 tracking-wider">Email *</label>
           <input
             type="email"
             required
             value={inviteForm.email}
             onChange={(e) => setInviteForm({ ...inviteForm, email: e.target.value })}
-            className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
+            className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
             placeholder="colleague@company.com"
           />
         </div>
         <div className="space-y-1.5">
-          <label className="text-xs font-semibold uppercase text-zinc-500 tracking-wider">Full Name *</label>
+          <label className="text-xs font-medium uppercase text-zinc-500 tracking-wider">Full Name *</label>
           <input
             type="text"
             required
             value={inviteForm.name}
             onChange={(e) => setInviteForm({ ...inviteForm, name: e.target.value })}
-            className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
+            className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
             placeholder="John Doe"
           />
         </div>
@@ -150,12 +150,12 @@ export const InviteModal: React.FC = () => {
             placeholder="Select role..."
           />
           <div className="space-y-1.5">
-            <label className="text-xs font-semibold uppercase text-zinc-500 tracking-wider">Job Title</label>
+            <label className="text-xs font-medium uppercase text-zinc-500 tracking-wider">Job Title</label>
             <input
               type="text"
               value={inviteForm.jobTitle}
               onChange={(e) => setInviteForm({ ...inviteForm, jobTitle: e.target.value })}
-              className="w-full px-3 py-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
+              className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-sm"
               placeholder="e.g. Senior Editor"
             />
           </div>

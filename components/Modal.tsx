@@ -34,18 +34,21 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
         className="bg-white dark:bg-zinc-900 w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in duration-200"
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center p-4">
-          <div>{title && <h3 className="text-lg font-bold text-zinc-900 dark:text-white">{title}</h3>}</div>
+        <div className="flex justify-between items-center px-6 py-4">
+          <div>{title && <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">{title}</h3>}</div>
           <div className="flex-1 flex justify-end gap-2 items-center">
             {headerActions}
-            <button onClick={onClose}>
+            <button
+              onClick={onClose}
+              className="focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 rounded"
+            >
               <X size={20} className="text-zinc-400 hover:text-black dark:hover:text-white" />
             </button>
           </div>
         </div>
-        <div className="px-8 pb-8">{children}</div>
+        <div className="px-6 pb-6">{children}</div>
         {actions && (
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-3 rounded-b-lg">
+          <div className="px-6 py-4 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-3 rounded-b-lg">
             {actions}
           </div>
         )}

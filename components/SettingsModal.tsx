@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Loader2, CheckCircle2, Unlink } from 'lucide-react';
+import { Send, Loader2, CheckCircle2, Unlink, Pencil, Check, X } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
@@ -21,10 +21,12 @@ export const SettingsModal: React.FC = () => {
     useUiStore();
   const currentUser = useAuthStore((s) => s.currentUser);
   const setCurrentUser = useAuthStore((s) => s.setCurrentUser);
-  const { members, absences, logs, removeMember, updateMemberAvatar } = useDataStore();
+  const { members, absences, logs, removeMember, updateMemberAvatar, updateMemberName } = useDataStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  const [editingName, setEditingName] = useState(false);
+  const [nameDraft, setNameDraft] = useState('');
 
   // Telegram linking state
   const [telegramLink, setTelegramLink] = useState<TelegramLink | null>(null);
@@ -125,7 +127,52 @@ export const SettingsModal: React.FC = () => {
               <Avatar src={currentUser.avatar} size="lg" className="!w-20 !h-20" />
               <div>
                 <div className="flex items-center gap-3">
-                  <h3 className="text-lg font-bold">{currentUser.name}</h3>
+                  {editingName ? (
+                    <form
+                      className="flex items-center gap-1.5"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const trimmed = nameDraft.trim();
+                        if (trimmed && trimmed !== currentUser.name) {
+                          updateMemberName(currentUser.id, trimmed);
+                          setCurrentUser({ ...currentUser, name: trimmed });
+                          toast.success('Name updated');
+                        }
+                        setEditingName(false);
+                      }}
+                    >
+                      <input
+                        autoFocus
+                        value={nameDraft}
+                        onChange={(e) => setNameDraft(e.target.value)}
+                        className="text-lg font-semibold bg-zinc-100 dark:bg-zinc-800 rounded px-2 py-0.5 outline-none focus:ring-2 focus:ring-blue-500 w-48"
+                      />
+                      <button type="submit" className="text-emerald-500 hover:text-emerald-600">
+                        <Check size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingName(false)}
+                        className="text-zinc-400 hover:text-zinc-600"
+                      >
+                        <X size={16} />
+                      </button>
+                    </form>
+                  ) : (
+                    <h3
+                      className="text-lg font-semibold group flex items-center gap-1.5 cursor-pointer"
+                      onClick={() => {
+                        setNameDraft(currentUser.name);
+                        setEditingName(true);
+                      }}
+                    >
+                      {currentUser.name}
+                      <Pencil
+                        size={14}
+                        className="text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                      />
+                    </h3>
+                  )}
                   <span className="bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider text-zinc-500">
                     {currentUser.role}
                   </span>
@@ -149,7 +196,7 @@ export const SettingsModal: React.FC = () => {
               </div>
             </div>
             <div className="space-y-2">
-              <h4 className="text-xs font-bold text-zinc-500 uppercase">My Absences</h4>
+              <h4 className="text-xs font-semibold text-zinc-500 uppercase">My Absences</h4>
               <AbsenceStatsCard stats={myAbsenceStats} />
             </div>
           </div>
@@ -261,7 +308,7 @@ export const SettingsModal: React.FC = () => {
       case 'Logs History':
         return (
           <div className="space-y-4 h-[400px] overflow-hidden flex flex-col">
-            <h4 className="text-xs font-bold text-zinc-500 uppercase flex-shrink-0">Activity Logs</h4>
+            <h4 className="text-xs font-semibold text-zinc-500 uppercase flex-shrink-0">Activity Logs</h4>
             <div className="flex-1 overflow-y-auto custom-scrollbar border border-zinc-200 dark:border-zinc-700 rounded-lg">
               {logs.map((log) => {
                 const user = members.find((m) => m.id === log.userId);
@@ -271,7 +318,7 @@ export const SettingsModal: React.FC = () => {
                     className="p-3 border-b border-zinc-100 dark:border-zinc-800 last:border-0 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
                   >
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-bold bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">
+                      <span className="text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">
                         {log.action}
                       </span>
                       <span className="text-[10px] text-zinc-400">{new Date(log.timestamp).toLocaleString()}</span>

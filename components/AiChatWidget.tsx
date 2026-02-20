@@ -23,7 +23,7 @@ export const AiChatWidget: React.FC = () => {
           <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center bg-zinc-50 dark:bg-zinc-900">
             <div className="flex items-center gap-2">
               <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="font-bold text-sm">AI Assist</span>
+              <span className="font-semibold text-sm">AI Assist</span>
             </div>
             <button onClick={() => setIsAiChatOpen(false)}>
               <X size={16} className="text-zinc-400 hover:text-black dark:hover:text-white" />
@@ -39,7 +39,7 @@ export const AiChatWidget: React.FC = () => {
             {aiChatMessages.map((msg, i) => (
               <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                 <div
-                  className={`max-w-[85%] p-3 rounded-2xl text-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 rounded-bl-none'}`}
+                  className={`max-w-[85%] p-3 rounded-xl text-sm ${msg.role === 'user' ? 'bg-blue-600 text-white rounded-br-none' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 rounded-bl-none'}`}
                 >
                   {msg.text}
                 </div>
@@ -47,7 +47,7 @@ export const AiChatWidget: React.FC = () => {
             ))}
             {aiChatLoading && (
               <div className="flex justify-start">
-                <div className="bg-zinc-100 dark:bg-zinc-800 p-3 rounded-2xl rounded-bl-none text-xs text-zinc-500 italic flex items-center gap-1">
+                <div className="bg-zinc-100 dark:bg-zinc-800 p-3 rounded-xl rounded-bl-none text-xs text-zinc-500 italic flex items-center gap-1">
                   <span>Thinking</span>
                   <span className="animate-bounce">.</span>
                   <span className="animate-bounce delay-75">.</span>
@@ -64,7 +64,7 @@ export const AiChatWidget: React.FC = () => {
                 onChange={(e) => setAiChatInput(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAiChatSubmit()}
                 placeholder="Type a message..."
-                className="w-full pl-4 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-full text-sm outline-none focus:border-zinc-400 dark:focus:border-zinc-600"
+                className="w-full pl-4 pr-10 py-2.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-full text-sm outline-none focus:ring-1 focus:ring-zinc-400"
               />
               <button
                 onClick={handleAiChatSubmit}

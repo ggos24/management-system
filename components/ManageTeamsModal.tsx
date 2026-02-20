@@ -67,7 +67,7 @@ export const ManageTeamsModal: React.FC = () => {
     <Modal isOpen={isManageTeamsModalOpen} onClose={() => setIsManageTeamsModalOpen(false)} title="Manage Workspaces">
       <div className="space-y-6 min-h-[400px] flex flex-col">
         <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-4">
-          <h4 className="text-xs font-bold text-zinc-500 uppercase">Create New Workspace</h4>
+          <h4 className="text-xs font-semibold text-zinc-500 uppercase">Create New Workspace</h4>
           <div className="flex gap-2">
             <div className="relative">
               <button
@@ -98,7 +98,7 @@ export const ManageTeamsModal: React.FC = () => {
               placeholder="Workspace Name (e.g. Design Team)"
               value={newTeamName}
               onChange={(e) => setNewTeamName(e.target.value)}
-              className="flex-1 p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400"
+              className="flex-1 px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400"
             />
             <button
               onClick={handleAddTeam}
@@ -112,7 +112,7 @@ export const ManageTeamsModal: React.FC = () => {
         <div className="h-px bg-zinc-100 dark:bg-zinc-800 w-full"></div>
 
         <div className="space-y-2 flex-1 overflow-hidden flex flex-col">
-          <h4 className="text-xs font-bold text-zinc-500 uppercase">Existing Workspaces</h4>
+          <h4 className="text-xs font-semibold text-zinc-500 uppercase">Existing Workspaces</h4>
           <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar">
             {teams.map((team) => (
               <div
@@ -128,7 +128,7 @@ export const ManageTeamsModal: React.FC = () => {
                       <input
                         autoFocus
                         defaultValue={team.name}
-                        className="border-b border-black dark:border-white bg-transparent outline-none text-sm font-bold w-48"
+                        className="border-b border-black dark:border-white bg-transparent outline-none text-sm font-semibold w-48"
                         onBlur={(e) => {
                           saveTeamEdit(team.id, e.target.value, team.icon);
                           setEditingTeamId(null);
@@ -141,7 +141,7 @@ export const ManageTeamsModal: React.FC = () => {
                         }}
                       />
                     ) : (
-                      <p className="text-sm font-bold">
+                      <p className="text-sm font-semibold">
                         {team.name}{' '}
                         {team.adminOnly && (
                           <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400 uppercase ml-2 bg-purple-100 dark:bg-purple-900/30 px-1.5 py-0.5 rounded">
@@ -201,7 +201,7 @@ export const ManageTeamsModal: React.FC = () => {
 
         {teamToDelete && (
           <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-200 dark:border-red-900 space-y-2 animate-in fade-in slide-in-from-top-2">
-            <p className="text-sm text-red-700 dark:text-red-300 font-bold">
+            <p className="text-sm text-red-700 dark:text-red-300 font-semibold">
               Are you sure you want to delete this workspace?
             </p>
             <p className="text-xs text-red-600 dark:text-red-400">
@@ -217,7 +217,7 @@ export const ManageTeamsModal: React.FC = () => {
               <button
                 onClick={confirmDeleteTeam}
                 disabled={deleteConfirmationInput !== '/iwanttodelete'}
-                className="bg-red-600 text-white px-4 py-2 rounded text-sm font-bold disabled:opacity-50 hover:bg-red-700"
+                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-red-700"
               >
                 Confirm
               </button>

@@ -598,19 +598,19 @@ const Workspace: React.FC<WorkspaceProps> = ({
             <div className="flex items-center gap-1">
               <button
                 onClick={() => setViewMode('table')}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all text-xs font-medium ${viewMode === 'table' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900'}`}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all text-xs font-medium focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${viewMode === 'table' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900'}`}
               >
                 <List size={14} /> Table
               </button>
               <button
                 onClick={() => setViewMode('board')}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all text-xs font-medium ${viewMode === 'board' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900'}`}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all text-xs font-medium focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${viewMode === 'board' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900'}`}
               >
                 <LayoutGrid size={14} /> Board
               </button>
               <button
                 onClick={() => setViewMode('calendar')}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded transition-all text-xs font-medium ${viewMode === 'calendar' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900'}`}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-md transition-all text-xs font-medium focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${viewMode === 'calendar' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900'}`}
               >
                 <CalendarIcon size={14} /> Calendar
               </button>
@@ -682,7 +682,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 </span>
                 <button
                   onClick={() => handleStatusSort('name')}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-all ${statusSort === 'name' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900 dark:hover:text-white'}`}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${statusSort === 'name' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900 dark:hover:text-white'}`}
                 >
                   Name
                   {statusSort === 'name' &&
@@ -690,7 +690,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 </button>
                 <button
                   onClick={() => handleStatusSort('count')}
-                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-all ${statusSort === 'count' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900 dark:hover:text-white'}`}
+                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${statusSort === 'count' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900 dark:hover:text-white'}`}
                 >
                   Count
                   {statusSort === 'count' &&
@@ -728,11 +728,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         className="flex flex-col items-center gap-4 h-full py-4 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
                         onClick={() => toggleSection(col.id)}
                       >
-                        <span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-bold px-1.5 rounded">
+                        <span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-semibold px-1.5 rounded">
                           {filteredTasks.filter((t) => t.status === col.id).length}
                         </span>
                         <div
-                          className="writing-mode-vertical text-xs font-bold text-zinc-500 tracking-wider whitespace-nowrap rotate-180"
+                          className="writing-mode-vertical text-xs font-semibold text-zinc-500 tracking-wider whitespace-nowrap rotate-180"
                           style={{ writingMode: 'vertical-rl' }}
                         >
                           {col.label}
@@ -745,7 +745,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           {editingColumnId === col.id ? (
                             <input
                               autoFocus
-                              className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-xs font-bold w-full outline-none"
+                              className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-xs font-semibold w-full outline-none"
                               value={tempColumnName}
                               onChange={(e) => setTempColumnName(e.target.value)}
                               onBlur={handleSaveRename}
@@ -862,7 +862,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               <div className="flex justify-between items-start mb-2">
                                 <div className="flex gap-1 flex-wrap">
                                   {task.contentInfo?.type && (
-                                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
+                                    <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
                                       {task.contentInfo.type}
                                     </span>
                                   )}
@@ -879,7 +879,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 {task.placements.map((placement) => (
                                   <span
                                     key={placement}
-                                    className="text-[10px] bg-zinc-50 dark:bg-zinc-800 text-zinc-500 border border-zinc-100 dark:border-zinc-700 px-1 rounded-sm"
+                                    className="text-[10px] bg-zinc-50 dark:bg-zinc-800 text-zinc-500 border border-zinc-100 dark:border-zinc-700 px-1 rounded"
                                   >
                                     #{placement}
                                   </span>
@@ -915,7 +915,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     </div>
                                   )}
                                   {assignees.length > 3 && (
-                                    <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[8px] border border-white dark:border-zinc-900">
+                                    <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[10px] border border-white dark:border-zinc-900">
                                       +{assignees.length - 3}
                                     </div>
                                   )}
@@ -984,7 +984,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     {editingColumnId === col.id ? (
                       <input
                         autoFocus
-                        className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-sm font-bold w-64 outline-none"
+                        className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-sm font-semibold w-64 outline-none"
                         value={tempColumnName}
                         onChange={(e) => setTempColumnName(e.target.value)}
                         onBlur={handleSaveRename}
@@ -993,7 +993,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     ) : (
                       <h3
                         onClick={() => handleStartRename(col.id, col.label)}
-                        className={`text-sm font-bold text-zinc-900 dark:text-white ${teamFilter !== 'my-work' ? 'cursor-pointer hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
+                        className={`text-sm font-semibold text-zinc-900 dark:text-white ${teamFilter !== 'my-work' ? 'cursor-pointer hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
                       >
                         {col.label} {isArchived && '(Archived)'}
                       </h3>
@@ -1083,7 +1083,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   {editingColumnId === prop.id ? (
                                     <input
                                       autoFocus
-                                      className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1 py-0.5 text-xs font-bold w-full outline-none"
+                                      className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1 py-0.5 text-xs font-semibold w-full outline-none"
                                       value={tempColumnName}
                                       onChange={(e) => setTempColumnName(e.target.value)}
                                       onBlur={handleSaveRename}
@@ -1366,7 +1366,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 <Edit2 size={12} /> Rename
                               </button>
                               <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
-                              <p className="px-3 py-1 text-[10px] font-bold text-zinc-400 uppercase">Change Type</p>
+                              <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase">Change Type</p>
                               {[
                                 { type: 'text' as const, icon: Type, label: 'Text' },
                                 { type: 'select' as const, icon: ListIcon, label: 'Select' },
@@ -1401,7 +1401,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <h4 className="text-xs font-bold text-zinc-900 dark:text-white mb-2">New Property</h4>
+                          <h4 className="text-xs font-semibold text-zinc-900 dark:text-white mb-2">New Property</h4>
                           <input
                             className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 mb-2"
                             placeholder="Property Name"
@@ -1448,7 +1448,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <h4 className="text-xs font-bold text-zinc-900 dark:text-white mb-2">Reorder Columns</h4>
+                          <h4 className="text-xs font-semibold text-zinc-900 dark:text-white mb-2">Reorder Columns</h4>
                           <div className="space-y-1">
                             {customProperties.map((prop, idx) => (
                               <div
@@ -1516,7 +1516,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 >
                   <ChevronLeft size={16} />
                 </button>
-                <h3 className="text-sm font-bold text-zinc-900 dark:text-white w-32 text-center">
+                <h3 className="text-sm font-semibold text-zinc-900 dark:text-white w-32 text-center">
                   {monthNames[calendarDate.getMonth()]} {calendarDate.getFullYear()}
                 </h3>
                 <button
@@ -1533,7 +1533,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
                 <div
                   key={d}
-                  className="p-2 text-center text-[10px] font-bold text-zinc-400 uppercase tracking-wider border-r border-zinc-200 dark:border-zinc-800 last:border-r-0"
+                  className="p-2 text-center text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-r border-zinc-200 dark:border-zinc-800 last:border-r-0"
                 >
                   {d}
                 </div>
@@ -1588,7 +1588,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             className="group cursor-grab active:cursor-grabbing"
                           >
                             <div
-                              className={`text-[9px] px-1.5 py-1 rounded border border-zinc-200 dark:border-zinc-700 border-l-[3px] shadow-sm bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 ${getStatusAccent(t.status)}`}
+                              className={`text-[10px] px-1.5 py-1 rounded border border-zinc-200 dark:border-zinc-700 border-l-[3px] shadow-sm bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 ${getStatusAccent(t.status)}`}
                             >
                               <span className="font-medium truncate leading-tight">{t.title}</span>
                             </div>

@@ -147,7 +147,7 @@ const MiniCalendar: React.FC<{
 
   return (
     <div>
-      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-1.5">{label}</p>
+      <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">{label}</p>
       <div className="flex justify-between items-center mb-1.5">
         <button
           onClick={() => {
@@ -159,7 +159,7 @@ const MiniCalendar: React.FC<{
         >
           <ChevronLeft size={12} />
         </button>
-        <span className="text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
+        <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300">
           {currentMonth.toLocaleString('en-US', { month: 'short', year: 'numeric' })}
         </span>
         <button
@@ -175,7 +175,7 @@ const MiniCalendar: React.FC<{
       </div>
       <div className="grid grid-cols-7 gap-0.5 text-center mb-0.5">
         {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
-          <span key={i} className="text-[9px] text-zinc-400 font-medium">
+          <span key={i} className="text-[10px] text-zinc-400 font-medium">
             {d}
           </span>
         ))}
@@ -188,7 +188,7 @@ const MiniCalendar: React.FC<{
           <button
             key={i}
             onClick={() => handleClick(i + 1)}
-            className={`text-[11px] w-6 h-6 flex items-center justify-center rounded transition-colors ${
+            className={`text-xs w-7 h-7 flex items-center justify-center rounded transition-colors ${
               isSelected(i + 1)
                 ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 font-bold'
                 : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
@@ -328,7 +328,7 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ startDate, end
                 {startDate && endDate && (
                   <button
                     onClick={handleCustomApply}
-                    className="w-full text-center text-xs font-semibold bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-md py-2 hover:opacity-90 transition-opacity"
+                    className="w-full text-center text-xs font-semibold bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-lg py-2 hover:opacity-90 transition-opacity"
                   >
                     Apply
                   </button>

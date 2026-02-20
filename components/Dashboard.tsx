@@ -286,7 +286,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
   const teamLabel = teamFilter === ALL_TEAMS ? 'All Teams' : teams.find((t) => t.id === teamFilter)?.name;
 
   return (
-    <div className="p-8 space-y-8 animate-fade-in bg-white dark:bg-black h-full overflow-y-auto custom-scrollbar font-sans">
+    <div className="p-6 space-y-6 animate-fade-in bg-white dark:bg-black h-full overflow-y-auto custom-scrollbar font-sans">
       {/* CSS custom properties for dark-mode-aware tooltip */}
       <style>{`
         .dark { --color-tooltip-bg: #18181b; --color-tooltip-border: #3f3f46; --color-tooltip-text: #fafafa; }
@@ -327,19 +327,19 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
         <div className={`${panelClass} p-6 flex flex-col items-center justify-center text-center h-36`}>
           <h2 className="text-4xl font-bold text-zinc-900 dark:text-white mb-1">{metrics.active}</h2>
-          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Active Tasks</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Active Tasks</p>
           <TrendBadge value={metrics.trends.active} />
         </div>
 
         <div className={`${panelClass} p-6 flex flex-col items-center justify-center text-center h-36`}>
           <h2 className="text-4xl font-bold text-zinc-900 dark:text-white mb-1">{metrics.completed}</h2>
-          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Completed</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Completed</p>
           <TrendBadge value={metrics.trends.completed} />
         </div>
 
         <div className={`${panelClass} p-6 flex flex-col items-center justify-center text-center h-36`}>
           <h2 className="text-4xl font-bold text-red-600 dark:text-red-400 mb-1">{metrics.overdue}</h2>
-          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">Overdue</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Overdue</p>
           <div className="flex items-center gap-2 mt-1">
             <TrendBadge value={metrics.trends.overdue} invertColor />
             {metrics.avgOverdueDays > 0 && (
@@ -352,7 +352,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
           <h2 className="text-4xl font-bold text-zinc-900 dark:text-white mb-1">
             {metrics.onTimeRate !== null ? `${metrics.onTimeRate}%` : '\u2014'}
           </h2>
-          <p className="text-xs font-bold uppercase tracking-widest text-zinc-500">On-Time Rate</p>
+          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">On-Time Rate</p>
           <TrendBadge value={metrics.trends.onTimeRate} suffix="pp" />
         </div>
       </div>
@@ -361,7 +361,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Donut chart */}
         <div className={`${panelClass} p-6 h-[400px] flex flex-col`}>
-          <h3 className="text-lg font-bold text-zinc-900 dark:text-white mb-6">Task Statuses</h3>
+          <h3 className="text-lg font-semibold text-zinc-900 dark:text-white mb-6">Task Statuses</h3>
           <div className="flex flex-1 overflow-hidden">
             <div className="w-1/2 pr-4 overflow-y-auto custom-scrollbar space-y-1">
               {pieData.map((entry) => (
@@ -434,7 +434,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
         {/* Workload */}
         <div className={`${panelClass} p-6 h-[400px] flex flex-col`}>
           <div className="flex justify-between items-baseline mb-6">
-            <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Team Workload</h3>
+            <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">Team Workload</h3>
             <span className="text-xs text-zinc-400">Primary owner</span>
           </div>
           <div className="flex-1 overflow-y-auto custom-scrollbar space-y-3 pr-2">
@@ -503,7 +503,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
       {/* Progress chart */}
       <div className={`${panelClass} p-6 h-[400px] flex flex-col`}>
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-bold text-zinc-900 dark:text-white">Progress Chart</h3>
+          <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">Progress Chart</h3>
           <span className="bg-zinc-100 dark:bg-zinc-800 px-3 py-1 rounded-md text-xs font-semibold text-zinc-500 dark:text-zinc-400">
             Last 7 Days
           </span>
