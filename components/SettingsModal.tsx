@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Loader2, CheckCircle2, Unlink, Copy, ExternalLink } from 'lucide-react';
+import { Send, Loader2, CheckCircle2, Unlink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
@@ -186,46 +186,17 @@ export const SettingsModal: React.FC = () => {
                 </div>
               ) : telegramCode ? (
                 <div className="space-y-3 pt-1">
-                  <div className="flex items-center gap-2">
-                    <code className="flex-1 text-center text-lg font-mono font-bold tracking-widest bg-zinc-100 dark:bg-zinc-800 py-2 rounded">
-                      {telegramCode}
-                    </code>
-                    <button
-                      onClick={() => {
-                        navigator.clipboard.writeText(telegramCode);
-                        toast.success('Code copied');
-                      }}
-                      className="p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                      title="Copy code"
-                    >
-                      <Copy size={16} />
-                    </button>
-                  </div>
-                  <ol className="text-xs text-zinc-500 space-y-1 list-decimal list-inside">
-                    <li>
-                      Open{' '}
-                      <a
-                        href="https://t.me/managment_system_bot"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-[#0088cc] hover:underline inline-flex items-center gap-0.5"
-                      >
-                        @managment_system_bot <ExternalLink size={10} />
-                      </a>{' '}
-                      in Telegram
-                    </li>
-                    <li>
-                      Send: <code className="bg-zinc-100 dark:bg-zinc-800 px-1 rounded">/start {telegramCode}</code>
-                    </li>
-                    <li>You&apos;ll see a confirmation message</li>
-                  </ol>
-                  <button
-                    onClick={generateTelegramCode}
-                    disabled={telegramLoading}
-                    className="text-xs text-zinc-400 hover:text-zinc-600 disabled:opacity-50"
+                  <a
+                    href={`https://t.me/managment_system_bot?start=${telegramCode}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="w-full py-2 bg-[#0088cc] hover:bg-[#0077b5] text-white text-sm font-medium rounded transition-colors flex items-center justify-center gap-2"
                   >
-                    Regenerate code
-                  </button>
+                    <Send size={14} /> Connect in Telegram
+                  </a>
+                  <p className="text-xs text-zinc-500 text-center">
+                    Click the button above, then press <b>Start</b> in Telegram to link.
+                  </p>
                 </div>
               ) : (
                 <div className="pt-1">
