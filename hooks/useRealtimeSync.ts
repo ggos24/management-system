@@ -1,10 +1,12 @@
 import { useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useDataStore } from '../stores/dataStore';
+import { useUiStore } from '../stores/uiStore';
 import * as db from '../lib/database';
 
 export function useRealtimeSync() {
   const { setTasks, setMembers, setAbsences, setShifts } = useDataStore();
+  const loadNotifications = useUiStore((s) => s.loadNotifications);
 
   useEffect(() => {
     const channel = supabase
@@ -22,10 +24,13 @@ export function useRealtimeSync() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shifts' }, () => {
         db.fetchShifts().then(setShifts).catch(console.error);
       })
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
+        loadNotifications();
+      })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [setTasks, setMembers, setAbsences, setShifts]);
+  }, [setTasks, setMembers, setAbsences, setShifts, loadNotifications]);
 }

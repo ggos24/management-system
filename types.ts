@@ -100,3 +100,21 @@ export interface LogEntry {
   userId: string;
   timestamp: string;
 }
+
+export type NotificationType =
+  | 'task_assigned'
+  | 'task_status_changed'
+  | 'absence_submitted'
+  | 'absence_decided'
+  | 'member_invited';
+
+export interface Notification {
+  id: string;
+  recipientId: string;
+  actorId: string | null;
+  type: NotificationType;
+  message: string;
+  entityData: Record<string, any>;
+  read: boolean;
+  createdAt: string;
+}

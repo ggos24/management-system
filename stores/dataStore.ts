@@ -1,7 +1,34 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
-import { Task, Team, Member, Absence, Shift, LogEntry, CustomProperty } from '../types';
+import { Task, Team, Member, Absence, Shift, LogEntry, CustomProperty, NotificationType } from '../types';
 import * as db from '../lib/database';
+import { useAuthStore } from './authStore';
+
+// === Notification helpers (fire-and-forget, non-critical) ===
+
+function getCurrentUserId(): string | null {
+  return useAuthStore.getState().currentUser?.id ?? null;
+}
+
+function getCurrentUserName(): string {
+  return useAuthStore.getState().currentUser?.name ?? 'Someone';
+}
+
+function notifyMany(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
+  const actorId = getCurrentUserId();
+  // Filter out self-notifications
+  const recipients = recipientIds.filter((id) => id !== actorId);
+  if (recipients.length === 0) return;
+  db.insertNotifications(recipients.map((recipientId) => ({ recipientId, actorId, type, message, entityData }))).catch(
+    console.error,
+  );
+}
+
+function notify(recipientId: string, type: NotificationType, message: string, entityData?: Record<string, any>) {
+  const actorId = getCurrentUserId();
+  if (recipientId === actorId) return; // Don't notify yourself
+  db.insertNotification({ recipientId, actorId, type, message, entityData }).catch(console.error);
+}
 
 interface DataState {
   tasks: Task[];
@@ -118,12 +145,25 @@ export const useDataStore = create<DataState>((set, get) => ({
   // Task actions
   updateTaskStatus: (taskId, newStatus) => {
     const prev = get().tasks;
+    const task = prev.find((t) => t.id === taskId);
     set({ tasks: prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)) });
     db.updateTaskStatus(taskId, newStatus).catch(() => set({ tasks: prev }));
+
+    // Notify all task assignees about status change
+    if (task && task.assigneeIds.length > 0) {
+      const actorName = getCurrentUserName();
+      notifyMany(
+        task.assigneeIds,
+        'task_status_changed',
+        `${actorName} changed "${task.title}" status to ${newStatus}`,
+        { taskId, teamId: task.teamId },
+      );
+    }
   },
 
   updateTask: (updatedTask) => {
     const prev = get().tasks;
+    const oldTask = prev.find((t) => t.id === updatedTask.id);
     set({ tasks: prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)) });
     db.upsertTask(updatedTask)
       .then(() => {
@@ -131,6 +171,18 @@ export const useDataStore = create<DataState>((set, get) => ({
         db.syncTaskPlacements(updatedTask.id, updatedTask.placements);
       })
       .catch(() => set({ tasks: prev }));
+
+    // Notify newly added assignees
+    if (oldTask) {
+      const newAssignees = updatedTask.assigneeIds.filter((id) => !oldTask.assigneeIds.includes(id));
+      if (newAssignees.length > 0) {
+        const actorName = getCurrentUserName();
+        notifyMany(newAssignees, 'task_assigned', `${actorName} assigned you to "${updatedTask.title}"`, {
+          taskId: updatedTask.id,
+          teamId: updatedTask.teamId,
+        });
+      }
+    }
   },
 
   deleteTask: (taskId) => {
@@ -212,12 +264,34 @@ export const useDataStore = create<DataState>((set, get) => ({
   // Absence/Shift actions
   updateAbsence: (absence) => {
     const prev = get().absences;
+    const existing = prev.find((a) => a.id === absence.id);
+    const isNew = !existing;
     set({
-      absences: prev.find((a) => a.id === absence.id)
-        ? prev.map((a) => (a.id === absence.id ? absence : a))
-        : [...prev, absence],
+      absences: existing ? prev.map((a) => (a.id === absence.id ? absence : a)) : [...prev, absence],
     });
     db.upsertAbsence(absence).catch(() => set({ absences: prev }));
+
+    const { members } = get();
+    const memberName = members.find((m) => m.id === absence.memberId)?.name || 'Someone';
+    const actorName = getCurrentUserName();
+
+    if (isNew) {
+      // New absence submitted → notify all admins
+      const adminIds = members.filter((m) => m.role === 'admin').map((m) => m.id);
+      notifyMany(adminIds, 'absence_submitted', `${memberName} submitted a ${absence.type.replace('_', ' ')} request`, {
+        absenceId: absence.id,
+        memberId: absence.memberId,
+      });
+    } else if (existing && existing.approved !== absence.approved) {
+      // Approval status changed → notify the absence owner
+      const decision = absence.approved ? 'approved' : 'rejected';
+      notify(
+        absence.memberId,
+        'absence_decided',
+        `${actorName} ${decision} your ${absence.type.replace('_', ' ')} request`,
+        { absenceId: absence.id },
+      );
+    }
   },
 
   deleteAbsence: (id) => {

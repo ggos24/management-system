@@ -1,11 +1,6 @@
 import { create } from 'zustand';
-import { Task } from '../types';
-
-interface Notification {
-  id: number;
-  text: string;
-  time: string;
-}
+import { Task, Notification } from '../types';
+import * as db from '../lib/database';
 
 interface UiState {
   currentView: string;
@@ -15,6 +10,7 @@ interface UiState {
   searchQuery: string;
   isNotificationsOpen: boolean;
   notifications: Notification[];
+  unreadCount: number;
 
   // Modal states
   isTaskModalOpen: boolean;
@@ -52,7 +48,9 @@ interface UiState {
   setMobileSidebarOpen: (open: boolean) => void;
   setSearchQuery: (query: string) => void;
   setIsNotificationsOpen: (open: boolean) => void;
-  markNotificationsRead: () => void;
+  loadNotifications: () => Promise<void>;
+  markNotificationRead: (id: string) => void;
+  markAllNotificationsRead: () => void;
 
   setIsTaskModalOpen: (open: boolean) => void;
   setTaskModalData: (data: Partial<Task> | ((prev: Partial<Task>) => Partial<Task>)) => void;
@@ -104,11 +102,8 @@ export const useUiStore = create<UiState>((set, get) => ({
   mobileSidebarOpen: false,
   searchQuery: '',
   isNotificationsOpen: false,
-  notifications: [
-    { id: 1, text: 'New comment on "AI Trends"', time: '2 hours ago' },
-    { id: 2, text: 'Task "Q3 Strategy" is overdue', time: '5 hours ago' },
-    { id: 3, text: 'Welcome to the team!', time: '1 day ago' },
-  ],
+  notifications: [],
+  unreadCount: 0,
 
   isTaskModalOpen: false,
   taskModalData: {},
@@ -152,7 +147,31 @@ export const useUiStore = create<UiState>((set, get) => ({
   setMobileSidebarOpen: (open) => set({ mobileSidebarOpen: open }),
   setSearchQuery: (query) => set({ searchQuery: query }),
   setIsNotificationsOpen: (open) => set({ isNotificationsOpen: open }),
-  markNotificationsRead: () => set({ notifications: [] }),
+
+  loadNotifications: async () => {
+    try {
+      const notifications = await db.fetchNotifications();
+      const unreadCount = notifications.filter((n) => !n.read).length;
+      set({ notifications, unreadCount });
+    } catch (e) {
+      console.error('Failed to load notifications:', e);
+    }
+  },
+
+  markNotificationRead: (id) => {
+    const { notifications } = get();
+    const updated = notifications.map((n) => (n.id === id ? { ...n, read: true } : n));
+    const unreadCount = updated.filter((n) => !n.read).length;
+    set({ notifications: updated, unreadCount });
+    db.markNotificationRead(id).catch(console.error);
+  },
+
+  markAllNotificationsRead: () => {
+    const { notifications } = get();
+    const updated = notifications.map((n) => ({ ...n, read: true }));
+    set({ notifications: updated, unreadCount: 0 });
+    db.markAllNotificationsRead().catch(console.error);
+  },
 
   setIsTaskModalOpen: (open) => set({ isTaskModalOpen: open }),
   setTaskModalData: (data) =>

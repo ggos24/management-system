@@ -2,10 +2,12 @@ import { useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
+import { useUiStore } from '../stores/uiStore';
 
 export function useAuth() {
   const { session, setSession, setCurrentUser, setIsLoading, setProfileError, currentUser } = useAuthStore();
   const loadAllData = useDataStore((s) => s.loadAllData);
+  const loadNotifications = useUiStore((s) => s.loadNotifications);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -42,6 +44,7 @@ export function useAuth() {
         return;
       }
       setCurrentUser(profile);
+      loadNotifications();
     } catch {
       setProfileError('Failed to load application data. Please try refreshing.');
     } finally {

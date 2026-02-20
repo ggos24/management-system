@@ -1,9 +1,39 @@
 import React from 'react';
-import { Sun, Moon, Bell, Search, X, Menu } from 'lucide-react';
+import { Sun, Moon, Bell, Search, X, Menu, ClipboardList, Calendar, UserPlus } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
+import type { Notification, NotificationType } from '../types';
+
+function getNotificationIcon(type: NotificationType) {
+  switch (type) {
+    case 'task_assigned':
+    case 'task_status_changed':
+      return <ClipboardList size={14} className="shrink-0" />;
+    case 'absence_submitted':
+    case 'absence_decided':
+      return <Calendar size={14} className="shrink-0" />;
+    case 'member_invited':
+      return <UserPlus size={14} className="shrink-0" />;
+    default:
+      return <Bell size={14} className="shrink-0" />;
+  }
+}
+
+function formatRelativeTime(dateStr: string): string {
+  const now = Date.now();
+  const then = new Date(dateStr).getTime();
+  const diffMs = now - then;
+  const diffMin = Math.floor(diffMs / 60000);
+  if (diffMin < 1) return 'just now';
+  if (diffMin < 60) return `${diffMin}m ago`;
+  const diffHr = Math.floor(diffMin / 60);
+  if (diffHr < 24) return `${diffHr}h ago`;
+  const diffDay = Math.floor(diffHr / 24);
+  if (diffDay < 7) return `${diffDay}d ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
 
 export const Header: React.FC = () => {
   const {
@@ -14,16 +44,46 @@ export const Header: React.FC = () => {
     isNotificationsOpen,
     setIsNotificationsOpen,
     notifications,
-    markNotificationsRead,
+    unreadCount,
+    markNotificationRead,
+    markAllNotificationsRead,
     setMobileSidebarOpen,
     setIsSettingsModalOpen,
+    setCurrentView,
     currentView,
+    setIsTaskModalOpen,
+    setTaskModalData,
   } = useUiStore();
 
   const currentUser = useAuthStore((s) => s.currentUser);
   const teams = useDataStore((s) => s.teams);
+  const tasks = useDataStore((s) => s.tasks);
 
   const isTeamView = teams.some((t) => t.id === currentView) || currentView === 'my-workspace';
+
+  const handleNotificationClick = (n: Notification) => {
+    markNotificationRead(n.id);
+
+    // Navigate based on notification type
+    if (n.type === 'task_assigned' || n.type === 'task_status_changed') {
+      const taskId = n.entityData?.taskId;
+      const teamId = n.entityData?.teamId;
+      if (teamId) setCurrentView(teamId);
+      if (taskId) {
+        const task = tasks.find((t) => t.id === taskId);
+        if (task) {
+          setTaskModalData(task);
+          setIsTaskModalOpen(true);
+        }
+      }
+    } else if (n.type === 'absence_submitted' || n.type === 'absence_decided') {
+      setCurrentView('schedule');
+    } else if (n.type === 'member_invited') {
+      setCurrentView('members');
+    }
+
+    setIsNotificationsOpen(false);
+  };
 
   return (
     <header className="h-16 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-4 bg-white dark:bg-zinc-900/50 backdrop-blur-md sticky top-0 z-50">
@@ -61,39 +121,58 @@ export const Header: React.FC = () => {
             className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors relative"
           >
             <Bell size={18} />
-            {notifications.length > 0 && (
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full"></span>
+            {unreadCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-bold rounded-full px-1">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
             )}
           </button>
           {isNotificationsOpen && (
             <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100">
               <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
-                <h3 className="text-sm font-bold">Notifications</h3>
+                <h3 className="text-sm font-bold">
+                  Notifications
+                  {unreadCount > 0 && <span className="ml-1 text-zinc-400 font-normal">({unreadCount})</span>}
+                </h3>
                 <button onClick={() => setIsNotificationsOpen(false)}>
                   <X size={14} />
                 </button>
               </div>
               <div className="max-h-80 overflow-y-auto">
                 {notifications.map((n) => (
-                  <div
+                  <button
                     key={n.id}
-                    className="p-3 border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-sm"
+                    onClick={() => handleNotificationClick(n)}
+                    className={`w-full text-left p-3 border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 text-sm transition-colors ${
+                      !n.read ? 'bg-blue-50/50 dark:bg-blue-950/20' : ''
+                    }`}
                   >
-                    <p className="font-medium text-zinc-800 dark:text-zinc-200">
-                      <span className="font-bold">System:</span> {n.text}
-                    </p>
-                    <span className="text-xs text-zinc-400">{n.time}</span>
-                  </div>
+                    <div className="flex items-start gap-2">
+                      <div className={`mt-0.5 ${!n.read ? 'text-blue-500' : 'text-zinc-400'}`}>
+                        {getNotificationIcon(n.type)}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-zinc-800 dark:text-zinc-200 leading-snug">{n.message}</p>
+                        <span className="text-xs text-zinc-400 mt-0.5 block">{formatRelativeTime(n.createdAt)}</span>
+                      </div>
+                      {!n.read && <span className="w-2 h-2 bg-blue-500 rounded-full shrink-0 mt-1.5" />}
+                    </div>
+                  </button>
                 ))}
                 {notifications.length === 0 && (
-                  <p className="p-4 text-xs text-zinc-400 text-center">No new notifications</p>
+                  <p className="p-4 text-xs text-zinc-400 text-center">No notifications</p>
                 )}
               </div>
-              <div className="p-2 text-center border-t border-zinc-100 dark:border-zinc-800">
-                <button onClick={markNotificationsRead} className="text-xs font-medium hover:underline text-zinc-500">
-                  Mark all as read
-                </button>
-              </div>
+              {notifications.length > 0 && (
+                <div className="p-2 text-center border-t border-zinc-100 dark:border-zinc-800">
+                  <button
+                    onClick={markAllNotificationsRead}
+                    className="text-xs font-medium hover:underline text-zinc-500"
+                  >
+                    Mark all as read
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>

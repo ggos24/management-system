@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Team, Member, Absence, Shift, LogEntry, CustomProperty } from '../types';
+import { Task, Team, Member, Absence, Shift, LogEntry, CustomProperty, Notification } from '../types';
 
 // === Mappers ===
 
@@ -532,4 +532,78 @@ export async function fetchIntegrations(): Promise<Record<string, boolean>> {
   const { data, error } = await supabase.from('app_settings').select('integrations').eq('id', 1).single();
   if (error || !data) return {};
   return data.integrations || {};
+}
+
+// === Notification functions ===
+
+function mapNotification(row: any): Notification {
+  return {
+    id: row.id,
+    recipientId: row.recipient_id,
+    actorId: row.actor_id,
+    type: row.type,
+    message: row.message,
+    entityData: row.entity_data || {},
+    read: row.read,
+    createdAt: row.created_at,
+  };
+}
+
+export async function fetchNotifications(): Promise<Notification[]> {
+  const { data, error } = await supabase
+    .from('notifications')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(50);
+  if (error) throw error;
+  return (data || []).map(mapNotification);
+}
+
+export async function insertNotification(n: {
+  recipientId: string;
+  actorId: string | null;
+  type: string;
+  message: string;
+  entityData?: Record<string, any>;
+}) {
+  const { error } = await supabase.from('notifications').insert({
+    recipient_id: n.recipientId,
+    actor_id: n.actorId,
+    type: n.type,
+    message: n.message,
+    entity_data: n.entityData || {},
+  });
+  return { error };
+}
+
+export async function insertNotifications(
+  rows: {
+    recipientId: string;
+    actorId: string | null;
+    type: string;
+    message: string;
+    entityData?: Record<string, any>;
+  }[],
+) {
+  if (rows.length === 0) return { error: null };
+  const { error } = await supabase.from('notifications').insert(
+    rows.map((n) => ({
+      recipient_id: n.recipientId,
+      actor_id: n.actorId,
+      type: n.type,
+      message: n.message,
+      entity_data: n.entityData || {},
+    })),
+  );
+  return { error };
+}
+
+export async function markNotificationRead(id: string) {
+  const { error } = await supabase.from('notifications').update({ read: true }).eq('id', id);
+  return { error };
+}
+
+export async function markAllNotificationsRead() {
+  const { error } = await supabase.from('notifications').update({ read: true }).eq('read', false);
+  return { error };
 }

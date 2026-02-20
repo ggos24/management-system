@@ -158,6 +158,24 @@ Deno.serve(async (req) => {
       timestamp: new Date().toISOString(),
     });
 
+    // Notify all existing members about the new team member
+    const { data: existingProfiles } = await adminClient.from('profiles').select('id').neq('id', profileId);
+    if (existingProfiles && existingProfiles.length > 0) {
+      const callerName = callerFullProfile?.id
+        ? (await adminClient.from('profiles').select('name').eq('id', callerFullProfile.id).single()).data?.name ||
+          'An admin'
+        : 'An admin';
+      await adminClient.from('notifications').insert(
+        existingProfiles.map((p: { id: string }) => ({
+          recipient_id: p.id,
+          actor_id: callerFullProfile?.id || null,
+          type: 'member_invited',
+          message: `${callerName} invited ${name} to the workspace`,
+          entity_data: { memberId: profileId },
+        })),
+      );
+    }
+
     // Return the created profile in frontend shape
     return new Response(
       JSON.stringify({
