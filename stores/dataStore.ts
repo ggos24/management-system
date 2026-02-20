@@ -69,6 +69,7 @@ interface DataState {
   addProperty: (teamId: string, property: CustomProperty) => void;
   updateProperty: (teamId: string, property: CustomProperty) => void;
   deleteProperty: (teamId: string, propertyId: string) => void;
+  reorderProperties: (teamId: string, orderedIds: string[]) => void;
 
   // Permission actions
   togglePermission: (userId: string, type: 'canEdit' | 'canDelete' | 'canCreate') => void;
@@ -406,6 +407,21 @@ export const useDataStore = create<DataState>((set, get) => ({
       teamProperties: { ...teamProperties, [teamId]: teamProperties[teamId].filter((p) => p.id !== propertyId) },
     });
     db.deleteCustomProperty(propertyId).catch(() => toast.error('Failed to delete property'));
+  },
+
+  reorderProperties: (teamId, orderedIds) => {
+    const { teamProperties } = get();
+    const props = teamProperties[teamId] || [];
+    const reordered = orderedIds
+      .map((id, i) => {
+        const p = props.find((prop) => prop.id === id);
+        return p ? { ...p, sortOrder: i } : null;
+      })
+      .filter(Boolean) as CustomProperty[];
+
+    set({ teamProperties: { ...teamProperties, [teamId]: reordered } });
+    const updates = reordered.map((p, i) => ({ id: p.id, sort_order: i }));
+    db.updateCustomPropertySortOrders(updates).catch(() => toast.error('Failed to reorder properties'));
   },
 
   // Permission actions

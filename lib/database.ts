@@ -194,7 +194,7 @@ export async function fetchPermissions(): Promise<
 }
 
 export async function fetchCustomProperties(): Promise<Record<string, CustomProperty[]>> {
-  const { data, error } = await supabase.from('custom_properties').select('*');
+  const { data, error } = await supabase.from('custom_properties').select('*').order('sort_order');
   if (error) throw error;
 
   const result: Record<string, CustomProperty[]> = {};
@@ -206,6 +206,7 @@ export async function fetchCustomProperties(): Promise<Record<string, CustomProp
       name: row.name,
       type: row.type,
       options: row.options || [],
+      sortOrder: row.sort_order ?? 0,
     });
   }
   return result;
@@ -482,9 +483,17 @@ export async function upsertCustomProperty(teamId: string, prop: CustomProperty)
     name: prop.name,
     type: prop.type,
     options: prop.options || [],
+    sort_order: prop.sortOrder ?? 0,
   };
   const { data, error } = await supabase.from('custom_properties').upsert(row, { onConflict: 'id' }).select().single();
   return { data, error };
+}
+
+export async function updateCustomPropertySortOrders(updates: { id: string; sort_order: number }[]) {
+  const promises = updates.map((u) =>
+    supabase.from('custom_properties').update({ sort_order: u.sort_order }).eq('id', u.id),
+  );
+  await Promise.all(promises);
 }
 
 export async function deleteCustomProperty(id: string) {

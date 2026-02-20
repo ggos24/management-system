@@ -17,7 +17,6 @@ import {
   X,
   ChevronDown,
   CheckCircle,
-  Settings2,
   Edit2,
   Trash2,
   GripVertical,
@@ -32,6 +31,7 @@ import {
   Type,
   List as ListIcon,
   Users,
+  ArrowLeftRight,
 } from 'lucide-react';
 import { generateContentIdeas } from '../services/geminiService';
 import { MultiSelect } from './MultiSelect';
@@ -112,6 +112,7 @@ interface WorkspaceProps {
   onAddProperty?: (property: CustomProperty) => void;
   onUpdateProperty?: (property: CustomProperty) => void;
   onDeleteProperty?: (propertyId: string) => void;
+  onReorderProperties?: (orderedIds: string[]) => void;
   userRole?: UserRole;
   onReorderTask?: (taskId: string, targetTaskId: string, position: 'before' | 'after') => void;
   allPlacements: string[];
@@ -140,6 +141,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   onAddProperty,
   onUpdateProperty,
   onDeleteProperty,
+  onReorderProperties,
   userRole,
   onReorderTask,
   allPlacements = [],
@@ -161,6 +163,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Property Creation State
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState<string | null>(null);
+  const [isReorderPropsOpen, setIsReorderPropsOpen] = useState<string | null>(null);
   const [newPropName, setNewPropName] = useState('');
   const [newPropType, setNewPropType] = useState<CustomProperty['type']>('text');
 
@@ -551,6 +554,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       setActiveColumnMenu(null);
       setActivePropertyMenu(null);
       setIsAddPropertyOpen(null);
+      setIsReorderPropsOpen(null);
     };
     document.addEventListener('click', closeMenu);
     return () => document.removeEventListener('click', closeMenu);
@@ -1081,16 +1085,32 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 </th>
                               ))}
                               <th className="p-3 font-medium text-zinc-400 text-xs w-32">Placements</th>
-                              <th className="p-2 w-10 text-center">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setIsAddPropertyOpen(isAddPropertyOpen === col.id ? null : col.id);
-                                  }}
-                                  className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400"
-                                >
-                                  <Plus size={14} />
-                                </button>
+                              <th className="p-2 w-16 text-center">
+                                <div className="flex items-center justify-center gap-0.5">
+                                  {customProperties.length > 1 && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsReorderPropsOpen(isReorderPropsOpen === col.id ? null : col.id);
+                                        setIsAddPropertyOpen(null);
+                                      }}
+                                      className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                      title="Reorder columns"
+                                    >
+                                      <ArrowLeftRight size={14} />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setIsAddPropertyOpen(isAddPropertyOpen === col.id ? null : col.id);
+                                      setIsReorderPropsOpen(null);
+                                    }}
+                                    className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400"
+                                  >
+                                    <Plus size={14} />
+                                  </button>
+                                </div>
                               </th>
                             </tr>
                           </thead>
@@ -1217,17 +1237,45 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       />
                                     </td>
 
-                                    {/* Custom Properties — read-only */}
-                                    {customProperties.map((prop) => (
-                                      <td
-                                        key={prop.id}
-                                        className="p-3 text-xs text-zinc-600 dark:text-zinc-400 truncate"
-                                      >
-                                        {task.customFieldValues?.[prop.id]
-                                          ? String(task.customFieldValues[prop.id])
-                                          : '-'}
-                                      </td>
-                                    ))}
+                                    {/* Custom Properties */}
+                                    {customProperties.map((prop) => {
+                                      const val = task.customFieldValues?.[prop.id];
+                                      if (prop.type === 'person' && val) {
+                                        const personIds = Array.isArray(val) ? val : [val];
+                                        const people = members.filter((m) => personIds.includes(m.id));
+                                        return (
+                                          <td key={prop.id} className="p-3">
+                                            {people.length > 0 ? (
+                                              <div className="flex flex-col gap-1">
+                                                {people.map((p) => (
+                                                  <div key={p.id} className="flex items-center gap-1.5">
+                                                    <Avatar
+                                                      src={p.avatar}
+                                                      alt={p.name}
+                                                      size="sm"
+                                                      className="flex-shrink-0"
+                                                    />
+                                                    <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
+                                                      {p.name}
+                                                    </span>
+                                                  </div>
+                                                ))}
+                                              </div>
+                                            ) : (
+                                              <span className="text-xs text-zinc-400">-</span>
+                                            )}
+                                          </td>
+                                        );
+                                      }
+                                      return (
+                                        <td
+                                          key={prop.id}
+                                          className="p-3 text-xs text-zinc-600 dark:text-zinc-400 truncate"
+                                        >
+                                          {val ? String(val) : '-'}
+                                        </td>
+                                      );
+                                    })}
 
                                     {/* Placements — inline MultiSelect */}
                                     <td className="p-3" onClick={(e) => e.stopPropagation()}>
@@ -1367,6 +1415,50 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           >
                             Create
                           </button>
+                        </div>
+                      )}
+                      {isReorderPropsOpen === col.id && customProperties.length > 1 && (
+                        <div
+                          className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <h4 className="text-xs font-bold text-zinc-900 dark:text-white mb-2">Reorder Columns</h4>
+                          <div className="space-y-1">
+                            {customProperties.map((prop, idx) => (
+                              <div
+                                key={prop.id}
+                                className="flex items-center justify-between px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-xs"
+                              >
+                                <span className="text-zinc-700 dark:text-zinc-300 truncate">{prop.name}</span>
+                                <div className="flex items-center gap-0.5 flex-shrink-0">
+                                  <button
+                                    onClick={() => {
+                                      if (idx === 0 || !onReorderProperties) return;
+                                      const ids = customProperties.map((p) => p.id);
+                                      [ids[idx - 1], ids[idx]] = [ids[idx], ids[idx - 1]];
+                                      onReorderProperties(ids);
+                                    }}
+                                    disabled={idx === 0}
+                                    className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                                  >
+                                    <ChevronUp size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      if (idx === customProperties.length - 1 || !onReorderProperties) return;
+                                      const ids = customProperties.map((p) => p.id);
+                                      [ids[idx], ids[idx + 1]] = [ids[idx + 1], ids[idx]];
+                                      onReorderProperties(ids);
+                                    }}
+                                    disabled={idx === customProperties.length - 1}
+                                    className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                                  >
+                                    <ChevronDown size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       )}
                     </>

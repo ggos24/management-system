@@ -46,6 +46,7 @@ export interface CustomProperty {
   name: string;
   type: 'text' | 'date' | 'select' | 'multiselect' | 'person';
   options?: string[];
+  sortOrder?: number;
 }
 
 export interface Task {
