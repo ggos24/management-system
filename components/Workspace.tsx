@@ -19,6 +19,8 @@ import {
   CheckCircle,
   Edit2,
   Trash2,
+  Eye,
+  EyeOff,
   GripVertical,
   FileText,
   Paperclip,
@@ -167,11 +169,35 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const [newPropName, setNewPropName] = useState('');
   const [newPropType, setNewPropType] = useState<CustomProperty['type']>('text');
 
-  // Collapsible State
-  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({});
+  // Collapsible State — persisted per team in localStorage
+  const collapsedKey = `collapsed-sections-${teamFilter}`;
+  const [prevCollapsedKey, setPrevCollapsedKey] = useState(collapsedKey);
+  const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>(() => {
+    try {
+      const saved = localStorage.getItem(collapsedKey);
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
+
+  // Re-load when teamFilter changes
+  if (prevCollapsedKey !== collapsedKey) {
+    setPrevCollapsedKey(collapsedKey);
+    try {
+      const saved = localStorage.getItem(collapsedKey);
+      setCollapsedSections(saved ? JSON.parse(saved) : {});
+    } catch {
+      setCollapsedSections({});
+    }
+  }
 
   const toggleSection = (id: string) => {
-    setCollapsedSections((prev) => ({ ...prev, [id]: !prev[id] }));
+    setCollapsedSections((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      localStorage.setItem(collapsedKey, JSON.stringify(next));
+      return next;
+    });
   };
 
   // Determine current column list
@@ -727,16 +753,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             />
                           ) : (
                             <div className="flex items-center gap-2">
-                              {/* Arrow reorder for Board View */}
-                              {!statusSort && (
-                                <div className="flex items-center opacity-0 group-hover/header:opacity-100 transition-opacity">
+                              {teamFilter !== 'my-work' && (
+                                <>
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       handleMoveStatus(col.id, 'up');
                                     }}
-                                    className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 disabled:opacity-30 disabled:cursor-not-allowed"
-                                    disabled={currentStatusList.indexOf(col.id) === 0}
+                                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                    title="Move left"
                                   >
                                     <ChevronLeft size={14} />
                                   </button>
@@ -745,22 +770,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       e.stopPropagation();
                                       handleMoveStatus(col.id, 'down');
                                     }}
-                                    className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 disabled:opacity-30 disabled:cursor-not-allowed"
-                                    disabled={currentStatusList.indexOf(col.id) === currentStatusList.length - 1}
+                                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                    title="Move right"
                                   >
                                     <ChevronRight size={14} />
                                   </button>
-                                </div>
+                                </>
                               )}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleSection(col.id);
-                                }}
-                                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                              >
-                                <ChevronDown size={14} />
-                              </button>
                               <span className="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 text-[10px] px-1.5 py-0.5 rounded font-medium">
                                 {filteredTasks.filter((t) => t.status === col.id).length}
                               </span>
@@ -770,6 +786,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               >
                                 {col.label} {isArchived && '(Archived)'}
                               </span>
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSection(col.id);
+                                }}
+                                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                              >
+                                {collapsedSections[col.id] ? <EyeOff size={14} /> : <Eye size={14} />}
+                              </button>
                             </div>
                           )}
                         </div>
@@ -934,8 +959,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   onDragOver={handleDragOver}
                 >
                   <div className="flex items-center gap-2 sticky top-0 bg-white dark:bg-black z-10 py-2 group/header">
-                    {!statusSort && (
-                      <div className="flex flex-col opacity-0 group-hover/header:opacity-100 transition-opacity">
+                    {!statusSort && teamFilter !== 'my-work' && (
+                      <div className="flex flex-col">
                         <button
                           onClick={() => handleMoveStatus(col.id, 'up')}
                           className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 leading-none disabled:opacity-30 disabled:cursor-not-allowed"
@@ -952,12 +977,6 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         </button>
                       </div>
                     )}
-                    <button
-                      onClick={() => toggleSection(col.id)}
-                      className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 transition-colors"
-                    >
-                      {isCollapsed ? <ChevronRight size={16} /> : <ChevronDown size={16} />}
-                    </button>
                     <span className="bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-xs px-2 py-0.5 rounded font-medium">
                       {colTasks.length}
                     </span>
@@ -979,6 +998,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         {col.label} {isArchived && '(Archived)'}
                       </h3>
                     )}
+                    <button
+                      onClick={() => toggleSection(col.id)}
+                      className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 transition-all"
+                      title={isCollapsed ? 'Show section' : 'Hide section'}
+                    >
+                      {isCollapsed ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
 
                     {teamFilter !== 'my-work' && (
                       <div className="relative ml-2">
