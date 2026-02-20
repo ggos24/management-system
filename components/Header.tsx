@@ -1,9 +1,12 @@
 import React from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { Sun, Moon, Bell, Search, X, Menu, ClipboardList, Calendar, UserPlus } from 'lucide-react';
 import { Avatar } from './Avatar';
+import { IconButton, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
+import { teamSlug } from '../lib/utils';
 import type { Notification, NotificationType } from '../types';
 
 function getNotificationIcon(type: NotificationType) {
@@ -36,6 +39,9 @@ function formatRelativeTime(dateStr: string): string {
 }
 
 export const Header: React.FC = () => {
+  const navigate = useNavigate();
+  const location = useLocation();
+
   const {
     isDarkMode,
     toggleTheme,
@@ -49,8 +55,6 @@ export const Header: React.FC = () => {
     markAllNotificationsRead,
     setMobileSidebarOpen,
     setIsSettingsModalOpen,
-    setCurrentView,
-    currentView,
     setIsTaskModalOpen,
     setTaskModalData,
   } = useUiStore();
@@ -59,7 +63,7 @@ export const Header: React.FC = () => {
   const teams = useDataStore((s) => s.teams);
   const tasks = useDataStore((s) => s.tasks);
 
-  const isTeamView = teams.some((t) => t.id === currentView) || currentView === 'my-workspace';
+  const isTeamView = location.pathname.startsWith('/teams/') || location.pathname === '/workspace';
 
   const handleNotificationClick = (n: Notification) => {
     markNotificationRead(n.id);
@@ -68,7 +72,10 @@ export const Header: React.FC = () => {
     if (n.type === 'task_assigned' || n.type === 'task_status_changed') {
       const taskId = n.entityData?.taskId;
       const teamId = n.entityData?.teamId;
-      if (teamId) setCurrentView(teamId);
+      if (teamId) {
+        const team = teams.find((t) => t.id === teamId);
+        navigate(`/teams/${team ? teamSlug(team) : teamId}`);
+      }
       if (taskId) {
         const task = tasks.find((t) => t.id === taskId);
         if (task) {
@@ -77,9 +84,9 @@ export const Header: React.FC = () => {
         }
       }
     } else if (n.type === 'absence_submitted' || n.type === 'absence_decided') {
-      setCurrentView('schedule');
+      navigate('/schedule');
     } else if (n.type === 'member_invited') {
-      setCurrentView('members');
+      navigate('/dashboard');
     }
 
     setIsNotificationsOpen(false);
@@ -109,24 +116,16 @@ export const Header: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-2">
-        <button
-          onClick={toggleTheme}
-          className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1"
-        >
-          {isDarkMode ? <Sun size={18} /> : <Moon size={18} />}
-        </button>
+        <IconButton onClick={toggleTheme}>{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</IconButton>
         <div className="relative">
-          <button
-            onClick={() => setIsNotificationsOpen(!isNotificationsOpen)}
-            className="p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors relative focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1"
-          >
+          <IconButton onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} className="relative">
             <Bell size={18} />
             {unreadCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-semibold rounded-full px-1">
                 {unreadCount > 99 ? '99+' : unreadCount}
               </span>
             )}
-          </button>
+          </IconButton>
           {isNotificationsOpen && (
             <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100">
               <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
@@ -176,12 +175,12 @@ export const Header: React.FC = () => {
             </div>
           )}
         </div>
-        <div className="h-8 w-px bg-zinc-200 dark:bg-zinc-800 mx-2"></div>
+        <Divider orientation="vertical" className="h-8 mx-2" />
         <button
           onClick={() => setIsSettingsModalOpen(true)}
           className="flex items-center gap-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 pr-3 pl-1 py-1 rounded-full transition-colors"
         >
-          <Avatar src={currentUser?.avatar} alt={currentUser?.name} size="md" className="grayscale-0" />
+          <Avatar src={currentUser?.avatar} alt={currentUser?.name} size="md" />
           <div className="text-left hidden md:block">
             <p className="text-xs font-semibold leading-none">{currentUser?.name}</p>
             <p className="text-[10px] text-zinc-500 leading-none mt-0.5 uppercase tracking-wider">

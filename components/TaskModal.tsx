@@ -25,6 +25,7 @@ import { RichTextEditor } from './RichTextEditor';
 import { MultiSelect } from './MultiSelect';
 import { CustomSelect } from './CustomSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
+import { Button, Input, Label, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useDataStore } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
@@ -156,18 +157,10 @@ export const TaskModal: React.FC = () => {
       }
       actions={
         <>
-          <button
-            onClick={() => setIsTaskModalOpen(false)}
-            className="px-4 py-2 text-sm font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300"
-          >
+          <Button variant="ghost" onClick={() => setIsTaskModalOpen(false)}>
             Cancel
-          </button>
-          <button
-            onClick={handleSaveTask}
-            className="px-6 py-2 bg-black dark:bg-white text-white dark:text-black text-sm font-semibold rounded-lg hover:opacity-90 transition-opacity"
-          >
-            {taskModalData.id ? 'Save Changes' : 'Create Task'}
-          </button>
+          </Button>
+          <Button onClick={handleSaveTask}>{taskModalData.id ? 'Save Changes' : 'Create Task'}</Button>
         </>
       }
     >
@@ -343,7 +336,7 @@ export const TaskModal: React.FC = () => {
                     >
                       <Edit2 size={12} /> Rename
                     </button>
-                    <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
+                    <Divider className="my-1" />
                     <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase">Change Type</p>
                     {[
                       { type: 'text' as const, icon: Type, label: 'Text' },
@@ -362,7 +355,7 @@ export const TaskModal: React.FC = () => {
                         <Icon size={12} /> {label} {prop.type === type && '(current)'}
                       </button>
                     ))}
-                    <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
+                    <Divider className="my-1" />
                     <button
                       onClick={() => {
                         if (confirm(`Delete "${prop.name}" property?`)) {
@@ -377,8 +370,7 @@ export const TaskModal: React.FC = () => {
                   </div>
                 )}
                 {prop.type === 'text' && (
-                  <input
-                    className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400"
+                  <Input
                     value={taskModalData.customFieldValues?.[prop.id] || ''}
                     onChange={(e) =>
                       setTaskModalData({
@@ -448,8 +440,7 @@ export const TaskModal: React.FC = () => {
                       <X size={14} />
                     </button>
                   </div>
-                  <input
-                    className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400"
+                  <Input
                     placeholder="Property Name"
                     value={newPropName}
                     onChange={(e) => setNewPropName(e.target.value)}
@@ -471,7 +462,9 @@ export const TaskModal: React.FC = () => {
                       </button>
                     ))}
                   </div>
-                  <button
+                  <Button
+                    size="sm"
+                    className="w-full"
                     onClick={() => {
                       if (!newPropName || !addProperty) return;
                       addProperty(taskModalData.teamId || 'default', {
@@ -483,10 +476,9 @@ export const TaskModal: React.FC = () => {
                       setNewPropName('');
                       setIsAddPropertyOpen(false);
                     }}
-                    className="w-full bg-black dark:bg-white text-white dark:text-black py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
                   >
                     Create
-                  </button>
+                  </Button>
                 </div>
               ) : (
                 <button
@@ -501,7 +493,7 @@ export const TaskModal: React.FC = () => {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-semibold text-zinc-500 uppercase">Notes</label>
+          <Label variant="section">Notes</Label>
           <RichTextEditor
             value={taskModalData.contentInfo?.notes || ''}
             onChange={(html) =>
@@ -516,19 +508,19 @@ export const TaskModal: React.FC = () => {
         </div>
 
         <div className="space-y-2">
-          <label className="text-xs font-semibold text-zinc-500 uppercase flex items-center gap-2">
+          <Label variant="section" className="flex items-center gap-2">
             <LinkIcon size={12} /> Links Attachments
-          </label>
+          </Label>
           {taskModalData.links?.map((link, idx) => (
             <div key={idx} className="flex gap-2 mb-2">
-              <input
-                className="flex-1 p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400"
+              <Input
+                className="flex-1"
                 placeholder="Title (e.g. Reference)"
                 value={link.title}
                 onChange={(e) => handleUpdateLink(idx, 'title', e.target.value)}
               />
-              <input
-                className="flex-[2] p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 font-mono text-blue-600 dark:text-blue-400"
+              <Input
+                className="flex-[2] font-mono text-blue-600 dark:text-blue-400"
                 placeholder="URL (https://...)"
                 value={link.url}
                 onChange={(e) => handleUpdateLink(idx, 'url', e.target.value)}
@@ -538,12 +530,9 @@ export const TaskModal: React.FC = () => {
               </button>
             </div>
           ))}
-          <button
-            onClick={handleAddEmptyLink}
-            className="text-xs flex items-center gap-1 text-blue-600 hover:underline font-medium"
-          >
+          <Button variant="link" size="sm" onClick={handleAddEmptyLink} className="flex items-center gap-1">
             <Plus size={12} /> Add Link
-          </button>
+          </Button>
         </div>
       </div>
     </Modal>

@@ -3,7 +3,6 @@ import { Task, Notification } from '../types';
 import * as db from '../lib/database';
 
 interface UiState {
-  currentView: string;
   isDarkMode: boolean;
   sidebarCollapsed: boolean;
   mobileSidebarOpen: boolean;
@@ -42,7 +41,6 @@ interface UiState {
   aiChatLoading: boolean;
 
   // Actions
-  setCurrentView: (view: string) => void;
   toggleTheme: () => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
   setMobileSidebarOpen: (open: boolean) => void;
@@ -79,11 +77,6 @@ interface UiState {
   setAiChatLoading: (loading: boolean) => void;
 }
 
-const getInitialView = () => {
-  const hash = window.location.hash.replace('#', '');
-  return hash || 'dashboard';
-};
-
 const getInitialDarkMode = () => {
   const stored = localStorage.getItem('theme');
   if (stored) return stored === 'dark';
@@ -96,7 +89,6 @@ if (getInitialDarkMode()) {
 }
 
 export const useUiStore = create<UiState>((set, get) => ({
-  currentView: getInitialView(),
   isDarkMode: getInitialDarkMode(),
   sidebarCollapsed: false,
   mobileSidebarOpen: false,
@@ -131,12 +123,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   aiChatLoading: false,
 
   // Actions
-  setCurrentView: (view) => {
-    if (window.location.hash !== `#${view}`) {
-      window.location.hash = view;
-    }
-    set({ currentView: view });
-  },
   toggleTheme: () => {
     const newMode = !get().isDarkMode;
     set({ isDarkMode: newMode });

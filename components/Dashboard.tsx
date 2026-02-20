@@ -17,6 +17,7 @@ import { Briefcase, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { CustomSelect } from './CustomSelect';
 import { DateRangeFilter } from './DateRangeFilter';
 import { Avatar } from './Avatar';
+import { Card } from './ui';
 import { getStatusHexColor } from '../constants';
 
 interface DashboardProps {
@@ -37,9 +38,6 @@ const tooltipStyle = {
   fontSize: '12px',
   boxShadow: '0 4px 12px rgba(0,0,0,.08)',
 };
-
-// Shared panel class for all card/chart containers
-const panelClass = 'bg-white dark:bg-zinc-900 rounded-lg border border-zinc-200 dark:border-zinc-800';
 
 const TrendBadge: React.FC<{ value: number | null; invertColor?: boolean; suffix?: string }> = ({
   value,
@@ -325,19 +323,19 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
 
       {/* KPI Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <div className={`${panelClass} p-6 flex flex-col items-center justify-center text-center h-36`}>
+        <Card padding="lg" className="flex flex-col items-center justify-center text-center h-36">
           <h2 className="text-4xl font-bold text-zinc-900 dark:text-white mb-1">{metrics.active}</h2>
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Active Tasks</p>
           <TrendBadge value={metrics.trends.active} />
-        </div>
+        </Card>
 
-        <div className={`${panelClass} p-6 flex flex-col items-center justify-center text-center h-36`}>
+        <Card padding="lg" className="flex flex-col items-center justify-center text-center h-36">
           <h2 className="text-4xl font-bold text-zinc-900 dark:text-white mb-1">{metrics.completed}</h2>
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Completed</p>
           <TrendBadge value={metrics.trends.completed} />
-        </div>
+        </Card>
 
-        <div className={`${panelClass} p-6 flex flex-col items-center justify-center text-center h-36`}>
+        <Card padding="lg" className="flex flex-col items-center justify-center text-center h-36">
           <h2 className="text-4xl font-bold text-red-600 dark:text-red-400 mb-1">{metrics.overdue}</h2>
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Overdue</p>
           <div className="flex items-center gap-2 mt-1">
@@ -346,21 +344,21 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
               <span className="text-[10px] text-zinc-400">avg {metrics.avgOverdueDays}d</span>
             )}
           </div>
-        </div>
+        </Card>
 
-        <div className={`${panelClass} p-6 flex flex-col items-center justify-center text-center h-36`}>
+        <Card padding="lg" className="flex flex-col items-center justify-center text-center h-36">
           <h2 className="text-4xl font-bold text-zinc-900 dark:text-white mb-1">
             {metrics.onTimeRate !== null ? `${metrics.onTimeRate}%` : '\u2014'}
           </h2>
           <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">On-Time Rate</p>
           <TrendBadge value={metrics.trends.onTimeRate} suffix="pp" />
-        </div>
+        </Card>
       </div>
 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Donut chart */}
-        <div className={`${panelClass} p-6 h-[400px] flex flex-col`}>
+        <Card padding="lg" className="h-[400px] flex flex-col">
           <h3 className="text-lg font-semibold text-zinc-900 dark:text-white mb-6">Task Statuses</h3>
           <div className="flex flex-1 overflow-hidden">
             <div className="w-1/2 pr-4 overflow-y-auto custom-scrollbar space-y-1">
@@ -429,10 +427,10 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
               </ResponsiveContainer>
             </div>
           </div>
-        </div>
+        </Card>
 
         {/* Workload */}
-        <div className={`${panelClass} p-6 h-[400px] flex flex-col`}>
+        <Card padding="lg" className="h-[400px] flex flex-col">
           <div className="flex justify-between items-baseline mb-6">
             <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">Team Workload</h3>
             <span className="text-xs text-zinc-400">Primary owner</span>
@@ -497,11 +495,11 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
               <div className="text-center text-zinc-400 py-10 text-sm">No team members assigned tasks.</div>
             )}
           </div>
-        </div>
+        </Card>
       </div>
 
       {/* Progress chart */}
-      <div className={`${panelClass} p-6 h-[400px] flex flex-col`}>
+      <Card padding="lg" className="h-[400px] flex flex-col">
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">Progress Chart</h3>
           <span className="bg-zinc-100 dark:bg-zinc-800 px-3 py-1 rounded-md text-xs font-semibold text-zinc-500 dark:text-zinc-400">
@@ -547,7 +545,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
             </BarChart>
           </ResponsiveContainer>
         </div>
-      </div>
+      </Card>
     </div>
   );
 };

@@ -6,6 +6,7 @@ import { Avatar } from './Avatar';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { CustomSelect } from './CustomSelect';
 import { calculateAbsenceStats } from '../lib/utils';
+import { Button, Label, Input } from './ui';
 
 interface ScheduleProps {
   members: Member[];
@@ -458,7 +459,9 @@ const Schedule: React.FC<ScheduleProps> = ({
               </div>
             </div>
 
-            <h4 className="text-xs font-semibold text-zinc-500 uppercase mb-3">Absence Statistics (Current Year)</h4>
+            <Label variant="section" className="mb-3">
+              Absence Statistics (Current Year)
+            </Label>
             {(() => {
               const stats = calculateAbsenceStats(selectedMemberStats.id, absences);
               return (
@@ -511,12 +514,9 @@ const Schedule: React.FC<ScheduleProps> = ({
             >
               <Trash2 size={18} />
             </button>
-            <button
-              onClick={handleSave}
-              className="flex-1 bg-black dark:bg-white text-white dark:text-black rounded-lg text-sm font-semibold py-2 hover:opacity-90 transition-opacity"
-            >
+            <Button onClick={handleSave} className="flex-1 py-2">
               Save
-            </button>
+            </Button>
           </>
         }
       >
@@ -544,11 +544,11 @@ const Schedule: React.FC<ScheduleProps> = ({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium mb-1 block text-zinc-500">From</label>
+                  <Label className="mb-1 block">From</Label>
                   <SimpleDatePicker value={rangeStartDate} onChange={setRangeStartDate} placeholder="Select Date" />
                 </div>
                 <div>
-                  <label className="text-xs font-medium mb-1 block text-zinc-500">To</label>
+                  <Label className="mb-1 block">To</Label>
                   <SimpleDatePicker value={rangeEndDate} onChange={setRangeEndDate} placeholder="Select Date" />
                 </div>
               </div>
@@ -570,22 +570,17 @@ const Schedule: React.FC<ScheduleProps> = ({
               ) : (
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="text-xs font-medium mb-1 block text-zinc-500">Start Time</label>
-                    <input
+                    <Label className="mb-1 block">Start Time</Label>
+                    <Input
                       type="time"
                       value={startTime}
                       onChange={(e) => setStartTime(e.target.value)}
-                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400 text-zinc-900 dark:text-zinc-100"
+                      className="p-2"
                     />
                   </div>
                   <div>
-                    <label className="text-xs font-medium mb-1 block text-zinc-500">End Time</label>
-                    <input
-                      type="time"
-                      value={endTime}
-                      onChange={(e) => setEndTime(e.target.value)}
-                      className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400 text-zinc-900 dark:text-zinc-100"
-                    />
+                    <Label className="mb-1 block">End Time</Label>
+                    <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="p-2" />
                   </div>
                 </div>
               )}

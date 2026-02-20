@@ -40,6 +40,7 @@ import { MultiSelect } from './MultiSelect';
 import { CustomSelect } from './CustomSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
+import { Button, Badge, Divider } from './ui';
 
 // Shared column context menu used in both board and table views
 const ColumnMenu: React.FC<{
@@ -76,7 +77,7 @@ const ColumnMenu: React.FC<{
       >
         <Copy size={12} /> Duplicate (With Data)
       </button>
-      <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
+      <Divider className="my-1" />
       <button
         onClick={onArchive}
         className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-yellow-600 dark:text-yellow-400"
@@ -593,7 +594,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-4">
             <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">{teamName}</h2>
-            <div className="h-6 w-px bg-zinc-200 dark:bg-zinc-800"></div>
+            <Divider orientation="vertical" className="h-6" />
             {/* View Switcher */}
             <div className="flex items-center gap-1">
               <button
@@ -620,13 +621,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
           {/* Actions: AI & New Task */}
           <div className="flex gap-2 items-center">
             {/* Show Archived and AI Assist hidden for now */}
-            <button
-              onClick={() => onAddTask()}
-              className="flex items-center gap-1.5 bg-black dark:bg-white text-white dark:text-black px-3 py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
-            >
+            <Button size="sm" onClick={() => onAddTask()} className="flex items-center gap-1.5">
               <Plus size={14} />
               New
-            </button>
+            </Button>
           </div>
         </div>
 
@@ -675,7 +673,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           {/* Status group sort */}
           {(viewMode === 'table' || viewMode === 'board') && (
             <>
-              <div className="h-5 w-px bg-zinc-200 dark:bg-zinc-800 mx-1"></div>
+              <Divider orientation="vertical" className="h-5 mx-1" />
               <div className="flex items-center gap-1">
                 <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider mr-1">
                   Sort groups:
@@ -861,11 +859,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             >
                               <div className="flex justify-between items-start mb-2">
                                 <div className="flex gap-1 flex-wrap">
-                                  {task.contentInfo?.type && (
-                                    <span className="text-[10px] font-semibold uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
-                                      {task.contentInfo.type}
-                                    </span>
-                                  )}
+                                  {task.contentInfo?.type && <Badge>{task.contentInfo.type}</Badge>}
                                 </div>
                                 <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
                                   <GripVertical size={14} />
@@ -1365,7 +1359,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               >
                                 <Edit2 size={12} /> Rename
                               </button>
-                              <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
+                              <Divider className="my-1" />
                               <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase">Change Type</p>
                               {[
                                 { type: 'text' as const, icon: Type, label: 'Text' },
@@ -1386,7 +1380,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   <Icon size={12} /> {label} {prop.type === type && '(current)'}
                                 </button>
                               ))}
-                              <div className="h-px bg-zinc-100 dark:bg-zinc-800 my-1"></div>
+                              <Divider className="my-1" />
                               <button
                                 onClick={() => handleDeleteProperty(prop.id)}
                                 className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs text-red-500"
@@ -1435,12 +1429,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               <Users size={12} /> Person
                             </button>
                           </div>
-                          <button
-                            onClick={handleCreateProperty}
-                            className="w-full bg-black dark:bg-white text-white dark:text-black py-1.5 rounded-lg text-xs font-semibold hover:opacity-90 transition-opacity"
-                          >
+                          <Button size="sm" onClick={handleCreateProperty} className="w-full">
                             Create
-                          </button>
+                          </Button>
                         </div>
                       )}
                       {isReorderPropsOpen === col.id && customProperties.length > 1 && (

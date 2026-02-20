@@ -22,26 +22,27 @@ const iconSizes = {
   lg: 20,
 };
 
-// Pixel size to request from Supabase transform (2x for retina)
-const pixelSizes: Record<string, number> = {
-  xs: 32,
-  sm: 48,
-  md: 64,
-  lg: 160,
-};
+/**
+ * Strip the Supabase transform prefix if present, returning the plain
+ * /object/public/… URL. This is used as a fallback when the transform
+ * endpoint returns a broken (black) image.
+ */
+function getPlainUrl(src: string): string {
+  return src.replace(/\/storage\/v1\/render\/image\//, '/storage/v1/object/');
+}
 
 /**
  * If the URL points to Supabase Storage, rewrite it through the
  * /render/image/ transform endpoint so the CDN returns a resized version.
  */
 function getOptimizedUrl(src: string, size: string): string {
+  const pixelSizes: Record<string, number> = { xs: 32, sm: 48, md: 64, lg: 160 };
   const px = pixelSizes[size] ?? 64;
 
   // Match Supabase storage public URLs:
   // .../storage/v1/object/public/avatars/...
   const match = src.match(/^(https?:\/\/[^/]+\/storage\/v1\/)object\/(public\/.*)/);
   if (match) {
-    // Strip any existing query params from the path, keep cache-buster
     const [basePath, query] = match[2].split('?');
     const params = new URLSearchParams(query);
     params.set('width', String(px));
@@ -53,27 +54,48 @@ function getOptimizedUrl(src: string, size: string): string {
   return src;
 }
 
-export const Avatar: React.FC<AvatarProps> = ({ src, alt = '', size = 'md', className = '' }) => {
+const Fallback: React.FC<{ size: 'xs' | 'sm' | 'md' | 'lg'; className: string }> = ({ size, className }) => (
+  <div
+    className={`${sizeClasses[size]} rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center flex-shrink-0 ${className}`}
+  >
+    <User size={iconSizes[size]} className="text-zinc-400" />
+  </div>
+);
+
+/** Inner component keyed on `src` so state auto-resets when the avatar URL changes. */
+const AvatarImage: React.FC<{ src: string; alt: string; size: 'xs' | 'sm' | 'md' | 'lg'; className: string }> = ({
+  src,
+  alt,
+  size,
+  className,
+}) => {
   const [failed, setFailed] = useState(false);
+  const [useOriginal, setUseOriginal] = useState(false);
 
-  const optimizedSrc = useMemo(() => (src ? getOptimizedUrl(src, size) : ''), [src, size]);
+  const optimizedSrc = useMemo(() => getOptimizedUrl(src, size), [src, size]);
+  const plainSrc = useMemo(() => getPlainUrl(src), [src]);
 
-  if (failed || !src) {
-    return (
-      <div
-        className={`${sizeClasses[size]} rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center flex-shrink-0 ${className}`}
-      >
-        <User size={iconSizes[size]} className="text-zinc-400" />
-      </div>
-    );
-  }
+  const imgSrc = useOriginal ? plainSrc : optimizedSrc;
+
+  if (failed) return <Fallback size={size} className={className} />;
 
   return (
     <img
-      src={optimizedSrc}
+      src={imgSrc}
       alt={alt}
-      onError={() => setFailed(true)}
-      className={`${sizeClasses[size]} rounded-full object-cover border border-zinc-200 dark:border-zinc-700 grayscale ${className}`}
+      onError={() => {
+        if (!useOriginal) {
+          setUseOriginal(true);
+        } else {
+          setFailed(true);
+        }
+      }}
+      className={`${sizeClasses[size]} rounded-full object-cover border border-zinc-200 dark:border-zinc-700 ${className}`}
     />
   );
+};
+
+export const Avatar: React.FC<AvatarProps> = ({ src, alt = '', size = 'md', className = '' }) => {
+  if (!src) return <Fallback size={size} className={className} />;
+  return <AvatarImage key={src} src={src} alt={alt} size={size} className={className} />;
 };

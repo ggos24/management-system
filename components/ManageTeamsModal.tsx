@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Eye, EyeOff, Edit2, Archive, Trash2, Shield } from 'lucide-react';
 import { Modal } from './Modal';
 import { IconComponent, ICONS } from './IconComponent';
+import { Button, Input, Label, Badge, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
@@ -67,7 +68,7 @@ export const ManageTeamsModal: React.FC = () => {
     <Modal isOpen={isManageTeamsModalOpen} onClose={() => setIsManageTeamsModalOpen(false)} title="Manage Workspaces">
       <div className="space-y-6 min-h-[400px] flex flex-col">
         <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-4">
-          <h4 className="text-xs font-semibold text-zinc-500 uppercase">Create New Workspace</h4>
+          <Label variant="section">Create New Workspace</Label>
           <div className="flex gap-2">
             <div className="relative">
               <button
@@ -93,26 +94,23 @@ export const ManageTeamsModal: React.FC = () => {
                 </div>
               )}
             </div>
-            <input
+            <Input
               type="text"
               placeholder="Workspace Name (e.g. Design Team)"
               value={newTeamName}
               onChange={(e) => setNewTeamName(e.target.value)}
-              className="flex-1 px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400"
+              className="flex-1"
             />
-            <button
-              onClick={handleAddTeam}
-              className="bg-black dark:bg-white text-white dark:text-black px-4 py-2 rounded-lg text-sm font-semibold hover:opacity-90 transition-opacity"
-            >
+            <Button onClick={handleAddTeam} className="px-4">
               Create
-            </button>
+            </Button>
           </div>
         </div>
 
-        <div className="h-px bg-zinc-100 dark:bg-zinc-800 w-full"></div>
+        <Divider />
 
         <div className="space-y-2 flex-1 overflow-hidden flex flex-col">
-          <h4 className="text-xs font-semibold text-zinc-500 uppercase">Existing Workspaces</h4>
+          <Label variant="section">Existing Workspaces</Label>
           <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar">
             {teams.map((team) => (
               <div
@@ -144,9 +142,9 @@ export const ManageTeamsModal: React.FC = () => {
                       <p className="text-sm font-semibold">
                         {team.name}{' '}
                         {team.adminOnly && (
-                          <span className="text-[10px] font-medium text-purple-600 dark:text-purple-400 uppercase ml-2 bg-purple-100 dark:bg-purple-900/30 px-1.5 py-0.5 rounded">
+                          <Badge color="purple" className="ml-2">
                             Admin
-                          </span>
+                          </Badge>
                         )}
                         {team.archived && (
                           <span className="text-[10px] font-normal text-zinc-400 uppercase ml-2">(Archived)</span>
@@ -209,18 +207,19 @@ export const ManageTeamsModal: React.FC = () => {
               confirm.
             </p>
             <div className="flex gap-2 mt-2">
-              <input
+              <Input
                 value={deleteConfirmationInput}
                 onChange={(e) => setDeleteConfirmationInput(e.target.value)}
-                className="flex-1 p-2 bg-zinc-50 dark:bg-zinc-900 border border-red-300 dark:border-red-800 rounded-lg text-sm outline-none focus:ring-1 focus:ring-red-400"
+                className="flex-1 border-red-300 dark:border-red-800 focus:ring-red-400"
               />
-              <button
+              <Button
+                variant="danger"
                 onClick={confirmDeleteTeam}
                 disabled={deleteConfirmationInput !== '/iwanttodelete'}
-                className="bg-red-600 text-white px-4 py-2 rounded-lg text-sm font-semibold disabled:opacity-50 hover:bg-red-700"
+                className="px-4"
               >
                 Confirm
-              </button>
+              </Button>
               <button onClick={() => setTeamToDelete(null)} className="text-zinc-500 text-sm hover:underline px-2">
                 Cancel
               </button>

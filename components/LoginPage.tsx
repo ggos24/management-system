@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Eye, EyeOff, Check, ArrowRight, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AlertBanner } from './AlertBanner';
+import { Button, Input, FormField, Card } from './ui';
 import type { Session } from '@supabase/supabase-js';
 
 interface LoginPageProps {
@@ -87,7 +88,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
 
   return (
     <div className="min-h-screen w-full bg-zinc-50 dark:bg-black flex items-center justify-center p-4 transition-colors duration-300">
-      <div className="w-full max-w-md bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl p-8 animate-in fade-in zoom-in-95 duration-500">
+      <Card className="w-full max-w-md shadow-xl p-8 animate-in fade-in zoom-in-95 duration-500">
         <div className="text-center mb-8">
           <img src="/logo.svg" alt="Logo" className="w-12 h-12 rounded-lg mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">
@@ -114,31 +115,26 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
 
         <form onSubmit={handleSubmit} className="space-y-4">
           {(currentMode === 'login' || currentMode === 'reset-password') && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium uppercase text-zinc-500 tracking-wider">Email</label>
-              <input
+            <FormField label="Email">
+              <Input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 transition-all text-sm text-zinc-900 dark:text-white"
                 placeholder="name@company.com"
               />
-            </div>
+            </FormField>
           )}
 
           {currentMode !== 'reset-password' && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium uppercase text-zinc-500 tracking-wider">
-                {currentMode === 'set-password' ? 'New Password' : 'Password'}
-              </label>
+            <FormField label={currentMode === 'set-password' ? 'New Password' : 'Password'}>
               <div className="relative">
-                <input
+                <Input
                   type={showPassword ? 'text' : 'password'}
                   required
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-3 pr-10 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 transition-all text-sm text-zinc-900 dark:text-white"
+                  className="pl-3 pr-10"
                   placeholder={currentMode === 'set-password' ? 'Choose a strong password' : '••••••••'}
                   minLength={6}
                 />
@@ -150,24 +146,21 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
               </div>
-            </div>
+            </FormField>
           )}
 
           {currentMode === 'set-password' && (
-            <div className="space-y-1.5">
-              <label className="text-xs font-medium uppercase text-zinc-500 tracking-wider">Confirm Password</label>
-              <div className="relative">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
-                  className="w-full pl-3 pr-10 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 transition-all text-sm text-zinc-900 dark:text-white"
-                  placeholder="Re-enter your password"
-                  minLength={6}
-                />
-              </div>
-            </div>
+            <FormField label="Confirm Password">
+              <Input
+                type={showPassword ? 'text' : 'password'}
+                required
+                value={confirmPassword}
+                onChange={(e) => setConfirmPassword(e.target.value)}
+                className="pl-3 pr-10"
+                placeholder="Re-enter your password"
+                minLength={6}
+              />
+            </FormField>
           )}
 
           {currentMode === 'login' && (
@@ -205,10 +198,10 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
             </div>
           )}
 
-          <button
+          <Button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-black dark:bg-white text-white dark:text-black text-sm font-semibold py-2.5 rounded-lg hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-70"
+            className="w-full py-2.5 flex items-center justify-center gap-2 disabled:opacity-70"
           >
             {isLoading
               ? currentMode === 'set-password'
@@ -222,22 +215,23 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
                   ? 'Send Reset Link'
                   : 'Sign In'}
             {!isLoading && <ArrowRight size={16} />}
-          </button>
+          </Button>
 
           {currentMode === 'reset-password' && (
-            <button
+            <Button
+              variant="ghost"
               type="button"
               onClick={() => {
                 setError(null);
                 setCurrentMode('login');
               }}
-              className="w-full flex items-center justify-center gap-1 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 transition-colors"
+              className="w-full flex items-center justify-center gap-1"
             >
               <ArrowLeft size={14} /> Back to sign in
-            </button>
+            </Button>
           )}
         </form>
-      </div>
+      </Card>
     </div>
   );
 };

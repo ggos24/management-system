@@ -12,6 +12,7 @@ import {
   deleteTelegramLink,
   TelegramLink,
 } from '../lib/database';
+import { Button, Label, Badge } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
@@ -173,9 +174,7 @@ export const SettingsModal: React.FC = () => {
                       />
                     </h3>
                   )}
-                  <span className="bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded text-xs font-semibold uppercase tracking-wider text-zinc-500">
-                    {currentUser.role}
-                  </span>
+                  <Badge className="px-2">{currentUser.role}</Badge>
                 </div>
                 <p className="text-zinc-500 text-sm">{currentUser.jobTitle}</p>
                 <input
@@ -185,18 +184,20 @@ export const SettingsModal: React.FC = () => {
                   className="hidden"
                   onChange={handleFileSelected}
                 />
-                <button
+                <Button
+                  variant="link"
+                  size="sm"
                   onClick={handleChangeAvatar}
                   disabled={uploading}
-                  className="text-sm text-blue-600 hover:underline mt-2 flex items-center gap-1.5 disabled:opacity-50"
+                  className="mt-2 flex items-center gap-1.5"
                 >
                   {uploading && <Loader2 size={14} className="animate-spin" />}
                   {uploading ? 'Uploading...' : 'Change Avatar'}
-                </button>
+                </Button>
               </div>
             </div>
             <div className="space-y-2">
-              <h4 className="text-xs font-semibold text-zinc-500 uppercase">My Absences</h4>
+              <Label variant="section">My Absences</Label>
               <AbsenceStatsCard stats={myAbsenceStats} />
             </div>
           </div>
@@ -308,7 +309,9 @@ export const SettingsModal: React.FC = () => {
       case 'Logs History':
         return (
           <div className="space-y-4 h-[400px] overflow-hidden flex flex-col">
-            <h4 className="text-xs font-semibold text-zinc-500 uppercase flex-shrink-0">Activity Logs</h4>
+            <Label variant="section" className="flex-shrink-0">
+              Activity Logs
+            </Label>
             <div className="flex-1 overflow-y-auto custom-scrollbar border border-zinc-200 dark:border-zinc-700 rounded-lg">
               {logs.map((log) => {
                 const user = members.find((m) => m.id === log.userId);

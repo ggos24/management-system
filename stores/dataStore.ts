@@ -25,7 +25,7 @@ function sendTelegram(recipientIds: string[], message: string, entityData?: Reco
   }
   const teamId = entityData?.teamId;
   const taskId = entityData?.taskId;
-  const link = teamId ? `${window.location.origin}/#${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
+  const link = teamId ? `${window.location.origin}/teams/${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
   supabase.functions.invoke('send-telegram', { body: { recipientIds, message: text, link } }).catch(console.error);
 }
 
@@ -548,11 +548,10 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   updateMemberAvatar: (memberId, newAvatar) => {
+    // Only update local state — the DB write already happened in uploadAvatar()
     const { members } = get();
     const updatedMembers = members.map((m) => (m.id === memberId ? { ...m, avatar: newAvatar } : m));
     set({ members: updatedMembers });
-    const member = updatedMembers.find((m) => m.id === memberId);
-    if (member) db.upsertMember(member).catch(() => toast.error('Failed to update avatar'));
   },
 
   updateMemberName: (memberId, newName) => {

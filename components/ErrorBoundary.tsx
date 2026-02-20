@@ -1,4 +1,5 @@
 import React from 'react';
+import { Button } from './ui';
 
 interface Props {
   children: React.ReactNode;
@@ -33,12 +34,9 @@ export class ErrorBoundary extends React.Component<Props, State> {
             </div>
             <h1 className="text-xl font-semibold text-zinc-900 dark:text-white mb-2">Something went wrong</h1>
             <p className="text-sm text-zinc-500 mb-4">{this.state.error?.message || 'An unexpected error occurred.'}</p>
-            <button
-              onClick={() => window.location.reload()}
-              className="px-4 py-2 bg-black dark:bg-white text-white dark:text-black rounded-lg text-sm font-semibold hover:opacity-90"
-            >
+            <Button onClick={() => window.location.reload()} className="px-4">
               Reload Page
-            </button>
+            </Button>
           </div>
         </div>
       );
