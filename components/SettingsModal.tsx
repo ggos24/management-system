@@ -205,12 +205,12 @@ export const SettingsModal: React.FC = () => {
                     <li>
                       Open{' '}
                       <a
-                        href="https://t.me/u24aborobot"
+                        href="https://t.me/managment_system_bot"
                         target="_blank"
                         rel="noopener noreferrer"
                         className="text-[#0088cc] hover:underline inline-flex items-center gap-0.5"
                       >
-                        @u24aborobot <ExternalLink size={10} />
+                        @managment_system_bot <ExternalLink size={10} />
                       </a>{' '}
                       in Telegram
                     </li>
