@@ -60,6 +60,7 @@ const App: React.FC = () => {
     addProperty,
     updateProperty,
     deleteProperty,
+    reorderTaskInStatus,
   } = useDataStore();
 
   const {
@@ -237,6 +238,8 @@ const App: React.FC = () => {
           onUpdateProperty={(prop) => updateProperty('my-work', prop)}
           onDeleteProperty={(id) => deleteProperty('my-work', id)}
           userRole={currentUser.role}
+          onReorderTask={reorderTaskInStatus}
+          allPlacements={allPlacements}
         />
       );
     } else {
@@ -265,6 +268,8 @@ const App: React.FC = () => {
             onUpdateProperty={(prop) => updateProperty(team.id, prop)}
             onDeleteProperty={(id) => deleteProperty(team.id, id)}
             userRole={currentUser.role}
+            onReorderTask={reorderTaskInStatus}
+            allPlacements={allPlacements}
           />
         );
       }

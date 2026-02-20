@@ -39,6 +39,7 @@ interface DataState {
   deleteTask: (taskId: string) => void;
   addTask: (task: Task) => void;
   saveTask: (taskData: Partial<Task>, teams: Team[]) => void;
+  reorderTaskInStatus: (taskId: string, targetTaskId: string, position: 'before' | 'after') => void;
 
   // Absence/Shift actions
   updateAbsence: (absence: Absence) => void;
@@ -139,6 +140,39 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   addTask: (task) => {
     set({ tasks: [...get().tasks, task] });
+  },
+
+  reorderTaskInStatus: (taskId, targetTaskId, position) => {
+    const { tasks } = get();
+    const task = tasks.find((t) => t.id === taskId);
+    const targetTask = tasks.find((t) => t.id === targetTaskId);
+    if (!task || !targetTask || task.status !== targetTask.status) return;
+
+    // Get tasks in the same status, sorted by current sortOrder
+    const statusTasks = tasks
+      .filter((t) => t.status === task.status && t.teamId === task.teamId)
+      .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+
+    // Remove the dragged task
+    const without = statusTasks.filter((t) => t.id !== taskId);
+    // Find insert index
+    const targetIdx = without.findIndex((t) => t.id === targetTaskId);
+    const insertIdx = position === 'before' ? targetIdx : targetIdx + 1;
+    without.splice(insertIdx, 0, task);
+
+    // Reassign sort orders
+    const updates: { id: string; sort_order: number }[] = [];
+    const updatedTasks = tasks.map((t) => {
+      const idx = without.findIndex((w) => w.id === t.id);
+      if (idx !== -1) {
+        updates.push({ id: t.id, sort_order: idx });
+        return { ...t, sortOrder: idx };
+      }
+      return t;
+    });
+
+    set({ tasks: updatedTasks });
+    db.updateTaskSortOrders(updates).catch(() => set({ tasks }));
   },
 
   saveTask: (taskData, teams) => {

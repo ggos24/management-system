@@ -61,6 +61,7 @@ export interface Task {
   links?: TaskLink[];
   contentInfo?: ContentInfo;
   customFieldValues?: Record<string, any>;
+  sortOrder?: number;
 }
 
 export interface Absence {

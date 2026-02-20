@@ -26,7 +26,6 @@ import {
   ChevronUp,
   Link as LinkIcon,
   MapPin,
-  GripHorizontal,
   Copy,
   Archive,
   FolderArchive,
@@ -114,6 +113,8 @@ interface WorkspaceProps {
   onUpdateProperty?: (property: CustomProperty) => void;
   onDeleteProperty?: (propertyId: string) => void;
   userRole?: UserRole;
+  onReorderTask?: (taskId: string, targetTaskId: string, position: 'before' | 'after') => void;
+  allPlacements: string[];
 }
 
 type ViewMode = 'board' | 'table' | 'calendar';
@@ -140,9 +141,23 @@ const Workspace: React.FC<WorkspaceProps> = ({
   onUpdateProperty,
   onDeleteProperty,
   userRole,
+  onReorderTask,
+  allPlacements = [],
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [showArchivedStatuses, setShowArchivedStatuses] = useState(false);
+
+  // Column sorting state (tasks within groups)
+  const [sortColumn, setSortColumn] = useState<string | null>(null);
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  // Status group sorting state
+  const [statusSort, setStatusSort] = useState<string | null>(null);
+  const [statusSortDirection, setStatusSortDirection] = useState<'asc' | 'desc'>('asc');
+
+  // Drag-over indicator state for within-group reorder
+  const [dragOverTaskId, setDragOverTaskId] = useState<string | null>(null);
+  const [dragPosition, setDragPosition] = useState<'above' | 'below'>('below');
 
   // Property Creation State
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState<string | null>(null);
@@ -201,16 +216,6 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const [filterPerson, setFilterPerson] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
   const [filterPlacements, setFilterPlacements] = useState<string[]>([]);
-  const [allPlacements, setAllPlacements] = useState<string[]>([
-    'YouTube Shorts',
-    'Instagram Reels',
-    'Twitter Post',
-    'Main Page',
-    'Newsletter',
-    'Stories',
-    'Ticker',
-    'Push',
-  ]);
 
   // Filtering Logic
   const filteredTasks = useMemo(() => {
@@ -241,11 +246,29 @@ const Workspace: React.FC<WorkspaceProps> = ({
     });
   }, [tasks, teamFilter, filterPerson, filterPriority, filterPlacements, searchQuery, currentUserId]);
 
-  // Derived columns to display: If searching, only show columns with tasks
+  // Derived columns to display: If searching, only show columns with tasks; then apply status sort
   const displayColumns = useMemo(() => {
-    if (!searchQuery) return columns;
-    return columns.filter((col) => filteredTasks.some((t) => t.status === col.id));
-  }, [columns, filteredTasks, searchQuery]);
+    let cols = searchQuery ? columns.filter((col) => filteredTasks.some((t) => t.status === col.id)) : [...columns];
+
+    if (statusSort) {
+      const dir = statusSortDirection === 'asc' ? 1 : -1;
+      cols = [...cols].sort((a, b) => {
+        switch (statusSort) {
+          case 'name':
+            return dir * a.label.localeCompare(b.label);
+          case 'count': {
+            const countA = filteredTasks.filter((t) => t.status === a.id).length;
+            const countB = filteredTasks.filter((t) => t.status === b.id).length;
+            return dir * (countA - countB);
+          }
+          default:
+            return 0;
+        }
+      });
+    }
+
+    return cols;
+  }, [columns, filteredTasks, searchQuery, statusSort, statusSortDirection]);
 
   const getMembersByIds = (ids: string[]) => members.filter((m) => ids.includes(m.id));
 
@@ -319,10 +342,85 @@ const Workspace: React.FC<WorkspaceProps> = ({
     setActivePropertyMenu(null);
   };
 
+  // Move a status group up or down
+  const handleMoveStatus = (statusId: string, direction: 'up' | 'down') => {
+    const idx = currentStatusList.indexOf(statusId);
+    if (idx === -1) return;
+    const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+    if (targetIdx < 0 || targetIdx >= currentStatusList.length) return;
+
+    const newStatuses = [...currentStatusList];
+    [newStatuses[idx], newStatuses[targetIdx]] = [newStatuses[targetIdx], newStatuses[idx]];
+    updateParentStatuses(newStatuses);
+  };
+
+  // Status group sort handler
+  const handleStatusSort = (mode: string) => {
+    if (statusSort === mode) {
+      if (statusSortDirection === 'asc') {
+        setStatusSortDirection('desc');
+      } else {
+        setStatusSort(null);
+        setStatusSortDirection('asc');
+      }
+    } else {
+      setStatusSort(mode);
+      setStatusSortDirection('asc');
+    }
+  };
+
+  // Column sort handler
+  const handleHeaderSort = (column: string) => {
+    if (sortColumn === column) {
+      if (sortDirection === 'asc') {
+        setSortDirection('desc');
+      } else {
+        // Third click — clear sort
+        setSortColumn(null);
+        setSortDirection('asc');
+      }
+    } else {
+      setSortColumn(column);
+      setSortDirection('asc');
+    }
+  };
+
+  // Sort tasks within a group
+  const sortTasks = (taskList: Task[]): Task[] => {
+    if (!sortColumn) {
+      // Default: sort by sortOrder
+      return [...taskList].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
+    }
+
+    const dir = sortDirection === 'asc' ? 1 : -1;
+    return [...taskList].sort((a, b) => {
+      switch (sortColumn) {
+        case 'title':
+          return dir * a.title.localeCompare(b.title);
+        case 'priority': {
+          const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
+          return dir * ((order[a.priority] ?? 1) - (order[b.priority] ?? 1));
+        }
+        case 'deadline':
+          return dir * (a.dueDate || '').localeCompare(b.dueDate || '');
+        case 'type':
+          return dir * (a.contentInfo?.type || '').localeCompare(b.contentInfo?.type || '');
+        case 'assignee': {
+          const nameA = members.find((m) => a.assigneeIds[0] === m.id)?.name || '';
+          const nameB = members.find((m) => b.assigneeIds[0] === m.id)?.name || '';
+          return dir * nameA.localeCompare(nameB);
+        }
+        default:
+          return 0;
+      }
+    });
+  };
+
   // HTML5 Drag and Drop Handlers for TASKS
-  const handleDragStart = (e: React.DragEvent, taskId: string) => {
+  const handleDragStart = (e: React.DragEvent, taskId: string, sourceStatus: string) => {
     e.stopPropagation();
     e.dataTransfer.setData('taskId', taskId);
+    e.dataTransfer.setData('sourceStatus', sourceStatus);
     e.dataTransfer.effectAllowed = 'move';
   };
 
@@ -331,37 +429,46 @@ const Workspace: React.FC<WorkspaceProps> = ({
     e.dataTransfer.dropEffect = 'move';
   };
 
-  const handleDropStatus = (e: React.DragEvent, newStatus: string) => {
+  const handleTaskDragOver = (e: React.DragEvent, targetTaskId: string) => {
     e.preventDefault();
     e.stopPropagation();
-    const taskId = e.dataTransfer.getData('taskId');
-    const colId = e.dataTransfer.getData('colId');
+    e.dataTransfer.dropEffect = 'move';
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    setDragPosition(e.clientY < midY ? 'above' : 'below');
+    setDragOverTaskId(targetTaskId);
+  };
 
-    if (taskId && !colId) {
-      onUpdateTaskStatus(taskId, newStatus);
+  const handleTaskDragLeave = () => {
+    setDragOverTaskId(null);
+  };
+
+  const handleDropOnTask = (e: React.DragEvent, targetTaskId: string, targetStatus: string) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setDragOverTaskId(null);
+    const taskId = e.dataTransfer.getData('taskId');
+    const sourceStatus = e.dataTransfer.getData('sourceStatus');
+
+    if (!taskId) return;
+
+    if (sourceStatus === targetStatus && taskId !== targetTaskId && onReorderTask && !sortColumn) {
+      // Same status group — reorder
+      onReorderTask(taskId, targetTaskId, dragPosition === 'above' ? 'before' : 'after');
+    } else if (sourceStatus !== targetStatus) {
+      // Different status — change status
+      onUpdateTaskStatus(taskId, targetStatus);
     }
   };
 
-  // HTML5 Drag and Drop Handlers for COLUMNS
-  const handleColumnDragStart = (e: React.DragEvent, colId: string) => {
-    e.dataTransfer.setData('colId', colId);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  const handleColumnDrop = (e: React.DragEvent, targetColId: string) => {
+  const handleDropStatus = (e: React.DragEvent, newStatus: string) => {
     e.preventDefault();
-    const draggedColId = e.dataTransfer.getData('colId');
+    e.stopPropagation();
+    setDragOverTaskId(null);
+    const taskId = e.dataTransfer.getData('taskId');
 
-    if (draggedColId && draggedColId !== targetColId) {
-      const newStatuses = [...currentStatusList];
-      const dragIdx = newStatuses.indexOf(draggedColId);
-      const targetIdx = newStatuses.indexOf(targetColId);
-
-      if (dragIdx > -1 && targetIdx > -1) {
-        const [removed] = newStatuses.splice(dragIdx, 1);
-        newStatuses.splice(targetIdx, 0, removed);
-        updateParentStatuses(newStatuses);
-      }
+    if (taskId) {
+      onUpdateTaskStatus(taskId, newStatus);
     }
   };
 
@@ -534,6 +641,34 @@ const Workspace: React.FC<WorkspaceProps> = ({
               className="w-full"
             />
           </div>
+
+          {/* Status group sort */}
+          {(viewMode === 'table' || viewMode === 'board') && (
+            <>
+              <div className="h-5 w-px bg-zinc-200 dark:bg-zinc-800 mx-1"></div>
+              <div className="flex items-center gap-1">
+                <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider mr-1">
+                  Sort groups:
+                </span>
+                <button
+                  onClick={() => handleStatusSort('name')}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-all ${statusSort === 'name' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900 dark:hover:text-white'}`}
+                >
+                  Name
+                  {statusSort === 'name' &&
+                    (statusSortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                </button>
+                <button
+                  onClick={() => handleStatusSort('count')}
+                  className={`flex items-center gap-1 px-2 py-1 rounded text-xs font-medium transition-all ${statusSort === 'count' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900 dark:hover:text-white'}`}
+                >
+                  Count
+                  {statusSort === 'count' &&
+                    (statusSortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
+                </button>
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -553,21 +688,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
               return (
                 <div
                   key={col.id}
-                  draggable={!searchQuery}
-                  onDragStart={(e) => handleColumnDragStart(e, col.id)}
-                  onDrop={(e) => {
-                    if (e.dataTransfer.types.includes('colid')) {
-                      handleColumnDrop(e, col.id);
-                    } else {
-                      handleDropStatus(e, col.id);
-                    }
-                  }}
+                  onDrop={(e) => handleDropStatus(e, col.id)}
                   onDragOver={handleDragOver}
                   className={`flex flex-col h-full transition-all ${isCollapsed ? 'w-12' : 'min-w-[300px] max-w-[300px]'}`}
                 >
-                  <div
-                    className={`flex items-center justify-between px-1 mb-3 pb-2 group/header ${'cursor-grab active:cursor-grabbing'}`}
-                  >
+                  <div className="flex items-center justify-between px-1 mb-3 pb-2 group/header">
                     {isCollapsed ? (
                       <div
                         className="flex flex-col items-center gap-4 h-full py-4 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
@@ -597,12 +722,32 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
                             />
                           ) : (
-                            <div className="flex items-center gap-2 cursor-pointer">
-                              {/* Added Drag Icon for Board View */}
-                              <GripHorizontal
-                                className="text-zinc-300 hover:text-zinc-500 flex-shrink-0 cursor-grab active:cursor-grabbing"
-                                size={14}
-                              />
+                            <div className="flex items-center gap-2">
+                              {/* Arrow reorder for Board View */}
+                              {!statusSort && (
+                                <div className="flex items-center opacity-0 group-hover/header:opacity-100 transition-opacity">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMoveStatus(col.id, 'up');
+                                    }}
+                                    className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                                    disabled={currentStatusList.indexOf(col.id) === 0}
+                                  >
+                                    <ChevronLeft size={14} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMoveStatus(col.id, 'down');
+                                    }}
+                                    className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 disabled:opacity-30 disabled:cursor-not-allowed"
+                                    disabled={currentStatusList.indexOf(col.id) === currentStatusList.length - 1}
+                                  >
+                                    <ChevronRight size={14} />
+                                  </button>
+                                </div>
+                              )}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -675,83 +820,81 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       className={`flex-1 flex flex-col min-h-0 rounded-lg p-1 ${isArchived ? 'bg-yellow-50/30 dark:bg-yellow-900/10 border border-dashed border-yellow-200 dark:border-yellow-900/30' : 'bg-zinc-50/50 dark:bg-zinc-900/30'}`}
                     >
                       <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                        {filteredTasks
-                          .filter((t) => t.status === col.id)
-                          .map((task) => {
-                            const assignees = getMembersByIds(task.assigneeIds);
-                            return (
-                              <div
-                                key={task.id}
-                                onClick={() => onTaskClick(task)}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, task.id)}
-                                className="bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group cursor-grab active:cursor-grabbing relative"
-                              >
-                                <div className="flex justify-between items-start mb-2">
-                                  <div className="flex gap-1 flex-wrap">
-                                    {task.contentInfo?.type && (
-                                      <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
-                                        {task.contentInfo.type}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
-                                    <GripVertical size={14} />
-                                  </div>
-                                </div>
-                                <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug">
-                                  {task.title}
-                                </h3>
-
-                                <div className="flex flex-wrap gap-1 mb-3">
-                                  {task.placements.map((placement) => (
-                                    <span
-                                      key={placement}
-                                      className="text-[10px] bg-zinc-50 dark:bg-zinc-800 text-zinc-500 border border-zinc-100 dark:border-zinc-700 px-1 rounded-sm"
-                                    >
-                                      #{placement}
+                        {sortTasks(filteredTasks.filter((t) => t.status === col.id)).map((task) => {
+                          const assignees = getMembersByIds(task.assigneeIds);
+                          return (
+                            <div
+                              key={task.id}
+                              onClick={() => onTaskClick(task)}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, task.id, col.id)}
+                              className="bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group cursor-grab active:cursor-grabbing relative"
+                            >
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex gap-1 flex-wrap">
+                                  {task.contentInfo?.type && (
+                                    <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-500">
+                                      {task.contentInfo.type}
                                     </span>
-                                  ))}
+                                  )}
                                 </div>
-
-                                <div className="flex items-center justify-between pt-2">
-                                  <div className="flex items-center gap-1.5 text-[10px] text-zinc-400">
-                                    <CalendarIcon size={12} />
-                                    <span>
-                                      {new Date(task.dueDate).toLocaleDateString('en-US', {
-                                        month: 'short',
-                                        day: 'numeric',
-                                      })}
-                                    </span>
-                                  </div>
-                                  <div className="flex -space-x-1.5">
-                                    {assignees.length > 0 ? (
-                                      assignees
-                                        .slice(0, 3)
-                                        .map((a) => (
-                                          <Avatar
-                                            key={a.id}
-                                            src={a.avatar}
-                                            alt={a.name}
-                                            size="sm"
-                                            className="!w-5 !h-5 !border-white dark:!border-zinc-900"
-                                          />
-                                        ))
-                                    ) : (
-                                      <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
-                                        <User size={10} />
-                                      </div>
-                                    )}
-                                    {assignees.length > 3 && (
-                                      <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[8px] border border-white dark:border-zinc-900">
-                                        +{assignees.length - 3}
-                                      </div>
-                                    )}
-                                  </div>
+                                <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
+                                  <GripVertical size={14} />
                                 </div>
                               </div>
-                            );
-                          })}
+                              <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug">
+                                {task.title}
+                              </h3>
+
+                              <div className="flex flex-wrap gap-1 mb-3">
+                                {task.placements.map((placement) => (
+                                  <span
+                                    key={placement}
+                                    className="text-[10px] bg-zinc-50 dark:bg-zinc-800 text-zinc-500 border border-zinc-100 dark:border-zinc-700 px-1 rounded-sm"
+                                  >
+                                    #{placement}
+                                  </span>
+                                ))}
+                              </div>
+
+                              <div className="flex items-center justify-between pt-2">
+                                <div className="flex items-center gap-1.5 text-[10px] text-zinc-400">
+                                  <CalendarIcon size={12} />
+                                  <span>
+                                    {new Date(task.dueDate).toLocaleDateString('en-US', {
+                                      month: 'short',
+                                      day: 'numeric',
+                                    })}
+                                  </span>
+                                </div>
+                                <div className="flex -space-x-1.5">
+                                  {assignees.length > 0 ? (
+                                    assignees
+                                      .slice(0, 3)
+                                      .map((a) => (
+                                        <Avatar
+                                          key={a.id}
+                                          src={a.avatar}
+                                          alt={a.name}
+                                          size="sm"
+                                          className="!w-5 !h-5 !border-white dark:!border-zinc-900"
+                                        />
+                                      ))
+                                  ) : (
+                                    <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
+                                      <User size={10} />
+                                    </div>
+                                  )}
+                                  {assignees.length > 3 && (
+                                    <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[8px] border border-white dark:border-zinc-900">
+                                      +{assignees.length - 3}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   )}
@@ -783,21 +926,28 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 <div
                   key={col.id}
                   className={`space-y-2 group/section relative ${isArchived ? 'opacity-70' : ''}`}
-                  draggable={!searchQuery}
-                  onDragStart={(e) => handleColumnDragStart(e, col.id)}
-                  onDrop={(e) => {
-                    if (e.dataTransfer.types.includes('colid')) {
-                      handleColumnDrop(e, col.id);
-                    } else {
-                      handleDropStatus(e, col.id);
-                    }
-                  }}
+                  onDrop={(e) => handleDropStatus(e, col.id)}
                   onDragOver={handleDragOver}
                 >
-                  <div className="flex items-center gap-2 sticky top-0 bg-white dark:bg-black z-10 py-2 group/header cursor-grab active:cursor-grabbing">
-                    <div className="text-zinc-300 opacity-0 group-hover/header:opacity-100 transition-opacity">
-                      <GripVertical size={14} />
-                    </div>
+                  <div className="flex items-center gap-2 sticky top-0 bg-white dark:bg-black z-10 py-2 group/header">
+                    {!statusSort && (
+                      <div className="flex flex-col opacity-0 group-hover/header:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => handleMoveStatus(col.id, 'up')}
+                          className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 leading-none disabled:opacity-30 disabled:cursor-not-allowed"
+                          disabled={currentStatusList.indexOf(col.id) === 0}
+                        >
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleMoveStatus(col.id, 'down')}
+                          className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 leading-none disabled:opacity-30 disabled:cursor-not-allowed"
+                          disabled={currentStatusList.indexOf(col.id) === currentStatusList.length - 1}
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      </div>
+                    )}
                     <button
                       onClick={() => toggleSection(col.id)}
                       className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 transition-colors"
@@ -870,11 +1020,31 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         <table className="w-full text-left text-sm border-collapse min-w-[800px] table-fixed">
                           <thead className="bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
                             <tr>
-                              <th className="p-3 font-medium text-zinc-400 text-xs w-[25%]">Title</th>
-                              <th className="p-3 font-medium text-zinc-400 text-xs w-32">Type</th>
-                              <th className="p-3 font-medium text-zinc-400 text-xs w-32">Assignee</th>
-                              <th className="p-3 font-medium text-zinc-400 text-xs w-24">Priority</th>
-                              <th className="p-3 font-medium text-zinc-400 text-xs w-24">Deadline</th>
+                              {[
+                                { key: 'title', label: 'Title', className: 'w-[25%]' },
+                                { key: 'type', label: 'Type', className: 'w-32' },
+                                { key: 'assignee', label: 'Assignee', className: 'w-32' },
+                                { key: 'priority', label: 'Priority', className: 'w-24' },
+                                { key: 'deadline', label: 'Deadline', className: 'w-24' },
+                              ].map((col) => (
+                                <th
+                                  key={col.key}
+                                  className={`p-3 font-medium text-zinc-400 text-xs ${col.className} cursor-pointer select-none hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors`}
+                                  onClick={() => handleHeaderSort(col.key)}
+                                >
+                                  <span className="inline-flex items-center gap-1">
+                                    <span className={sortColumn === col.key ? 'text-zinc-900 dark:text-white' : ''}>
+                                      {col.label}
+                                    </span>
+                                    {sortColumn === col.key &&
+                                      (sortDirection === 'asc' ? (
+                                        <ChevronUp size={12} className="text-zinc-900 dark:text-white" />
+                                      ) : (
+                                        <ChevronDown size={12} className="text-zinc-900 dark:text-white" />
+                                      ))}
+                                  </span>
+                                </th>
+                              ))}
                               {customProperties.map((prop) => (
                                 <th
                                   key={prop.id}
@@ -926,21 +1096,37 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           </thead>
                           <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900/40">
                             {colTasks.length > 0 ? (
-                              colTasks.map((task) => {
+                              sortTasks(colTasks).map((task) => {
+                                const isDragOver = dragOverTaskId === task.id;
                                 return (
                                   <tr
                                     key={task.id}
-                                    draggable
-                                    onDragStart={(e) => handleDragStart(e, task.id)}
-                                    className="hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group cursor-grab active:cursor-grabbing"
+                                    draggable={!sortColumn}
+                                    onDragStart={(e) => handleDragStart(e, task.id, col.id)}
+                                    onDragOver={(e) => !sortColumn && handleTaskDragOver(e, task.id)}
+                                    onDragLeave={handleTaskDragLeave}
+                                    onDrop={(e) => handleDropOnTask(e, task.id, col.id)}
+                                    className={`hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group ${!sortColumn ? 'cursor-grab active:cursor-grabbing' : ''} relative`}
+                                    style={
+                                      isDragOver && !sortColumn
+                                        ? {
+                                            borderTop:
+                                              dragPosition === 'above' ? '2px solid rgb(59 130 246)' : undefined,
+                                            borderBottom:
+                                              dragPosition === 'below' ? '2px solid rgb(59 130 246)' : undefined,
+                                          }
+                                        : undefined
+                                    }
                                     onClick={() => onTaskClick(task)}
                                   >
                                     {/* Title — read-only, opens modal */}
                                     <td className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 flex items-center gap-2 truncate">
-                                      <GripVertical
-                                        size={12}
-                                        className="text-zinc-300 opacity-0 group-hover:opacity-100 flex-shrink-0"
-                                      />
+                                      {!sortColumn && (
+                                        <GripVertical
+                                          size={12}
+                                          className="text-zinc-300 opacity-0 group-hover:opacity-100 flex-shrink-0"
+                                        />
+                                      )}
                                       <span className="truncate">{task.title}</span>
                                     </td>
                                     {/* Type — read-only */}
@@ -1280,7 +1466,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               onTaskClick(t);
                             }}
                             draggable
-                            onDragStart={(e) => handleDragStart(e, t.id)}
+                            onDragStart={(e) => handleDragStart(e, t.id, t.status)}
                             className="group cursor-grab active:cursor-grabbing"
                           >
                             <div

@@ -48,6 +48,7 @@ function mapTask(row: any, assigneeIds: string[], placements: string[]): Task {
       files: row.files || [],
     },
     customFieldValues: row.custom_field_values || {},
+    sortOrder: row.sort_order ?? 0,
   };
 }
 
@@ -97,8 +98,8 @@ export async function fetchTeams(): Promise<Team[]> {
 }
 
 export async function fetchTasks(): Promise<Task[]> {
-  // Fetch tasks
-  const { data: taskRows, error: taskError } = await supabase.from('tasks').select('*');
+  // Fetch tasks ordered by sort_order
+  const { data: taskRows, error: taskError } = await supabase.from('tasks').select('*').order('sort_order');
   if (taskError) throw taskError;
 
   // Fetch all task_assignees
@@ -242,6 +243,7 @@ export async function upsertTask(task: Task) {
     links: task.links || [],
     files: task.contentInfo?.files || [],
     custom_field_values: task.customFieldValues || {},
+    sort_order: task.sortOrder ?? 0,
   };
 
   const { data, error } = await supabase.from('tasks').upsert(row, { onConflict: 'id' }).select().single();
@@ -252,6 +254,11 @@ export async function upsertTask(task: Task) {
 export async function deleteTask(taskId: string) {
   const { error } = await supabase.from('tasks').delete().eq('id', taskId);
   return { error };
+}
+
+export async function updateTaskSortOrders(updates: { id: string; sort_order: number }[]) {
+  const promises = updates.map((u) => supabase.from('tasks').update({ sort_order: u.sort_order }).eq('id', u.id));
+  await Promise.all(promises);
 }
 
 export async function updateTaskStatus(taskId: string, newStatus: string) {
