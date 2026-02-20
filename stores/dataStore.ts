@@ -15,8 +15,15 @@ function getCurrentUserName(): string {
   return useAuthStore.getState().currentUser?.name ?? 'Someone';
 }
 
-function sendTelegram(recipientIds: string[], message: string) {
-  supabase.functions.invoke('send-telegram', { body: { recipientIds, message } }).catch(console.error);
+function sendTelegram(recipientIds: string[], message: string, link?: string) {
+  const text = link ? `${message}\n\n${link}` : message;
+  supabase.functions.invoke('send-telegram', { body: { recipientIds, message: text } }).catch(console.error);
+}
+
+function buildAppLink(entityData?: Record<string, any>): string | undefined {
+  const teamId = entityData?.teamId;
+  if (!teamId) return undefined;
+  return `${window.location.origin}/#${teamId}`;
 }
 
 function notifyMany(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
@@ -27,14 +34,14 @@ function notifyMany(recipientIds: string[], type: NotificationType, message: str
   db.insertNotifications(recipients.map((recipientId) => ({ recipientId, actorId, type, message, entityData }))).catch(
     console.error,
   );
-  sendTelegram(recipients, message);
+  sendTelegram(recipients, message, buildAppLink(entityData));
 }
 
 function notify(recipientId: string, type: NotificationType, message: string, entityData?: Record<string, any>) {
   const actorId = getCurrentUserId();
   if (recipientId === actorId) return; // Don't notify yourself
   db.insertNotification({ recipientId, actorId, type, message, entityData }).catch(console.error);
-  sendTelegram([recipientId], message);
+  sendTelegram([recipientId], message, buildAppLink(entityData));
 }
 
 interface DataState {
