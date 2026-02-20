@@ -607,3 +607,54 @@ export async function markAllNotificationsRead() {
   const { error } = await supabase.from('notifications').update({ read: true }).eq('read', false);
   return { error };
 }
+
+// === Telegram link functions ===
+
+export interface TelegramLink {
+  id: string;
+  profileId: string;
+  chatId: number | null;
+  linkCode: string | null;
+  linkedAt: string | null;
+  createdAt: string;
+}
+
+function mapTelegramLink(row: any): TelegramLink {
+  return {
+    id: row.id,
+    profileId: row.profile_id,
+    chatId: row.chat_id,
+    linkCode: row.link_code,
+    linkedAt: row.linked_at,
+    createdAt: row.created_at,
+  };
+}
+
+export async function fetchTelegramLink(profileId: string): Promise<TelegramLink | null> {
+  const { data, error } = await supabase.from('telegram_links').select('*').eq('profile_id', profileId).maybeSingle();
+  if (error) throw error;
+  return data ? mapTelegramLink(data) : null;
+}
+
+export async function upsertTelegramLinkCode(profileId: string, code: string): Promise<TelegramLink> {
+  const { data, error } = await supabase
+    .from('telegram_links')
+    .upsert(
+      {
+        profile_id: profileId,
+        link_code: code,
+        chat_id: null,
+        linked_at: null,
+      },
+      { onConflict: 'profile_id' },
+    )
+    .select()
+    .single();
+  if (error) throw error;
+  return mapTelegramLink(data);
+}
+
+export async function deleteTelegramLink(profileId: string) {
+  const { error } = await supabase.from('telegram_links').delete().eq('profile_id', profileId);
+  return { error };
+}

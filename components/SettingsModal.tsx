@@ -1,11 +1,17 @@
-import React, { useRef, useState } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Send, Loader2, CheckCircle2, Unlink, Copy, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
 import { AbsenceStatsCard } from './AbsenceStatsCard';
 import { calculateAbsenceStats } from '../lib/utils';
-import { uploadAvatar } from '../lib/database';
+import {
+  uploadAvatar,
+  fetchTelegramLink,
+  upsertTelegramLinkCode,
+  deleteTelegramLink,
+  TelegramLink,
+} from '../lib/database';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
@@ -19,6 +25,62 @@ export const SettingsModal: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+
+  // Telegram linking state
+  const [telegramLink, setTelegramLink] = useState<TelegramLink | null>(null);
+  const [telegramLoading, setTelegramLoading] = useState(false);
+  const [telegramCode, setTelegramCode] = useState<string | null>(null);
+
+  const loadTelegramLink = useCallback(async () => {
+    if (!currentUser) return;
+    try {
+      const link = await fetchTelegramLink(currentUser.id);
+      setTelegramLink(link);
+      setTelegramCode(link?.linkCode || null);
+    } catch {
+      // Non-critical
+    }
+  }, [currentUser]);
+
+  useEffect(() => {
+    if (isSettingsModalOpen && activeSettingsTab === 'Notifications') {
+      loadTelegramLink();
+    }
+  }, [isSettingsModalOpen, activeSettingsTab, loadTelegramLink]);
+
+  const generateTelegramCode = async () => {
+    if (!currentUser) return;
+    setTelegramLoading(true);
+    try {
+      const code = Array.from(crypto.getRandomValues(new Uint8Array(3)))
+        .map((b) => b.toString(36).toUpperCase().padStart(2, '0'))
+        .join('')
+        .slice(0, 6);
+      const link = await upsertTelegramLinkCode(currentUser.id, code);
+      setTelegramLink(link);
+      setTelegramCode(code);
+      toast.success('Code generated');
+    } catch {
+      toast.error('Failed to generate code');
+    } finally {
+      setTelegramLoading(false);
+    }
+  };
+
+  const unlinkTelegram = async () => {
+    if (!currentUser) return;
+    setTelegramLoading(true);
+    try {
+      await deleteTelegramLink(currentUser.id);
+      setTelegramLink(null);
+      setTelegramCode(null);
+      toast.success('Telegram unlinked');
+    } catch {
+      toast.error('Failed to unlink');
+    } finally {
+      setTelegramLoading(false);
+    }
+  };
 
   const handleChangeAvatar = () => {
     fileInputRef.current?.click();
@@ -93,19 +155,97 @@ export const SettingsModal: React.FC = () => {
           </div>
         );
       }
-      case 'Notifications':
+      case 'Notifications': {
+        const isLinked = telegramLink?.chatId != null;
         return (
           <div className="space-y-4">
-            <div className="p-3 border border-zinc-200 dark:border-zinc-700 rounded flex justify-between items-center">
-              <div className="flex items-center gap-2">
-                <Send size={16} className="text-[#0088cc]" /> <span className="text-sm font-medium">Telegram</span>
+            <div className="p-4 border border-zinc-200 dark:border-zinc-700 rounded-lg space-y-3">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Send size={16} className="text-[#0088cc]" />
+                  <span className="text-sm font-medium">Telegram</span>
+                </div>
+                {isLinked && (
+                  <span className="flex items-center gap-1 text-xs font-semibold text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-1 rounded-full">
+                    <CheckCircle2 size={12} /> Connected
+                  </span>
+                )}
               </div>
-              <span className="text-[10px] font-bold uppercase tracking-wider bg-zinc-100 dark:bg-zinc-800 text-zinc-500 px-2 py-1 rounded-full">
-                Coming Soon
-              </span>
+
+              {isLinked ? (
+                <div className="flex items-center justify-between pt-1">
+                  <p className="text-xs text-zinc-500">Notifications are being sent to your Telegram.</p>
+                  <button
+                    onClick={unlinkTelegram}
+                    disabled={telegramLoading}
+                    className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-600 disabled:opacity-50"
+                  >
+                    {telegramLoading ? <Loader2 size={12} className="animate-spin" /> : <Unlink size={12} />}
+                    Unlink
+                  </button>
+                </div>
+              ) : telegramCode ? (
+                <div className="space-y-3 pt-1">
+                  <div className="flex items-center gap-2">
+                    <code className="flex-1 text-center text-lg font-mono font-bold tracking-widest bg-zinc-100 dark:bg-zinc-800 py-2 rounded">
+                      {telegramCode}
+                    </code>
+                    <button
+                      onClick={() => {
+                        navigator.clipboard.writeText(telegramCode);
+                        toast.success('Code copied');
+                      }}
+                      className="p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                      title="Copy code"
+                    >
+                      <Copy size={16} />
+                    </button>
+                  </div>
+                  <ol className="text-xs text-zinc-500 space-y-1 list-decimal list-inside">
+                    <li>
+                      Open{' '}
+                      <a
+                        href="https://t.me/u24aborobot"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-[#0088cc] hover:underline inline-flex items-center gap-0.5"
+                      >
+                        @u24aborobot <ExternalLink size={10} />
+                      </a>{' '}
+                      in Telegram
+                    </li>
+                    <li>
+                      Send: <code className="bg-zinc-100 dark:bg-zinc-800 px-1 rounded">/start {telegramCode}</code>
+                    </li>
+                    <li>You&apos;ll see a confirmation message</li>
+                  </ol>
+                  <button
+                    onClick={generateTelegramCode}
+                    disabled={telegramLoading}
+                    className="text-xs text-zinc-400 hover:text-zinc-600 disabled:opacity-50"
+                  >
+                    Regenerate code
+                  </button>
+                </div>
+              ) : (
+                <div className="pt-1">
+                  <p className="text-xs text-zinc-500 mb-3">
+                    Link your Telegram account to receive notifications as messages.
+                  </p>
+                  <button
+                    onClick={generateTelegramCode}
+                    disabled={telegramLoading}
+                    className="w-full py-2 bg-[#0088cc] hover:bg-[#0077b5] text-white text-sm font-medium rounded transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+                  >
+                    {telegramLoading && <Loader2 size={14} className="animate-spin" />}
+                    Generate Code
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         );
+      }
       case 'Team Members':
         return (
           <div className="space-y-2">

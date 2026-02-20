@@ -165,15 +165,38 @@ Deno.serve(async (req) => {
         ? (await adminClient.from('profiles').select('name').eq('id', callerFullProfile.id).single()).data?.name ||
           'An admin'
         : 'An admin';
+      const notifMessage = `${callerName} invited ${name} to the workspace`;
       await adminClient.from('notifications').insert(
         existingProfiles.map((p: { id: string }) => ({
           recipient_id: p.id,
           actor_id: callerFullProfile?.id || null,
           type: 'member_invited',
-          message: `${callerName} invited ${name} to the workspace`,
+          message: notifMessage,
           entity_data: { memberId: profileId },
         })),
       );
+
+      // Send Telegram notifications to linked members
+      const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN');
+      if (botToken) {
+        const recipientIds = existingProfiles.map((p: { id: string }) => p.id);
+        const { data: telegramLinks } = await adminClient
+          .from('telegram_links')
+          .select('chat_id')
+          .in('profile_id', recipientIds)
+          .not('chat_id', 'is', null);
+        if (telegramLinks && telegramLinks.length > 0) {
+          await Promise.allSettled(
+            telegramLinks.map((link: { chat_id: number }) =>
+              fetch(`https://api.telegram.org/bot${botToken}/sendMessage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ chat_id: link.chat_id, text: notifMessage }),
+              }),
+            ),
+          );
+        }
+      }
     }
 
     // Return the created profile in frontend shape

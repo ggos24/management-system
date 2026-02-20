@@ -3,6 +3,7 @@ import { toast } from 'sonner';
 import { Task, Team, Member, Absence, Shift, LogEntry, CustomProperty, NotificationType } from '../types';
 import * as db from '../lib/database';
 import { useAuthStore } from './authStore';
+import { supabase } from '../lib/supabase';
 
 // === Notification helpers (fire-and-forget, non-critical) ===
 
@@ -14,6 +15,10 @@ function getCurrentUserName(): string {
   return useAuthStore.getState().currentUser?.name ?? 'Someone';
 }
 
+function sendTelegram(recipientIds: string[], message: string) {
+  supabase.functions.invoke('send-telegram', { body: { recipientIds, message } }).catch(console.error);
+}
+
 function notifyMany(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
   const actorId = getCurrentUserId();
   // Filter out self-notifications
@@ -22,12 +27,14 @@ function notifyMany(recipientIds: string[], type: NotificationType, message: str
   db.insertNotifications(recipients.map((recipientId) => ({ recipientId, actorId, type, message, entityData }))).catch(
     console.error,
   );
+  sendTelegram(recipients, message);
 }
 
 function notify(recipientId: string, type: NotificationType, message: string, entityData?: Record<string, any>) {
   const actorId = getCurrentUserId();
   if (recipientId === actorId) return; // Don't notify yourself
   db.insertNotification({ recipientId, actorId, type, message, entityData }).catch(console.error);
+  sendTelegram([recipientId], message);
 }
 
 interface DataState {
