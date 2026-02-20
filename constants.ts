@@ -114,6 +114,61 @@ export function getStatusAccent(status: string): string {
   return STATUS_ACCENTS[status] || ACCENT_FALLBACK[hashString(status) % ACCENT_FALLBACK.length];
 }
 
+// Hex colors for Recharts (which needs hex, not Tailwind classes)
+export const STATUS_HEX_COLORS: Record<string, string> = {
+  // Generic / Video
+  'Pre-Production': '#ea580c', // orange-600
+  Production: '#2563eb', // blue-600
+  'Post-Production': '#9333ea', // purple-600
+  'To Do': '#71717a', // zinc-500
+  'In Progress': '#1d4ed8', // blue-700
+  Done: '#059669', // emerald-600
+
+  // Social Media
+  'Ready to be Taken': '#0284c7', // sky-600
+  'In Writing': '#4f46e5', // indigo-600
+  'In Design': '#db2777', // pink-600
+  'In Approvals': '#d97706', // amber-600
+
+  // Management (Eisenhower)
+  'Urgent Important': '#dc2626', // red-600
+  'Urgent Not Important': '#ea580c', // orange-600
+  'Important Not Urgent': '#2563eb', // blue-600
+  'Not Urgent Not Important': '#71717a', // zinc-500
+
+  // Editorial Specific
+  Dropped: '#a1a1aa', // zinc-400
+  Archive: '#a1a1aa', // zinc-400
+  Stuck: '#ef4444', // red-500
+  Pitch: '#ec4899', // pink-500
+  Approved: '#0d9488', // teal-500
+  'Working on Next Week': '#6366f1', // indigo-500
+  'Working on This Week': '#3b82f6', // blue-500
+  'Working on Today': '#ea580c', // orange-600
+  'Ready for Editing': '#a855f7', // purple-500
+  'Published This Week': '#18181b', // zinc-900
+  'Need to Update (SEO)': '#ca8a04', // yellow-600
+
+  // Legacy
+  Published: '#18181b', // zinc-900
+};
+
+const HEX_FALLBACK_PALETTE = [
+  '#0284c7', // sky-600
+  '#7c3aed', // violet-600
+  '#d97706', // amber-600
+  '#0d9488', // teal-500
+  '#e11d48', // rose-600
+  '#65a30d', // lime-600
+  '#0891b2', // cyan-600
+  '#c026d3', // fuchsia-600
+];
+
+/** Returns a consistent hex color for any status — known or custom */
+export function getStatusHexColor(status: string): string {
+  return STATUS_HEX_COLORS[status] || HEX_FALLBACK_PALETTE[hashString(status) % HEX_FALLBACK_PALETTE.length];
+}
+
 export const PRIORITY_COLORS: Record<string, string> = {
   low: 'text-zinc-500 dark:text-zinc-400',
   medium: 'text-yellow-600 dark:text-yellow-400',
