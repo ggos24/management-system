@@ -15,15 +15,26 @@ function getCurrentUserName(): string {
   return useAuthStore.getState().currentUser?.name ?? 'Someone';
 }
 
-function sendTelegram(recipientIds: string[], message: string, link?: string) {
-  const text = link ? `${message}\n\n${link}` : message;
-  supabase.functions.invoke('send-telegram', { body: { recipientIds, message: text } }).catch(console.error);
+const PRIORITY_EMOJI: Record<string, string> = { high: '🔴', medium: '🟡', low: '🟢' };
+
+function buildTelegramMessage(message: string, entityData?: Record<string, any>): string {
+  let text = message;
+  const priority = entityData?.priority;
+  if (priority) {
+    text += `\nPriority: ${PRIORITY_EMOJI[priority] || ''} ${priority}`;
+  }
+  const teamId = entityData?.teamId;
+  const taskId = entityData?.taskId;
+  if (teamId) {
+    const url = `${window.location.origin}/#${teamId}${taskId ? `?task=${taskId}` : ''}`;
+    text += `\n\n<a href="${url}">Open in app</a>`;
+  }
+  return text;
 }
 
-function buildAppLink(entityData?: Record<string, any>): string | undefined {
-  const teamId = entityData?.teamId;
-  if (!teamId) return undefined;
-  return `${window.location.origin}/#${teamId}`;
+function sendTelegram(recipientIds: string[], message: string, entityData?: Record<string, any>) {
+  const text = buildTelegramMessage(message, entityData);
+  supabase.functions.invoke('send-telegram', { body: { recipientIds, message: text } }).catch(console.error);
 }
 
 function notifyMany(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
@@ -34,14 +45,14 @@ function notifyMany(recipientIds: string[], type: NotificationType, message: str
   db.insertNotifications(recipients.map((recipientId) => ({ recipientId, actorId, type, message, entityData }))).catch(
     console.error,
   );
-  sendTelegram(recipients, message, buildAppLink(entityData));
+  sendTelegram(recipients, message, entityData);
 }
 
 function notify(recipientId: string, type: NotificationType, message: string, entityData?: Record<string, any>) {
   const actorId = getCurrentUserId();
   if (recipientId === actorId) return; // Don't notify yourself
   db.insertNotification({ recipientId, actorId, type, message, entityData }).catch(console.error);
-  sendTelegram([recipientId], message, buildAppLink(entityData));
+  sendTelegram([recipientId], message, entityData);
 }
 
 interface DataState {
@@ -118,6 +129,7 @@ interface DataState {
   // Member actions
   removeMember: (id: string, currentUserId: string) => void;
   updateMemberAvatar: (memberId: string, newAvatar: string) => void;
+  updateMemberName: (memberId: string, newName: string) => void;
 
   // Integration actions
   toggleIntegration: (key: string, currentUserId: string) => void;
@@ -170,7 +182,7 @@ export const useDataStore = create<DataState>((set, get) => ({
         task.assigneeIds,
         'task_status_changed',
         `${actorName} changed "${task.title}" status to ${newStatus}`,
-        { taskId, teamId: task.teamId },
+        { taskId, teamId: task.teamId, priority: task.priority },
       );
     }
   },
@@ -194,6 +206,7 @@ export const useDataStore = create<DataState>((set, get) => ({
         notifyMany(newAssignees, 'task_assigned', `${actorName} assigned you to "${updatedTask.title}"`, {
           taskId: updatedTask.id,
           teamId: updatedTask.teamId,
+          priority: updatedTask.priority,
         });
       }
     }
@@ -548,6 +561,13 @@ export const useDataStore = create<DataState>((set, get) => ({
     set({ members: updatedMembers });
     const member = updatedMembers.find((m) => m.id === memberId);
     if (member) db.upsertMember(member).catch(() => toast.error('Failed to update avatar'));
+  },
+
+  updateMemberName: (memberId, newName) => {
+    const { members } = get();
+    const updatedMembers = members.map((m) => (m.id === memberId ? { ...m, name: newName } : m));
+    set({ members: updatedMembers });
+    db.updateProfileName(memberId, newName).catch(() => toast.error('Failed to update name'));
   },
 
   // Integration actions

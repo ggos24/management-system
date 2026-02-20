@@ -119,17 +119,35 @@ const App: React.FC = () => {
     setCurrentView('dashboard');
   };
 
-  // Sync browser back/forward with view state
+  // Sync browser back/forward with view state + handle ?task= deep links
   useEffect(() => {
-    const onHashChange = () => {
-      const hash = window.location.hash.replace('#', '');
-      if (hash && hash !== currentView) {
-        setCurrentView(hash);
+    const handleHash = () => {
+      const raw = window.location.hash.replace('#', '');
+      const [view, query] = raw.split('?');
+      if (view && view !== currentView) {
+        setCurrentView(view);
+      }
+      if (query) {
+        const params = new URLSearchParams(query);
+        const taskId = params.get('task');
+        if (taskId) {
+          // Wait a tick so the view renders, then open the task modal
+          setTimeout(() => {
+            const task = useDataStore.getState().tasks.find((t) => t.id === taskId);
+            if (task) {
+              setTaskModalData(task);
+              setIsTaskModalOpen(true);
+            }
+            // Clean up the URL to remove ?task=
+            window.location.hash = view;
+          }, 100);
+        }
       }
     };
-    window.addEventListener('hashchange', onHashChange);
-    return () => window.removeEventListener('hashchange', onHashChange);
-  }, [currentView, setCurrentView]);
+    handleHash(); // Handle on mount (e.g. opening a shared link)
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, [currentView, setCurrentView, setTaskModalData, setIsTaskModalOpen]);
 
   // Loading state
   if (isLoading) {
