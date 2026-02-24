@@ -5,7 +5,7 @@ import { useUiStore } from '../stores/uiStore';
 import * as db from '../lib/database';
 
 export function useRealtimeSync() {
-  const { setTasks, setMembers, setAbsences, setShifts } = useDataStore();
+  const { setTasks, setMembers, setAbsences, setShifts, setDeletedTaskCount } = useDataStore();
   const loadNotifications = useUiStore((s) => s.loadNotifications);
 
   useEffect(() => {
@@ -14,6 +14,8 @@ export function useRealtimeSync() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
         // Refetch tasks on any change (insert/update/delete)
         db.fetchTasks().then(setTasks).catch(console.error);
+        // Keep sidebar badge in sync
+        db.fetchDeletedTaskCount().then(setDeletedTaskCount).catch(console.error);
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
         db.fetchMembers().then(setMembers).catch(console.error);
@@ -32,5 +34,5 @@ export function useRealtimeSync() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [setTasks, setMembers, setAbsences, setShifts, loadNotifications]);
+  }, [setTasks, setMembers, setAbsences, setShifts, setDeletedTaskCount, loadNotifications]);
 }

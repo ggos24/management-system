@@ -55,12 +55,15 @@ interface DataState {
   shifts: Shift[];
   logs: LogEntry[];
   teamStatuses: Record<string, string[]>;
+  statusCategories: Record<string, Record<string, string>>;
   teamTypes: Record<string, string[]>;
   teamProperties: Record<string, CustomProperty[]>;
   archivedStatuses: Record<string, string[]>;
   permissions: Record<string, { canEdit: boolean; canDelete: boolean; canCreate: boolean }>;
   allPlacements: string[];
   integrations: Record<string, boolean>;
+  deletedTasks: Task[];
+  deletedTaskCount: number;
 
   // Setters
   setTasks: (tasks: Task[]) => void;
@@ -70,12 +73,15 @@ interface DataState {
   setShifts: (shifts: Shift[]) => void;
   setLogs: (logs: LogEntry[]) => void;
   setTeamStatuses: (statuses: Record<string, string[]>) => void;
+  setStatusCategories: (cats: Record<string, Record<string, string>>) => void;
   setTeamTypes: (types: Record<string, string[]>) => void;
   setTeamProperties: (props: Record<string, CustomProperty[]>) => void;
   setArchivedStatuses: (statuses: Record<string, string[]>) => void;
   setPermissions: (perms: Record<string, { canEdit: boolean; canDelete: boolean; canCreate: boolean }>) => void;
   setAllPlacements: (placements: string[]) => void;
   setIntegrations: (integrations: Record<string, boolean>) => void;
+  setDeletedTasks: (tasks: Task[]) => void;
+  setDeletedTaskCount: (count: number) => void;
 
   // Task actions
   updateTaskStatus: (taskId: string, newStatus: string) => void;
@@ -106,6 +112,7 @@ interface DataState {
   reorderStatuses: (teamId: string, newStatuses: string[]) => void;
   archiveStatus: (teamId: string, status: string) => void;
   duplicateStatus: (teamId: string, status: string, withData: boolean) => void;
+  setStatusCategory: (teamId: string, statusName: string, category: string) => void;
   addType: (teamId: string, type: string) => void;
   deleteType: (teamId: string, type: string) => void;
 
@@ -126,6 +133,15 @@ interface DataState {
   // Integration actions
   toggleIntegration: (key: string, currentUserId: string) => void;
 
+  // Bin actions
+  restoreTask: (taskId: string) => void;
+  permanentlyDeleteTask: (taskId: string) => void;
+  emptyBin: () => void;
+  loadDeletedTasks: () => Promise<void>;
+
+  // Notification helpers
+  notifyMention: (recipientIds: string[], actorName: string, taskTitle: string, taskId: string) => void;
+
   // Load all data
   loadAllData: (authUserId: string) => Promise<Member | null>;
 }
@@ -138,12 +154,15 @@ export const useDataStore = create<DataState>((set, get) => ({
   shifts: [],
   logs: [],
   teamStatuses: {},
+  statusCategories: {},
   teamTypes: {},
   teamProperties: {},
   archivedStatuses: {},
   permissions: {},
   allPlacements: [],
   integrations: {},
+  deletedTasks: [],
+  deletedTaskCount: 0,
 
   // Setters
   setTasks: (tasks) => set({ tasks }),
@@ -153,12 +172,15 @@ export const useDataStore = create<DataState>((set, get) => ({
   setShifts: (shifts) => set({ shifts }),
   setLogs: (logs) => set({ logs }),
   setTeamStatuses: (statuses) => set({ teamStatuses: statuses }),
+  setStatusCategories: (cats: Record<string, Record<string, string>>) => set({ statusCategories: cats }),
   setTeamTypes: (types) => set({ teamTypes: types }),
   setTeamProperties: (props) => set({ teamProperties: props }),
   setArchivedStatuses: (statuses) => set({ archivedStatuses: statuses }),
   setPermissions: (perms) => set({ permissions: perms }),
   setAllPlacements: (placements) => set({ allPlacements: placements }),
   setIntegrations: (integrations) => set({ integrations }),
+  setDeletedTasks: (deletedTasks) => set({ deletedTasks }),
+  setDeletedTaskCount: (deletedTaskCount) => set({ deletedTaskCount }),
 
   // Task actions
   updateTaskStatus: (taskId, newStatus) => {
@@ -206,8 +228,34 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   deleteTask: (taskId) => {
     const prev = get().tasks;
-    set({ tasks: prev.filter((t) => t.id !== taskId) });
-    db.deleteTask(taskId).catch(() => set({ tasks: prev }));
+    const task = prev.find((t) => t.id === taskId);
+    if (!task) return;
+    const userId = getCurrentUserId();
+
+    // Optimistically move to deleted
+    const deletedTask = { ...task, deletedAt: new Date().toISOString(), deletedBy: userId };
+    set({
+      tasks: prev.filter((t) => t.id !== taskId),
+      deletedTasks: [deletedTask, ...get().deletedTasks],
+      deletedTaskCount: get().deletedTaskCount + 1,
+    });
+
+    db.softDeleteTask(taskId, userId!).catch(() => {
+      set({
+        tasks: prev,
+        deletedTasks: get().deletedTasks.filter((t) => t.id !== taskId),
+        deletedTaskCount: get().deletedTaskCount - 1,
+      });
+    });
+
+    toast('Task moved to bin', {
+      action: {
+        label: 'Undo',
+        onClick: () => {
+          get().restoreTask(taskId);
+        },
+      },
+    });
   },
 
   addTask: (task) => {
@@ -259,6 +307,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       status: taskData.status || 'Not Started',
       priority: taskData.priority || 'medium',
       dueDate: taskData.dueDate || new Date().toISOString(),
+      doneDate: taskData.doneDate || null,
       placements: taskData.placements || [],
       assigneeIds: taskData.assigneeIds || [],
       links: taskData.links || [],
@@ -461,6 +510,13 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
   },
 
+  setStatusCategory: (teamId, statusName, category) => {
+    const { statusCategories } = get();
+    const teamCats = { ...(statusCategories[teamId] || {}), [statusName]: category };
+    set({ statusCategories: { ...statusCategories, [teamId]: teamCats } });
+    db.updateStatusCategory(teamId, statusName, category).catch(() => toast.error('Failed to update status category'));
+  },
+
   addType: (teamId, type) => {
     if (!type) return;
     const { teamTypes } = get();
@@ -579,6 +635,65 @@ export const useDataStore = create<DataState>((set, get) => ({
     db.insertLog(logEntry).catch(() => {});
   },
 
+  // Bin actions
+  restoreTask: (taskId) => {
+    const { deletedTasks, tasks } = get();
+    const task = deletedTasks.find((t) => t.id === taskId);
+    if (!task) return;
+
+    const restored = { ...task, deletedAt: null, deletedBy: null };
+    set({
+      deletedTasks: deletedTasks.filter((t) => t.id !== taskId),
+      tasks: [...tasks, restored],
+      deletedTaskCount: Math.max(0, get().deletedTaskCount - 1),
+    });
+
+    db.restoreTask(taskId).catch(() => {
+      set({
+        deletedTasks: [task, ...get().deletedTasks.filter((t) => t.id !== taskId)],
+        tasks: get().tasks.filter((t) => t.id !== taskId),
+        deletedTaskCount: get().deletedTaskCount + 1,
+      });
+      toast.error('Failed to restore task');
+    });
+  },
+
+  permanentlyDeleteTask: (taskId) => {
+    const prev = get().deletedTasks;
+    set({
+      deletedTasks: prev.filter((t) => t.id !== taskId),
+      deletedTaskCount: Math.max(0, get().deletedTaskCount - 1),
+    });
+    db.permanentlyDeleteTask(taskId).catch(() => {
+      set({ deletedTasks: prev, deletedTaskCount: get().deletedTaskCount + 1 });
+      toast.error('Failed to permanently delete task');
+    });
+  },
+
+  emptyBin: () => {
+    const prev = get().deletedTasks;
+    const ids = prev.map((t) => t.id);
+    set({ deletedTasks: [], deletedTaskCount: 0 });
+    Promise.all(ids.map((id) => db.permanentlyDeleteTask(id))).catch(() => {
+      set({ deletedTasks: prev, deletedTaskCount: prev.length });
+      toast.error('Failed to empty bin');
+    });
+  },
+
+  loadDeletedTasks: async () => {
+    try {
+      const tasks = await db.fetchDeletedTasks();
+      set({ deletedTasks: tasks, deletedTaskCount: tasks.length });
+    } catch {
+      toast.error('Failed to load deleted tasks');
+    }
+  },
+
+  notifyMention: (recipientIds, actorName, taskTitle, taskId) => {
+    const msg = `${actorName} mentioned you in a comment on "${taskTitle}"`;
+    notifyMany(recipientIds, 'comment_mention', msg, { taskId });
+  },
+
   // Load all data with resilient fetching
   loadAllData: async (authUserId) => {
     // Profile is critical - must succeed
@@ -599,6 +714,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchCustomProperties(),
       db.fetchPlacements(),
       db.fetchIntegrations(),
+      db.fetchStatusCategories(),
+      db.fetchDeletedTaskCount(),
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
@@ -617,7 +734,12 @@ export const useDataStore = create<DataState>((set, get) => ({
       teamProperties: getValue(results[9], {}),
       allPlacements: getValue(results[10], []),
       integrations: getValue(results[11], {}),
+      statusCategories: getValue(results[12], {}),
+      deletedTaskCount: getValue(results[13], 0),
     });
+
+    // Auto-purge tasks deleted more than 30 days ago (fire-and-forget)
+    db.purgeOldDeletedTasks().catch(console.error);
 
     // Log any failures for debugging
     results.forEach((r, i) => {

@@ -58,11 +58,14 @@ export interface Task {
   assigneeIds: string[];
   priority: Priority;
   dueDate: string;
+  doneDate?: string | null;
   placements: string[];
   links?: TaskLink[];
   contentInfo?: ContentInfo;
   customFieldValues?: Record<string, any>;
   sortOrder?: number;
+  deletedAt?: string | null;
+  deletedBy?: string | null;
 }
 
 export interface Absence {
@@ -101,12 +104,25 @@ export interface LogEntry {
   timestamp: string;
 }
 
+export interface TaskComment {
+  id: string;
+  taskId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  updatedAt?: string;
+  // Joined from profiles
+  userName?: string;
+  userAvatar?: string;
+}
+
 export type NotificationType =
   | 'task_assigned'
   | 'task_status_changed'
   | 'absence_submitted'
   | 'absence_decided'
-  | 'member_invited';
+  | 'member_invited'
+  | 'comment_mention';
 
 export interface Notification {
   id: string;

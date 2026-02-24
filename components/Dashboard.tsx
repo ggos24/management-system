@@ -10,7 +10,6 @@ import {
   PieChart,
   Pie,
   Cell,
-  Legend,
 } from 'recharts';
 import { Task, Member, Absence, Team } from '../types';
 import { Briefcase, TrendingUp, TrendingDown, Minus } from 'lucide-react';
@@ -25,6 +24,7 @@ interface DashboardProps {
   members: Member[];
   absences: Absence[];
   teams: Team[];
+  statusCategories: Record<string, Record<string, string>>;
 }
 
 const ALL_TEAMS = '__all__';
@@ -67,10 +67,17 @@ const TrendBadge: React.FC<{ value: number | null; invertColor?: boolean; suffix
 };
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }) => {
+const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, statusCategories }) => {
   const [teamFilter, setTeamFilter] = useState<string>(ALL_TEAMS);
-  const [startDate, setStartDate] = useState<string>('');
-  const [endDate, setEndDate] = useState<string>('');
+  const [startDate, setStartDate] = useState<string>(() => {
+    const d = new Date();
+    d.setDate(d.getDate() - 6);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
+  const [endDate, setEndDate] = useState<string>(() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  });
 
   const visibleTeams = useMemo(() => teams.filter((t) => !t.hidden && t.id !== 'management'), [teams]);
 
@@ -84,17 +91,16 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
   }, [teams, teamFilter, visibleTeams]);
 
   const getStatusCategory = (status: string, teamId: string): 'active' | 'completed' | 'ignored' => {
-    const s = status.toLowerCase().trim();
-
-    if (teamId === 'editorial') {
-      if (['dropped', 'archive', 'stuck'].includes(s)) return 'ignored';
-      if (['published this week', 'published'].includes(s)) return 'completed';
-      return 'active';
+    // Use per-team category from DB if available
+    const teamCats = statusCategories[teamId];
+    if (teamCats && teamCats[status]) {
+      return teamCats[status] as 'active' | 'completed' | 'ignored';
     }
 
-    if (['published', 'done', 'published this week'].includes(s)) return 'completed';
+    // Fallback for statuses without an explicit category
+    const s = status.toLowerCase().trim();
     if (['dropped', 'archive'].includes(s)) return 'ignored';
-
+    if (['published', 'done', 'published this week'].includes(s)) return 'completed';
     return 'active';
   };
 
@@ -258,28 +264,37 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
 
   const maxWorkload = useMemo(() => Math.max(1, ...workloadData.map((w) => w.total)), [workloadData]);
 
+  const doneTasks = useMemo(() => {
+    return filteredTasks.filter((t) => t.doneDate);
+  }, [filteredTasks]);
+
   const progressData = useMemo(() => {
-    const days = [];
-    const today = new Date();
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date(today);
-      d.setDate(today.getDate() - i);
-      days.push(d);
+    let rangeStart: Date;
+    let rangeEnd: Date;
+
+    if (startDate && endDate) {
+      rangeStart = new Date(startDate + 'T00:00:00');
+      rangeEnd = new Date(endDate + 'T00:00:00');
+    } else {
+      const today = new Date();
+      rangeEnd = today;
+      rangeStart = new Date(today);
+      rangeStart.setDate(today.getDate() - 6);
     }
 
-    const allStatuses: string[] = Array.from(new Set(chartTasks.map((t) => t.status)));
-
-    return days.map((day) => {
-      const dayStr = day.toISOString().split('T')[0];
-      const dayLabel = day.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      const tasksDueToday = chartTasks.filter((t) => t.dueDate.startsWith(dayStr));
-      const entry: Record<string, string | number> = { name: dayLabel };
-      allStatuses.forEach((status: string) => {
-        entry[status] = tasksDueToday.filter((t) => t.status === status).length;
+    const diffDays = Math.round((rangeEnd.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+    const days: { name: string; done: number }[] = [];
+    for (let i = 0; i < diffDays; i++) {
+      const d = new Date(rangeStart);
+      d.setDate(rangeStart.getDate() + i);
+      const dayStr = d.toISOString().split('T')[0];
+      days.push({
+        name: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        done: doneTasks.filter((t) => t.doneDate === dayStr).length,
       });
-      return entry;
-    });
-  }, [chartTasks]);
+    }
+    return days;
+  }, [doneTasks, startDate, endDate]);
 
   const teamLabel = teamFilter === ALL_TEAMS ? 'All Teams' : teams.find((t) => t.id === teamFilter)?.name;
 
@@ -287,8 +302,14 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
     <div className="p-6 space-y-6 animate-fade-in bg-white dark:bg-black h-full overflow-y-auto custom-scrollbar font-sans">
       {/* CSS custom properties for dark-mode-aware tooltip */}
       <style>{`
-        .dark { --color-tooltip-bg: #18181b; --color-tooltip-border: #3f3f46; --color-tooltip-text: #fafafa; }
-        :root { --color-tooltip-bg: #fff; --color-tooltip-border: #e4e4e7; --color-tooltip-text: #18181b; }
+        :root {
+          --color-tooltip-bg: #fff; --color-tooltip-border: #e4e4e7; --color-tooltip-text: #18181b;
+          --color-chart-text: #71717a; --color-chart-grid: #e4e4e7; --color-chart-label: #3f3f46;
+        }
+        .dark {
+          --color-tooltip-bg: #18181b; --color-tooltip-border: #3f3f46; --color-tooltip-text: #fafafa;
+          --color-chart-text: #a1a1aa; --color-chart-grid: #3f3f46; --color-chart-label: #e4e4e7;
+        }
       `}</style>
 
       <header className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
@@ -302,6 +323,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
           <DateRangeFilter
             startDate={startDate}
             endDate={endDate}
+            defaultPreset="last_7"
             onChange={(s, e) => {
               setStartDate(s);
               setEndDate(e);
@@ -409,8 +431,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
                     y="46%"
                     textAnchor="middle"
                     dominantBaseline="central"
-                    style={{ fontSize: '24px', fontWeight: 700, fill: '#3f3f46' }}
-                    className="dark:[&]:fill-zinc-200"
+                    style={{ fontSize: '24px', fontWeight: 700, fill: 'var(--color-chart-label)' }}
                   >
                     {totalTasks}
                   </text>
@@ -419,7 +440,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
                     y="57%"
                     textAnchor="middle"
                     dominantBaseline="central"
-                    style={{ fontSize: '11px', fontWeight: 500, fill: '#a1a1aa' }}
+                    style={{ fontSize: '11px', fontWeight: 500, fill: 'var(--color-chart-text)' }}
                   >
                     Tasks
                   </text>
@@ -498,50 +519,35 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams }
         </Card>
       </div>
 
-      {/* Progress chart */}
+      {/* Completed tasks chart */}
       <Card padding="lg" className="h-[400px] flex flex-col">
         <div className="flex justify-between items-center mb-6">
-          <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">Progress Chart</h3>
+          <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">Tasks Completed</h3>
           <span className="bg-zinc-100 dark:bg-zinc-800 px-3 py-1 rounded-md text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-            Last 7 Days
+            {startDate && endDate
+              ? `${new Date(startDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(endDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+              : 'Last 7 Days'}
           </span>
         </div>
         <div className="flex-1 w-full min-h-0">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={progressData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-              <CartesianGrid
-                strokeDasharray="3 3"
-                vertical={false}
-                className="[&>line]:stroke-zinc-200 dark:[&>line]:stroke-zinc-800"
-                stroke="#e4e4e7"
-              />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-chart-grid)" />
               <XAxis
                 dataKey="name"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 12, fill: '#71717a' }}
+                tick={{ fontSize: 12, fill: 'var(--color-chart-text)' }}
                 dy={10}
               />
-              <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 12, fill: '#71717a' }} allowDecimals={false} />
-              <Tooltip cursor={{ fill: 'transparent' }} contentStyle={tooltipStyle} />
-              <Legend
-                iconType="circle"
-                iconSize={8}
-                wrapperStyle={{ paddingTop: '20px', fontSize: '12px', fontWeight: 600 }}
+              <YAxis
+                axisLine={false}
+                tickLine={false}
+                tick={{ fontSize: 12, fill: 'var(--color-chart-text)' }}
+                allowDecimals={false}
               />
-              {progressData.length > 0 &&
-                Object.keys(progressData[0])
-                  .filter((key) => key !== 'name')
-                  .map((key) => (
-                    <Bar
-                      key={key}
-                      dataKey={key}
-                      stackId="a"
-                      fill={getStatusHexColor(key)}
-                      radius={[0, 0, 0, 0]}
-                      barSize={40}
-                    />
-                  ))}
+              <Tooltip cursor={{ fill: 'transparent' }} contentStyle={tooltipStyle} />
+              <Bar dataKey="done" name="Completed" fill="#10b981" radius={[4, 4, 0, 0]} barSize={40} />
             </BarChart>
           </ResponsiveContainer>
         </div>

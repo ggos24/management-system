@@ -209,11 +209,17 @@ interface DateRangeFilterProps {
   startDate: string;
   endDate: string;
   onChange: (start: string, end: string) => void;
+  defaultPreset?: PresetKey;
 }
 
-export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({ startDate, endDate, onChange }) => {
+export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
+  startDate,
+  endDate,
+  onChange,
+  defaultPreset = 'all',
+}) => {
   const [isOpen, setIsOpen] = useState(false);
-  const [activePreset, setActivePreset] = useState<PresetKey | 'custom'>('all');
+  const [activePreset, setActivePreset] = useState<PresetKey | 'custom'>(defaultPreset);
   const [activeTab, setActiveTab] = useState<TabKey>('presets');
   const ref = useRef<HTMLDivElement>(null);
 

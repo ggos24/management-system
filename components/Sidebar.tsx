@@ -8,6 +8,7 @@ import {
   ChevronRight,
   GripVertical,
   CheckCircle2,
+  Trash2,
 } from 'lucide-react';
 import { Team } from '../types';
 import { IconComponent } from './IconComponent';
@@ -25,6 +26,8 @@ interface SidebarProps {
   setIsCollapsed: (v: boolean) => void;
   isMobileOpen: boolean;
   setIsMobileOpen: (v: boolean) => void;
+  deletedTaskCount?: number;
+  taskCounts?: Record<string, number>;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -40,8 +43,16 @@ const Sidebar: React.FC<SidebarProps> = ({
   setIsCollapsed,
   isMobileOpen,
   setIsMobileOpen,
+  deletedTaskCount = 0,
+  taskCounts = {},
 }) => {
   // Icon rendering uses the shared IconComponent
+
+  const activeClass = 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900';
+  const inactiveClass =
+    'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50';
+  const activeBadgeClass = 'bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100';
+  const inactiveBadgeClass = 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300';
 
   const sidebarWidth = isCollapsed ? 'w-16' : 'w-72';
   const mobileClass = isMobileOpen ? 'translate-x-0' : '-translate-x-full';
@@ -101,7 +112,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
           <button
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="hidden md:flex p-1.5 rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-500 transition-colors flex-shrink-0 absolute right-2 top-5"
+            className={`hidden md:flex p-1.5 rounded-md hover:bg-zinc-200 dark:hover:bg-zinc-800 text-zinc-500 transition-colors flex-shrink-0 ${isCollapsed ? '' : 'absolute right-2 top-5'}`}
           >
             {isCollapsed ? <ChevronRight size={14} /> : <ChevronLeft size={14} />}
           </button>
@@ -113,9 +124,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               onClick={() => onChangeView('my-workspace')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-                currentView === 'my-workspace'
-                  ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm border border-zinc-200 dark:border-zinc-700'
-                  : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
+                currentView === 'my-workspace' ? activeClass : inactiveClass
               } ${isCollapsed ? 'justify-center px-0' : ''}`}
               title="My Workspace"
             >
@@ -125,13 +134,18 @@ const Sidebar: React.FC<SidebarProps> = ({
               >
                 My Workspace
               </span>
+              {!isCollapsed && (taskCounts['my-workspace'] || 0) > 0 && (
+                <span
+                  className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'my-workspace' ? activeBadgeClass : inactiveBadgeClass}`}
+                >
+                  {taskCounts['my-workspace']}
+                </span>
+              )}
             </button>
             <button
               onClick={() => onChangeView('dashboard')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-                currentView === 'dashboard'
-                  ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm border border-zinc-200 dark:border-zinc-700'
-                  : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
+                currentView === 'dashboard' ? activeClass : inactiveClass
               } ${isCollapsed ? 'justify-center px-0' : ''}`}
               title="Dashboard"
             >
@@ -145,9 +159,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <button
               onClick={() => onChangeView('schedule')}
               className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-                currentView === 'schedule'
-                  ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm border border-zinc-200 dark:border-zinc-700'
-                  : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
+                currentView === 'schedule' ? activeClass : inactiveClass
               } ${isCollapsed ? 'justify-center px-0' : ''}`}
               title="Schedule"
             >
@@ -157,6 +169,27 @@ const Sidebar: React.FC<SidebarProps> = ({
               >
                 Schedule
               </span>
+            </button>
+            <button
+              onClick={() => onChangeView('bin')}
+              className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                currentView === 'bin' ? activeClass : inactiveClass
+              } ${isCollapsed ? 'justify-center px-0' : ''}`}
+              title="Bin"
+            >
+              <Trash2 size={18} />
+              <span
+                className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+              >
+                Bin
+              </span>
+              {!isCollapsed && deletedTaskCount > 0 && (
+                <span
+                  className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'bin' ? activeBadgeClass : inactiveBadgeClass}`}
+                >
+                  {deletedTaskCount}
+                </span>
+              )}
             </button>
           </div>
 
@@ -193,17 +226,11 @@ const Sidebar: React.FC<SidebarProps> = ({
                       onDrop={(e) => handleDrop(e, team.id)}
                       onClick={() => onChangeView(team.id)}
                       className={`group w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-                        isActive
-                          ? 'bg-white dark:bg-zinc-800 text-black dark:text-white shadow-sm border border-zinc-200 dark:border-zinc-700'
-                          : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-200/50 dark:hover:bg-zinc-800/50'
+                        isActive ? activeClass : inactiveClass
                       } ${isCollapsed ? 'justify-center px-0' : ''}`}
                       title={team.name}
                     >
-                      <IconComponent
-                        name={team.icon}
-                        size={18}
-                        className={`${isActive ? 'text-black dark:text-white' : 'text-zinc-400'} flex-shrink-0`}
-                      />
+                      <IconComponent name={team.icon} size={18} className="flex-shrink-0" />
                       <span
                         className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
                       >
@@ -211,8 +238,17 @@ const Sidebar: React.FC<SidebarProps> = ({
                       </span>
 
                       {!isCollapsed && (
-                        <div className="ml-auto opacity-0 group-hover:opacity-100 transition-opacity text-zinc-300 hover:text-zinc-500 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing">
-                          <GripVertical size={14} />
+                        <div className="ml-auto flex items-center">
+                          {(taskCounts[team.id] || 0) > 0 && (
+                            <span
+                              className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center group-hover:hidden ${isActive ? activeBadgeClass : inactiveBadgeClass}`}
+                            >
+                              {taskCounts[team.id]}
+                            </span>
+                          )}
+                          <div className="hidden group-hover:block text-zinc-300 hover:text-zinc-500 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing">
+                            <GripVertical size={14} />
+                          </div>
                         </div>
                       )}
                     </button>

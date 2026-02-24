@@ -28,7 +28,7 @@ const AppLayout: React.FC = () => {
 
   const currentUser = useAuthStore((s) => s.currentUser)!;
 
-  const { teams, teamStatuses, teamTypes } = useDataStore();
+  const { tasks, teams, teamStatuses, teamTypes, statusCategories } = useDataStore();
 
   const {
     isDarkMode,
@@ -48,12 +48,41 @@ const AppLayout: React.FC = () => {
   const activeTeam = useMemo(() => (teamParam ? findTeamByParam(teams, teamParam) : undefined), [teamParam, teams]);
 
   // Derive "current view" ID for sidebar active state & task defaults
+  const deletedTaskCount = useDataStore((s) => s.deletedTaskCount);
+
   const currentView = useMemo(() => {
     if (activeTeam) return activeTeam.id;
     if (location.pathname === '/workspace') return 'my-workspace';
     if (location.pathname === '/schedule') return 'schedule';
+    if (location.pathname === '/bin') return 'bin';
     return 'dashboard';
   }, [activeTeam, location.pathname]);
+
+  // Compute active task counts per team + my-workspace (excluding completed statuses)
+  const taskCounts = useMemo(() => {
+    const getCategory = (status: string, teamId: string): string => {
+      const teamCats = statusCategories[teamId];
+      if (teamCats && teamCats[status]) return teamCats[status];
+      const s = status.toLowerCase().trim();
+      if (['dropped', 'archive'].includes(s)) return 'ignored';
+      if (['published', 'done', 'published this week'].includes(s)) return 'completed';
+      return 'active';
+    };
+
+    const counts: Record<string, number> = {};
+    let myCount = 0;
+
+    for (const task of tasks) {
+      const cat = getCategory(task.status, task.teamId);
+      if (cat === 'completed') continue;
+      counts[task.teamId] = (counts[task.teamId] || 0) + 1;
+      if (currentUser && task.assigneeIds.includes(currentUser.id)) {
+        myCount++;
+      }
+    }
+    counts['my-workspace'] = myCount;
+    return counts;
+  }, [tasks, statusCategories, currentUser]);
 
   const openTaskModal = (taskOrPreset?: Partial<Task>) => {
     const defaultTeamId =
@@ -97,11 +126,14 @@ const AppLayout: React.FC = () => {
       >
         <Sidebar
           currentView={currentView}
+          deletedTaskCount={deletedTaskCount}
+          taskCounts={taskCounts}
           onChangeView={(view) => {
             setMobileSidebarOpen(false);
             if (view === 'my-workspace') navigate('/workspace');
             else if (view === 'dashboard') navigate('/dashboard');
             else if (view === 'schedule') navigate('/schedule');
+            else if (view === 'bin') navigate('/bin');
             else {
               const team = teams.find((t) => t.id === view);
               navigate(`/teams/${team ? teamSlug(team) : view}`);

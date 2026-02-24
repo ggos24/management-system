@@ -51,8 +51,21 @@ const ColumnMenu: React.FC<{
   onDuplicateWithData: () => void;
   onArchive: () => void;
   onDelete: () => void;
+  onToggleDone: () => void;
   isArchived: boolean;
-}> = ({ isOpen, onClose, onRename, onDuplicateEmpty, onDuplicateWithData, onArchive, onDelete, isArchived }) => {
+  isDone: boolean;
+}> = ({
+  isOpen,
+  onClose,
+  onRename,
+  onDuplicateEmpty,
+  onDuplicateWithData,
+  onArchive,
+  onDelete,
+  onToggleDone,
+  isArchived,
+  isDone,
+}) => {
   if (!isOpen) return null;
   return (
     <div
@@ -78,6 +91,12 @@ const ColumnMenu: React.FC<{
         <Copy size={12} /> Duplicate (With Data)
       </button>
       <Divider className="my-1" />
+      <button
+        onClick={onToggleDone}
+        className={`text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 ${isDone ? 'text-emerald-600 dark:text-emerald-400' : ''}`}
+      >
+        <CheckCircle size={12} /> {isDone ? 'Unmark as Done' : 'Mark as Done'}
+      </button>
       <button
         onClick={onArchive}
         className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-yellow-600 dark:text-yellow-400"
@@ -109,8 +128,10 @@ interface WorkspaceProps {
   teamStatuses: Record<string, string[]>;
   onUpdateTeamStatuses: (teamId: string, newStatuses: string[]) => void;
   archivedStatuses: Record<string, string[]>;
+  statusCategories: Record<string, Record<string, string>>;
   onArchiveStatus: (teamId: string, status: string) => void;
   onDuplicateStatus: (teamId: string, status: string, withData: boolean) => void;
+  onSetStatusCategory: (teamId: string, statusName: string, category: string) => void;
   customProperties?: CustomProperty[];
   onAddProperty?: (property: CustomProperty) => void;
   onUpdateProperty?: (property: CustomProperty) => void;
@@ -119,6 +140,7 @@ interface WorkspaceProps {
   userRole?: UserRole;
   onReorderTask?: (taskId: string, targetTaskId: string, position: 'before' | 'after') => void;
   allPlacements: string[];
+  teamTypes?: Record<string, string[]>;
 }
 
 type ViewMode = 'board' | 'table' | 'calendar';
@@ -138,8 +160,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
   teamStatuses,
   onUpdateTeamStatuses,
   archivedStatuses,
+  statusCategories,
   onArchiveStatus,
   onDuplicateStatus,
+  onSetStatusCategory,
   customProperties = [],
   onAddProperty,
   onUpdateProperty,
@@ -148,6 +172,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   userRole,
   onReorderTask,
   allPlacements = [],
+  teamTypes = {},
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [showArchivedStatuses, setShowArchivedStatuses] = useState(false);
@@ -166,9 +191,67 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Property Creation State
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState<string | null>(null);
-  const [isReorderPropsOpen, setIsReorderPropsOpen] = useState<string | null>(null);
+  const [isReorderColumnsOpen, setIsReorderColumnsOpen] = useState<string | null>(null);
   const [newPropName, setNewPropName] = useState('');
   const [newPropType, setNewPropType] = useState<CustomProperty['type']>('text');
+
+  // --- Data-driven table columns with persistent ordering ---
+  const allTableColumns = useMemo(() => {
+    const base: { key: string; label: string; className: string }[] = [
+      { key: 'title', label: 'Title', className: 'w-[20%]' },
+      { key: 'type', label: 'Type', className: 'w-28' },
+      { key: 'assignee', label: teamFilter === 'management' ? 'Executive' : 'Author', className: 'w-32' },
+      { key: 'editor', label: teamFilter === 'management' ? 'Manager' : 'Editor', className: 'w-32' },
+      { key: 'designer', label: 'Designer', className: 'w-32' },
+      { key: 'priority', label: 'Priority', className: 'w-24' },
+      { key: 'deadline', label: 'Deadline', className: 'w-24' },
+      { key: 'done', label: 'Done', className: 'w-24' },
+    ];
+    const propCols = customProperties.map((p) => ({
+      key: `prop:${p.id}`,
+      label: p.name,
+      className: 'w-32',
+    }));
+    return [...base, ...propCols, { key: 'placements', label: 'Placements', className: 'w-32' }];
+  }, [teamFilter, customProperties]);
+
+  const columnOrderKey = `table-col-order-${teamFilter}`;
+  const [columnOrder, setColumnOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem(columnOrderKey);
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+
+  // Re-load when teamFilter changes
+  const [prevOrderKey, setPrevOrderKey] = useState(columnOrderKey);
+  if (prevOrderKey !== columnOrderKey) {
+    setPrevOrderKey(columnOrderKey);
+    try {
+      const saved = localStorage.getItem(columnOrderKey);
+      setColumnOrder(saved ? JSON.parse(saved) : []);
+    } catch {
+      setColumnOrder([]);
+    }
+  }
+
+  // Ordered columns: respect saved order, add any new columns at the end
+  const orderedTableColumns = useMemo(() => {
+    const allKeys = allTableColumns.map((c) => c.key);
+    // Filter saved order to only valid keys
+    const validOrder = columnOrder.filter((k) => allKeys.includes(k));
+    // Add any keys not in saved order
+    const missing = allKeys.filter((k) => !validOrder.includes(k));
+    const finalOrder = [...validOrder, ...missing];
+    return finalOrder.map((k) => allTableColumns.find((c) => c.key === k)!);
+  }, [allTableColumns, columnOrder]);
+
+  const reorderColumns = (newOrder: string[]) => {
+    setColumnOrder(newOrder);
+    localStorage.setItem(columnOrderKey, JSON.stringify(newOrder));
+  };
 
   // Collapsible State — persisted per team in localStorage
   const collapsedKey = `collapsed-sections-${teamFilter}`;
@@ -433,6 +516,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
         }
         case 'deadline':
           return dir * (a.dueDate || '').localeCompare(b.dueDate || '');
+        case 'done':
+          return dir * (a.doneDate || '').localeCompare(b.doneDate || '');
         case 'type':
           return dir * (a.contentInfo?.type || '').localeCompare(b.contentInfo?.type || '');
         case 'assignee': {
@@ -440,8 +525,28 @@ const Workspace: React.FC<WorkspaceProps> = ({
           const nameB = members.find((m) => b.assigneeIds[0] === m.id)?.name || '';
           return dir * nameA.localeCompare(nameB);
         }
-        default:
+        case 'editor': {
+          const edA = members.find((m) => a.contentInfo?.editorIds?.[0] === m.id)?.name || '';
+          const edB = members.find((m) => b.contentInfo?.editorIds?.[0] === m.id)?.name || '';
+          return dir * edA.localeCompare(edB);
+        }
+        case 'designer': {
+          const dA = members.find((m) => a.contentInfo?.designerIds?.[0] === m.id)?.name || '';
+          const dB = members.find((m) => b.contentInfo?.designerIds?.[0] === m.id)?.name || '';
+          return dir * dA.localeCompare(dB);
+        }
+        case 'placements':
+          return dir * (a.placements || []).join(', ').localeCompare((b.placements || []).join(', '));
+        default: {
+          // Custom properties — key format: "prop:<id>"
+          if (sortColumn.startsWith('prop:')) {
+            const propId = sortColumn.slice(5);
+            const valA = String(a.customFieldValues?.[propId] || '');
+            const valB = String(b.customFieldValues?.[propId] || '');
+            return dir * valA.localeCompare(valB);
+          }
           return 0;
+        }
       }
     });
   };
@@ -669,34 +774,6 @@ const Workspace: React.FC<WorkspaceProps> = ({
               className="w-full"
             />
           </div>
-
-          {/* Status group sort */}
-          {(viewMode === 'table' || viewMode === 'board') && (
-            <>
-              <Divider orientation="vertical" className="h-5 mx-1" />
-              <div className="flex items-center gap-1">
-                <span className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider mr-1">
-                  Sort groups:
-                </span>
-                <button
-                  onClick={() => handleStatusSort('name')}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${statusSort === 'name' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900 dark:hover:text-white'}`}
-                >
-                  Name
-                  {statusSort === 'name' &&
-                    (statusSortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
-                </button>
-                <button
-                  onClick={() => handleStatusSort('count')}
-                  className={`flex items-center gap-1 px-2 py-1 rounded-md text-xs font-medium transition-all ${statusSort === 'count' ? 'bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-white' : 'text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50 dark:hover:bg-zinc-900 dark:hover:text-white'}`}
-                >
-                  Count
-                  {statusSort === 'count' &&
-                    (statusSortDirection === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)}
-                </button>
-              </div>
-            </>
-          )}
         </div>
       </div>
 
@@ -713,6 +790,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
             {displayColumns.map((col) => {
               const isCollapsed = collapsedSections[col.id];
               const isArchived = archivedStatuses[teamFilter]?.includes(col.id);
+              const isDoneStatus = statusCategories[teamFilter]?.[col.id] === 'completed';
               return (
                 <div
                   key={col.id}
@@ -726,11 +804,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         className="flex flex-col items-center gap-4 h-full py-4 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
                         onClick={() => toggleSection(col.id)}
                       >
-                        <span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-semibold px-1.5 rounded">
+                        <span
+                          className={`text-[10px] font-semibold px-1.5 rounded ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
+                        >
                           {filteredTasks.filter((t) => t.status === col.id).length}
                         </span>
                         <div
-                          className="writing-mode-vertical text-xs font-semibold text-zinc-500 tracking-wider whitespace-nowrap rotate-180"
+                          className={`writing-mode-vertical text-xs font-semibold tracking-wider whitespace-nowrap rotate-180 ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-500'}`}
                           style={{ writingMode: 'vertical-rl' }}
                         >
                           {col.label}
@@ -775,12 +855,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   </button>
                                 </>
                               )}
-                              <span className="bg-zinc-100 dark:bg-zinc-800 text-zinc-500 text-[10px] px-1.5 py-0.5 rounded font-medium">
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
+                              >
                                 {filteredTasks.filter((t) => t.status === col.id).length}
                               </span>
                               <span
                                 onClick={() => handleStartRename(col.id, col.label)}
-                                className={`font-semibold text-zinc-900 dark:text-white text-xs ${teamFilter !== 'my-work' ? 'hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
+                                className={`font-semibold text-xs ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
                               >
                                 {col.label} {isArchived && '(Archived)'}
                               </span>
@@ -829,12 +911,22 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 onDuplicateStatus(teamFilter, col.id, true);
                                 setActiveColumnMenu(null);
                               }}
+                              onToggleDone={() => {
+                                const current = statusCategories[teamFilter]?.[col.id] || 'active';
+                                onSetStatusCategory(
+                                  teamFilter,
+                                  col.id,
+                                  current === 'completed' ? 'active' : 'completed',
+                                );
+                                setActiveColumnMenu(null);
+                              }}
                               onArchive={() => {
                                 onArchiveStatus(teamFilter, col.id);
                                 setActiveColumnMenu(null);
                               }}
                               onDelete={() => handleDeleteColumn(col.id)}
                               isArchived={!!isArchived}
+                              isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
                             />
                           </div>
                         )}
@@ -860,12 +952,20 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               <div className="flex justify-between items-start mb-2">
                                 <div className="flex gap-1 flex-wrap">
                                   {task.contentInfo?.type && <Badge>{task.contentInfo.type}</Badge>}
+                                  <span
+                                    className={`inline-flex items-center gap-1 text-[10px] font-medium capitalize px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority] || ''}`}
+                                  >
+                                    <span
+                                      className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
+                                    />
+                                    {task.priority}
+                                  </span>
                                 </div>
                                 <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
                                   <GripVertical size={14} />
                                 </div>
                               </div>
-                              <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug">
+                              <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden">
                                 {task.title}
                               </h3>
 
@@ -939,11 +1039,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
         )}
 
         {viewMode === 'table' && (
-          <div className="h-full overflow-y-auto custom-scrollbar space-y-8 pr-2 pb-10">
+          <div className="h-full overflow-auto custom-scrollbar space-y-8 pr-2 pb-10">
             {displayColumns.map((col) => {
               const colTasks = filteredTasks.filter((t) => t.status === col.id);
               const isCollapsed = collapsedSections[col.id];
               const isArchived = archivedStatuses[teamFilter]?.includes(col.id);
+
+              const isDoneTable = statusCategories[teamFilter]?.[col.id] === 'completed';
 
               return (
                 <div
@@ -971,7 +1073,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         </button>
                       </div>
                     )}
-                    <span className="bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 text-xs px-2 py-0.5 rounded font-medium">
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded font-medium ${isDoneTable ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
+                    >
                       {colTasks.length}
                     </span>
 
@@ -987,7 +1091,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     ) : (
                       <h3
                         onClick={() => handleStartRename(col.id, col.label)}
-                        className={`text-sm font-semibold text-zinc-900 dark:text-white ${teamFilter !== 'my-work' ? 'cursor-pointer hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
+                        className={`text-sm font-semibold ${isDoneTable ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'cursor-pointer hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
                       >
                         {col.label} {isArchived && '(Archived)'}
                       </h3>
@@ -1024,12 +1128,18 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             onDuplicateStatus(teamFilter, col.id, true);
                             setActiveColumnMenu(null);
                           }}
+                          onToggleDone={() => {
+                            const current = statusCategories[teamFilter]?.[col.id] || 'active';
+                            onSetStatusCategory(teamFilter, col.id, current === 'completed' ? 'active' : 'completed');
+                            setActiveColumnMenu(null);
+                          }}
                           onArchive={() => {
                             onArchiveStatus(teamFilter, col.id);
                             setActiveColumnMenu(null);
                           }}
                           onDelete={() => handleDeleteColumn(col.id)}
                           isArchived={!!isArchived}
+                          isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
                         />
                       </div>
                     )}
@@ -1041,90 +1151,82 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         className={`overflow-visible border border-zinc-200 dark:border-zinc-800 rounded-lg cursor-default ${isArchived ? 'bg-yellow-50/10' : ''}`}
                       >
                         {/* Added table-fixed and specific widths for alignment */}
-                        <table className="w-full text-left text-sm border-collapse min-w-[800px] table-fixed">
-                          <thead className="bg-zinc-50 dark:bg-zinc-900 border-b border-zinc-200 dark:border-zinc-800">
+                        <table className="w-full text-left text-sm border-collapse min-w-[1100px] table-fixed">
+                          <thead
+                            className={`border-b ${isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
+                          >
                             <tr>
-                              {[
-                                { key: 'title', label: 'Title', className: 'w-[25%]' },
-                                { key: 'type', label: 'Type', className: 'w-32' },
-                                { key: 'assignee', label: 'Assignee', className: 'w-32' },
-                                { key: 'priority', label: 'Priority', className: 'w-24' },
-                                { key: 'deadline', label: 'Deadline', className: 'w-24' },
-                              ].map((col) => (
-                                <th
-                                  key={col.key}
-                                  className={`p-3 font-medium text-zinc-400 text-xs ${col.className} cursor-pointer select-none hover:text-zinc-600 dark:hover:text-zinc-300 transition-colors`}
-                                  onClick={() => handleHeaderSort(col.key)}
-                                >
-                                  <span className="inline-flex items-center gap-1">
-                                    <span className={sortColumn === col.key ? 'text-zinc-900 dark:text-white' : ''}>
-                                      {col.label}
-                                    </span>
-                                    {sortColumn === col.key &&
-                                      (sortDirection === 'asc' ? (
-                                        <ChevronUp size={12} className="text-zinc-900 dark:text-white" />
-                                      ) : (
-                                        <ChevronDown size={12} className="text-zinc-900 dark:text-white" />
-                                      ))}
-                                  </span>
-                                </th>
-                              ))}
-                              {customProperties.map((prop) => (
-                                <th
-                                  key={prop.id}
-                                  className="p-3 font-medium text-zinc-400 text-xs w-32 group/prop cursor-pointer relative"
-                                >
-                                  {editingColumnId === prop.id ? (
-                                    <input
-                                      autoFocus
-                                      className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1 py-0.5 text-xs font-semibold w-full outline-none"
-                                      value={tempColumnName}
-                                      onChange={(e) => setTempColumnName(e.target.value)}
-                                      onBlur={handleSaveRename}
-                                      onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
-                                      onClick={(e) => e.stopPropagation()}
-                                    />
-                                  ) : (
-                                    <div
-                                      className="flex items-center justify-between"
-                                      onClick={() => handleStartRename(prop.id, prop.name)}
-                                    >
-                                      {prop.name}
-                                      <button
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const key = `${col.id}:${prop.id}`;
-                                          setActivePropertyMenu(activePropertyMenu === key ? null : key);
-                                        }}
-                                        className="opacity-0 group-hover/prop:opacity-100 hover:text-zinc-900 dark:hover:text-white"
-                                      >
-                                        <MoreHorizontal size={12} />
-                                      </button>
-                                    </div>
-                                  )}
-                                </th>
-                              ))}
-                              <th className="p-3 font-medium text-zinc-400 text-xs w-32">Placements</th>
+                              {orderedTableColumns.map((tc) => {
+                                const isProp = tc.key.startsWith('prop:');
+                                const prop = isProp
+                                  ? customProperties.find((p) => p.id === tc.key.slice(5))
+                                  : undefined;
+                                return (
+                                  <th
+                                    key={tc.key}
+                                    className={`p-3 font-medium text-xs ${tc.className} cursor-pointer select-none transition-colors ${isProp ? 'group/prop relative' : ''} ${isDoneTable ? 'text-emerald-500 dark:text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
+                                    onClick={() => handleHeaderSort(tc.key)}
+                                  >
+                                    {isProp && editingColumnId === prop?.id ? (
+                                      <input
+                                        autoFocus
+                                        className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1 py-0.5 text-xs font-semibold w-full outline-none"
+                                        value={tempColumnName}
+                                        onChange={(e) => setTempColumnName(e.target.value)}
+                                        onBlur={handleSaveRename}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
+                                        onClick={(e) => e.stopPropagation()}
+                                      />
+                                    ) : (
+                                      <div className="flex items-center justify-between">
+                                        <span className="inline-flex items-center gap-1">
+                                          <span
+                                            className={sortColumn === tc.key ? 'text-zinc-900 dark:text-white' : ''}
+                                          >
+                                            {tc.label}
+                                          </span>
+                                          {sortColumn === tc.key &&
+                                            (sortDirection === 'asc' ? (
+                                              <ChevronUp size={12} className="text-zinc-900 dark:text-white" />
+                                            ) : (
+                                              <ChevronDown size={12} className="text-zinc-900 dark:text-white" />
+                                            ))}
+                                        </span>
+                                        {isProp && prop && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const key = `${col.id}:${prop.id}`;
+                                              setActivePropertyMenu(activePropertyMenu === key ? null : key);
+                                            }}
+                                            className="opacity-0 group-hover/prop:opacity-100 hover:text-zinc-900 dark:hover:text-white"
+                                          >
+                                            <MoreHorizontal size={12} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </th>
+                                );
+                              })}
                               <th className="p-2 w-16 text-center">
                                 <div className="flex items-center justify-center gap-0.5">
-                                  {customProperties.length > 1 && (
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setIsReorderPropsOpen(isReorderPropsOpen === col.id ? null : col.id);
-                                        setIsAddPropertyOpen(null);
-                                      }}
-                                      className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                      title="Reorder columns"
-                                    >
-                                      <ArrowLeftRight size={14} />
-                                    </button>
-                                  )}
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setIsReorderColumnsOpen(isReorderColumnsOpen === col.id ? null : col.id);
+                                      setIsAddPropertyOpen(null);
+                                    }}
+                                    className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                    title="Reorder columns"
+                                  >
+                                    <ArrowLeftRight size={14} />
+                                  </button>
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setIsAddPropertyOpen(isAddPropertyOpen === col.id ? null : col.id);
-                                      setIsReorderPropsOpen(null);
+                                      setIsReorderColumnsOpen(null);
                                     }}
                                     className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400"
                                   >
@@ -1159,156 +1261,244 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     }
                                     onClick={() => onTaskClick(task)}
                                   >
-                                    {/* Title — read-only, opens modal */}
-                                    <td className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 flex items-center gap-2 truncate">
-                                      {!sortColumn && (
-                                        <GripVertical
-                                          size={12}
-                                          className="text-zinc-300 opacity-0 group-hover:opacity-100 flex-shrink-0"
-                                        />
-                                      )}
-                                      <span className="truncate">{task.title}</span>
-                                    </td>
-                                    {/* Type — read-only */}
-                                    <td className="p-3 text-zinc-600 dark:text-zinc-400 text-xs truncate">
-                                      {task.contentInfo?.type || task.teamId}
-                                    </td>
-                                    {/* Assignee — inline MultiSelect with avatar trigger */}
-                                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                                      <MultiSelect
-                                        icon={User}
-                                        label=""
-                                        options={members.map((m) => ({ value: m.id, label: m.name }))}
-                                        selected={task.assigneeIds}
-                                        onChange={(ids) => onUpdateTask({ ...task, assigneeIds: ids })}
-                                        placeholder="—"
-                                        className="min-w-0"
-                                        compact
-                                        renderTrigger={(onClick, selectedIds) => {
-                                          const assignees = members.filter((m) => selectedIds.includes(m.id));
+                                    {/* Data-driven cells */}
+                                    {orderedTableColumns.map((tc) => {
+                                      switch (tc.key) {
+                                        case 'title':
                                           return (
-                                            <div
-                                              onClick={onClick}
-                                              className="flex flex-col gap-1 cursor-pointer rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-h-[24px]"
+                                            <td
+                                              key={tc.key}
+                                              className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 truncate"
                                             >
-                                              {assignees.length > 0 ? (
-                                                assignees.map((a) => (
-                                                  <div key={a.id} className="flex items-center gap-1.5">
-                                                    <Avatar
-                                                      src={a.avatar}
-                                                      alt={a.name}
-                                                      size="sm"
-                                                      className="flex-shrink-0"
-                                                    />
-                                                    <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
-                                                      {a.name}
-                                                    </span>
-                                                  </div>
-                                                ))
-                                              ) : (
-                                                <span className="text-xs text-zinc-400">—</span>
-                                              )}
-                                            </div>
-                                          );
-                                        }}
-                                      />
-                                    </td>
-                                    {/* Priority — inline CustomSelect */}
-                                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                                      <CustomSelect
-                                        compact
-                                        options={[
-                                          { value: 'low', label: 'Low' },
-                                          { value: 'medium', label: 'Medium' },
-                                          { value: 'high', label: 'High' },
-                                        ]}
-                                        value={task.priority}
-                                        onChange={(val) => onUpdateTask({ ...task, priority: val as Priority })}
-                                        renderValue={(val) => (
-                                          <span
-                                            className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[val] || ''}`}
-                                          >
-                                            <span
-                                              className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[val] || ''}`}
-                                            />
-                                            {val}
-                                          </span>
-                                        )}
-                                      />
-                                    </td>
-                                    {/* Due Date — inline SimpleDatePicker */}
-                                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                                      <SimpleDatePicker
-                                        value={task.dueDate ? task.dueDate.split('T')[0] : ''}
-                                        onChange={(date) =>
-                                          onUpdateTask({ ...task, dueDate: new Date(date).toISOString() })
-                                        }
-                                        placeholder="Set date"
-                                        renderTrigger={(onClick, value) => (
-                                          <span
-                                            onClick={onClick}
-                                            className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
-                                          >
-                                            {value
-                                              ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
-                                              : 'Set date'}
-                                          </span>
-                                        )}
-                                      />
-                                    </td>
-
-                                    {/* Custom Properties */}
-                                    {customProperties.map((prop) => {
-                                      const val = task.customFieldValues?.[prop.id];
-                                      if (prop.type === 'person' && val) {
-                                        const personIds = Array.isArray(val) ? val : [val];
-                                        const people = members.filter((m) => personIds.includes(m.id));
-                                        return (
-                                          <td key={prop.id} className="p-3">
-                                            {people.length > 0 ? (
-                                              <div className="flex flex-col gap-1">
-                                                {people.map((p) => (
-                                                  <div key={p.id} className="flex items-center gap-1.5">
-                                                    <Avatar
-                                                      src={p.avatar}
-                                                      alt={p.name}
-                                                      size="sm"
-                                                      className="flex-shrink-0"
-                                                    />
-                                                    <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
-                                                      {p.name}
-                                                    </span>
-                                                  </div>
-                                                ))}
+                                              <div className="flex items-center gap-2">
+                                                {!sortColumn && (
+                                                  <GripVertical
+                                                    size={12}
+                                                    className="text-zinc-300 opacity-0 group-hover:opacity-100 flex-shrink-0"
+                                                  />
+                                                )}
+                                                <span className="truncate">{task.title}</span>
                                               </div>
-                                            ) : (
-                                              <span className="text-xs text-zinc-400">-</span>
-                                            )}
-                                          </td>
-                                        );
+                                            </td>
+                                          );
+                                        case 'type':
+                                          return (
+                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                              <CustomSelect
+                                                compact
+                                                options={teamTypes[task.teamId] || teamTypes['default'] || ['General']}
+                                                value={task.contentInfo?.type || ''}
+                                                onChange={(val) =>
+                                                  onUpdateTask({
+                                                    ...task,
+                                                    contentInfo: { ...task.contentInfo!, type: val },
+                                                  })
+                                                }
+                                              />
+                                            </td>
+                                          );
+                                        case 'assignee':
+                                        case 'editor':
+                                        case 'designer': {
+                                          const personKey = tc.key;
+                                          const selectedIds =
+                                            personKey === 'assignee'
+                                              ? task.assigneeIds
+                                              : personKey === 'editor'
+                                                ? task.contentInfo?.editorIds || []
+                                                : task.contentInfo?.designerIds || [];
+                                          const handleChange = (ids: string[]) => {
+                                            if (personKey === 'assignee') {
+                                              onUpdateTask({ ...task, assigneeIds: ids });
+                                            } else if (personKey === 'editor') {
+                                              onUpdateTask({
+                                                ...task,
+                                                contentInfo: { ...task.contentInfo!, editorIds: ids },
+                                              });
+                                            } else {
+                                              onUpdateTask({
+                                                ...task,
+                                                contentInfo: { ...task.contentInfo!, designerIds: ids },
+                                              });
+                                            }
+                                          };
+                                          return (
+                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                              <MultiSelect
+                                                icon={personKey === 'editor' ? Eye : User}
+                                                label=""
+                                                options={members.map((m) => ({ value: m.id, label: m.name }))}
+                                                selected={selectedIds}
+                                                onChange={handleChange}
+                                                placeholder="—"
+                                                className="min-w-0"
+                                                compact
+                                                renderTrigger={(onClick, sIds) => {
+                                                  const people = members.filter((m) => sIds.includes(m.id));
+                                                  return (
+                                                    <div
+                                                      onClick={onClick}
+                                                      className="flex flex-col gap-1 cursor-pointer rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-h-[24px]"
+                                                    >
+                                                      {people.length > 0 ? (
+                                                        people.map((p) => (
+                                                          <div key={p.id} className="flex items-center gap-1.5">
+                                                            <Avatar
+                                                              src={p.avatar}
+                                                              alt={p.name}
+                                                              size="sm"
+                                                              className="flex-shrink-0"
+                                                            />
+                                                            <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
+                                                              {p.name}
+                                                            </span>
+                                                          </div>
+                                                        ))
+                                                      ) : (
+                                                        <span className="text-xs text-zinc-400">—</span>
+                                                      )}
+                                                    </div>
+                                                  );
+                                                }}
+                                              />
+                                            </td>
+                                          );
+                                        }
+                                        case 'priority':
+                                          return (
+                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                              <CustomSelect
+                                                compact
+                                                options={[
+                                                  { value: 'low', label: 'Low' },
+                                                  { value: 'medium', label: 'Medium' },
+                                                  { value: 'high', label: 'High' },
+                                                ]}
+                                                value={task.priority}
+                                                onChange={(val) => onUpdateTask({ ...task, priority: val as Priority })}
+                                                renderValue={(val) => (
+                                                  <span
+                                                    className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[val] || ''}`}
+                                                  >
+                                                    <span
+                                                      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[val] || ''}`}
+                                                    />
+                                                    {val}
+                                                  </span>
+                                                )}
+                                              />
+                                            </td>
+                                          );
+                                        case 'deadline':
+                                          return (
+                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                              <SimpleDatePicker
+                                                value={task.dueDate ? task.dueDate.split('T')[0] : ''}
+                                                onChange={(date) =>
+                                                  onUpdateTask({
+                                                    ...task,
+                                                    dueDate: new Date(date).toISOString(),
+                                                  })
+                                                }
+                                                placeholder="Set date"
+                                                renderTrigger={(onClick, value) => (
+                                                  <span
+                                                    onClick={onClick}
+                                                    className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
+                                                  >
+                                                    {value
+                                                      ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
+                                                      : 'Set date'}
+                                                  </span>
+                                                )}
+                                              />
+                                            </td>
+                                          );
+                                        case 'done':
+                                          return (
+                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                              <SimpleDatePicker
+                                                value={task.doneDate ? task.doneDate.split('T')[0] : ''}
+                                                onChange={(date) =>
+                                                  onUpdateTask({
+                                                    ...task,
+                                                    doneDate: new Date(date).toISOString(),
+                                                  })
+                                                }
+                                                placeholder="Set date"
+                                                renderTrigger={(onClick, value) => (
+                                                  <span
+                                                    onClick={onClick}
+                                                    className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
+                                                  >
+                                                    {value
+                                                      ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
+                                                      : 'Set date'}
+                                                  </span>
+                                                )}
+                                              />
+                                            </td>
+                                          );
+                                        case 'placements':
+                                          return (
+                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                              <MultiSelect
+                                                icon={MapPin}
+                                                label=""
+                                                options={allPlacements.map((p) => ({ value: p, label: p }))}
+                                                selected={task.placements}
+                                                onChange={(tags) => onUpdateTask({ ...task, placements: tags })}
+                                                placeholder="—"
+                                                compact
+                                              />
+                                            </td>
+                                          );
+                                        default: {
+                                          // Custom properties
+                                          if (tc.key.startsWith('prop:')) {
+                                            const propId = tc.key.slice(5);
+                                            const prop = customProperties.find((p) => p.id === propId);
+                                            const val = task.customFieldValues?.[propId];
+                                            if (prop?.type === 'person' && val) {
+                                              const personIds = Array.isArray(val) ? val : [val];
+                                              const people = members.filter((m) => personIds.includes(m.id));
+                                              return (
+                                                <td key={tc.key} className="p-3">
+                                                  {people.length > 0 ? (
+                                                    <div className="flex flex-col gap-1">
+                                                      {people.map((p) => (
+                                                        <div key={p.id} className="flex items-center gap-1.5">
+                                                          <Avatar
+                                                            src={p.avatar}
+                                                            alt={p.name}
+                                                            size="sm"
+                                                            className="flex-shrink-0"
+                                                          />
+                                                          <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
+                                                            {p.name}
+                                                          </span>
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  ) : (
+                                                    <span className="text-xs text-zinc-400">-</span>
+                                                  )}
+                                                </td>
+                                              );
+                                            }
+                                            return (
+                                              <td
+                                                key={tc.key}
+                                                className="p-3 text-xs text-zinc-600 dark:text-zinc-400 truncate"
+                                              >
+                                                {val ? String(val) : '-'}
+                                              </td>
+                                            );
+                                          }
+                                          return <td key={tc.key} className="p-3" />;
+                                        }
                                       }
-                                      return (
-                                        <td
-                                          key={prop.id}
-                                          className="p-3 text-xs text-zinc-600 dark:text-zinc-400 truncate"
-                                        >
-                                          {val ? String(val) : '-'}
-                                        </td>
-                                      );
                                     })}
-
-                                    {/* Placements — inline MultiSelect */}
-                                    <td className="p-3" onClick={(e) => e.stopPropagation()}>
-                                      <MultiSelect
-                                        icon={MapPin}
-                                        label=""
-                                        options={allPlacements.map((p) => ({ value: p, label: p }))}
-                                        selected={task.placements}
-                                        onChange={(tags) => onUpdateTask({ ...task, placements: tags })}
-                                        placeholder="—"
-                                        compact
-                                      />
-                                    </td>
                                     <td className="p-3"></td>
                                   </tr>
                                 );
@@ -1316,7 +1506,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             ) : (
                               <tr>
                                 <td
-                                  colSpan={6 + customProperties.length}
+                                  colSpan={orderedTableColumns.length + 1}
                                   className="p-4 text-center text-xs text-zinc-400 italic"
                                 >
                                   No tasks in this step
@@ -1330,7 +1520,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 onClick={() => onAddTask({ status: col.id })}
                               >
                                 <td
-                                  colSpan={6 + customProperties.length}
+                                  colSpan={orderedTableColumns.length + 1}
                                   className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium flex items-center gap-2"
                                 >
                                   <Plus size={14} /> Add Task
@@ -1434,26 +1624,26 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           </Button>
                         </div>
                       )}
-                      {isReorderPropsOpen === col.id && customProperties.length > 1 && (
+                      {isReorderColumnsOpen === col.id && (
                         <div
-                          className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left"
+                          className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left max-h-[400px] overflow-y-auto custom-scrollbar"
                           onClick={(e) => e.stopPropagation()}
                         >
                           <h4 className="text-xs font-semibold text-zinc-900 dark:text-white mb-2">Reorder Columns</h4>
                           <div className="space-y-1">
-                            {customProperties.map((prop, idx) => (
+                            {orderedTableColumns.map((tc, idx) => (
                               <div
-                                key={prop.id}
+                                key={tc.key}
                                 className="flex items-center justify-between px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-xs"
                               >
-                                <span className="text-zinc-700 dark:text-zinc-300 truncate">{prop.name}</span>
+                                <span className="text-zinc-700 dark:text-zinc-300 truncate">{tc.label}</span>
                                 <div className="flex items-center gap-0.5 flex-shrink-0">
                                   <button
                                     onClick={() => {
-                                      if (idx === 0 || !onReorderProperties) return;
-                                      const ids = customProperties.map((p) => p.id);
-                                      [ids[idx - 1], ids[idx]] = [ids[idx], ids[idx - 1]];
-                                      onReorderProperties(ids);
+                                      if (idx === 0) return;
+                                      const keys = orderedTableColumns.map((c) => c.key);
+                                      [keys[idx - 1], keys[idx]] = [keys[idx], keys[idx - 1]];
+                                      reorderColumns(keys);
                                     }}
                                     disabled={idx === 0}
                                     className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
@@ -1462,12 +1652,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   </button>
                                   <button
                                     onClick={() => {
-                                      if (idx === customProperties.length - 1 || !onReorderProperties) return;
-                                      const ids = customProperties.map((p) => p.id);
-                                      [ids[idx], ids[idx + 1]] = [ids[idx + 1], ids[idx]];
-                                      onReorderProperties(ids);
+                                      if (idx === orderedTableColumns.length - 1) return;
+                                      const keys = orderedTableColumns.map((c) => c.key);
+                                      [keys[idx], keys[idx + 1]] = [keys[idx + 1], keys[idx]];
+                                      reorderColumns(keys);
                                     }}
-                                    disabled={idx === customProperties.length - 1}
+                                    disabled={idx === orderedTableColumns.length - 1}
                                     className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
                                   >
                                     <ChevronDown size={14} />
@@ -1566,7 +1756,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       >
                         {dateObj.day}
                       </div>
-                      <div className="flex-1 p-1 space-y-1">
+                      <div className="flex-1 p-1 space-y-1 overflow-y-auto max-h-[130px] custom-scrollbar">
                         {dayTasks.map((t) => (
                           <div
                             key={t.id}
@@ -1579,8 +1769,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             className="group cursor-grab active:cursor-grabbing"
                           >
                             <div
-                              className={`text-[10px] px-1.5 py-1 rounded border border-zinc-200 dark:border-zinc-700 border-l-[3px] shadow-sm bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 ${getStatusAccent(t.status)}`}
+                              className={`text-[10px] px-1.5 py-1 rounded border border-zinc-200 dark:border-zinc-700 border-l-[3px] shadow-sm bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 flex items-center gap-1 ${getStatusAccent(t.status)}`}
                             >
+                              <span
+                                className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[t.priority] || 'bg-zinc-400'}`}
+                                title={t.priority}
+                              />
                               <span className="font-medium truncate leading-tight">{t.title}</span>
                             </div>
                           </div>

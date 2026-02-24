@@ -1,5 +1,5 @@
 import { supabase } from './supabase';
-import { Task, Team, Member, Absence, Shift, LogEntry, CustomProperty, Notification } from '../types';
+import { Task, Team, Member, Absence, Shift, LogEntry, CustomProperty, Notification, TaskComment } from '../types';
 
 // === Mappers ===
 
@@ -37,6 +37,7 @@ function mapTask(row: any, assigneeIds: string[], placements: string[]): Task {
     status: row.status,
     priority: row.priority || 'medium',
     dueDate: row.due_date || '',
+    doneDate: row.done_date || null,
     assigneeIds,
     placements,
     links: row.links || [],
@@ -49,6 +50,8 @@ function mapTask(row: any, assigneeIds: string[], placements: string[]): Task {
     },
     customFieldValues: row.custom_field_values || {},
     sortOrder: row.sort_order ?? 0,
+    deletedAt: row.deleted_at || null,
+    deletedBy: row.deleted_by || null,
   };
 }
 
@@ -98,8 +101,12 @@ export async function fetchTeams(): Promise<Team[]> {
 }
 
 export async function fetchTasks(): Promise<Task[]> {
-  // Fetch tasks ordered by sort_order
-  const { data: taskRows, error: taskError } = await supabase.from('tasks').select('*').order('sort_order');
+  // Fetch active tasks (not soft-deleted) ordered by sort_order
+  const { data: taskRows, error: taskError } = await supabase
+    .from('tasks')
+    .select('*')
+    .is('deleted_at', null)
+    .order('sort_order');
   if (taskError) throw taskError;
 
   // Fetch all task_assignees
@@ -161,6 +168,27 @@ export async function fetchTeamStatuses(): Promise<Record<string, string[]>> {
     result[key].push(row.name);
   }
   return result;
+}
+
+export async function fetchStatusCategories(): Promise<Record<string, Record<string, string>>> {
+  const { data, error } = await supabase.from('team_statuses').select('team_id, name, category');
+  if (error) throw error;
+
+  const result: Record<string, Record<string, string>> = {};
+  for (const row of data || []) {
+    if (!result[row.team_id]) result[row.team_id] = {};
+    result[row.team_id][row.name] = row.category || 'active';
+  }
+  return result;
+}
+
+export async function updateStatusCategory(teamId: string, statusName: string, category: string) {
+  const { error } = await supabase
+    .from('team_statuses')
+    .update({ category })
+    .eq('team_id', teamId)
+    .eq('name', statusName);
+  return { error };
 }
 
 export async function fetchTeamContentTypes(): Promise<Record<string, string[]>> {
@@ -237,6 +265,7 @@ export async function upsertTask(task: Task) {
     status: task.status,
     priority: task.priority,
     due_date: task.dueDate ? task.dueDate.split('T')[0] : null,
+    done_date: task.doneDate ? task.doneDate.split('T')[0] : null,
     content_type: task.contentInfo?.type || null,
     notes: task.contentInfo?.notes || null,
     editor_ids: task.contentInfo?.editorIds || [],
@@ -254,6 +283,78 @@ export async function upsertTask(task: Task) {
 
 export async function deleteTask(taskId: string) {
   const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+  return { error };
+}
+
+export async function softDeleteTask(taskId: string, deletedBy: string) {
+  const { error } = await supabase
+    .from('tasks')
+    .update({ deleted_at: new Date().toISOString(), deleted_by: deletedBy })
+    .eq('id', taskId);
+  return { error };
+}
+
+export async function restoreTask(taskId: string) {
+  const { error } = await supabase.from('tasks').update({ deleted_at: null, deleted_by: null }).eq('id', taskId);
+  return { error };
+}
+
+export async function permanentlyDeleteTask(taskId: string) {
+  const { error } = await supabase.from('tasks').delete().eq('id', taskId);
+  return { error };
+}
+
+export async function fetchDeletedTasks(): Promise<Task[]> {
+  const { data: taskRows, error: taskError } = await supabase
+    .from('tasks')
+    .select('*')
+    .not('deleted_at', 'is', null)
+    .order('deleted_at', { ascending: false });
+  if (taskError) throw taskError;
+
+  // Fetch assignees and placements for deleted tasks
+  const taskIds = (taskRows || []).map((r) => r.id);
+  if (taskIds.length === 0) return [];
+
+  const { data: assigneeRows } = await supabase
+    .from('task_assignees')
+    .select('task_id, member_id, sort_order')
+    .in('task_id', taskIds)
+    .order('sort_order');
+
+  const { data: placementRows } = await supabase
+    .from('task_placements')
+    .select('task_id, placements(name)')
+    .in('task_id', taskIds);
+
+  const assigneesByTask: Record<string, string[]> = {};
+  for (const row of assigneeRows || []) {
+    if (!assigneesByTask[row.task_id]) assigneesByTask[row.task_id] = [];
+    assigneesByTask[row.task_id].push(row.member_id);
+  }
+
+  const placementsByTask: Record<string, string[]> = {};
+  for (const row of placementRows || []) {
+    if (!placementsByTask[row.task_id]) placementsByTask[row.task_id] = [];
+    const placementName = (row as any).placements?.name;
+    if (placementName) placementsByTask[row.task_id].push(placementName);
+  }
+
+  return (taskRows || []).map((row) => mapTask(row, assigneesByTask[row.id] || [], placementsByTask[row.id] || []));
+}
+
+export async function fetchDeletedTaskCount(): Promise<number> {
+  const { count, error } = await supabase
+    .from('tasks')
+    .select('*', { count: 'exact', head: true })
+    .not('deleted_at', 'is', null);
+  if (error) throw error;
+  return count || 0;
+}
+
+export async function purgeOldDeletedTasks() {
+  const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+  const { error } = await supabase.from('tasks').delete().not('deleted_at', 'is', null).lt('deleted_at', thirtyDaysAgo);
   return { error };
 }
 
@@ -444,16 +545,27 @@ export async function insertLog(log: Omit<LogEntry, 'id'>) {
 
 // === Team status mutations ===
 
-export async function syncTeamStatuses(teamId: string, statuses: string[]) {
+export async function syncTeamStatuses(teamId: string, statuses: string[], categories?: Record<string, string>) {
+  // Read existing categories before delete so we can preserve them
+  let cats = categories;
+  if (!cats) {
+    const { data } = await supabase.from('team_statuses').select('name, category').eq('team_id', teamId);
+    cats = {};
+    for (const row of data || []) {
+      cats[row.name] = row.category || 'active';
+    }
+  }
+
   // Delete existing statuses for this team
   await supabase.from('team_statuses').delete().eq('team_id', teamId);
 
-  // Insert new statuses with sort order
+  // Insert new statuses with sort order and preserved categories
   if (statuses.length > 0) {
     const rows = statuses.map((name, index) => ({
       team_id: teamId,
       name,
       sort_order: index,
+      category: cats![name] || 'active',
     }));
     const { error } = await supabase.from('team_statuses').insert(rows);
     return { error };
@@ -661,5 +773,56 @@ export async function upsertTelegramLinkCode(profileId: string, code: string): P
 
 export async function deleteTelegramLink(profileId: string) {
   const { error } = await supabase.from('telegram_links').delete().eq('profile_id', profileId);
+  return { error };
+}
+
+// === Task Comments ===
+
+function mapComment(row: any): TaskComment {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    userId: row.user_id,
+    content: row.content,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at || undefined,
+    userName: row.profiles?.name || '',
+    userAvatar: row.profiles?.avatar || '',
+  };
+}
+
+export async function fetchTaskComments(taskId: string): Promise<TaskComment[]> {
+  const { data, error } = await supabase
+    .from('task_comments')
+    .select('*, profiles(name, avatar)')
+    .eq('task_id', taskId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(mapComment);
+}
+
+export async function insertTaskComment(taskId: string, userId: string, content: string): Promise<TaskComment> {
+  const { data, error } = await supabase
+    .from('task_comments')
+    .insert({ task_id: taskId, user_id: userId, content })
+    .select('*, profiles(name, avatar)')
+    .single();
+  if (error) throw error;
+  return mapComment(data);
+}
+
+export async function updateTaskComment(commentId: string, content: string): Promise<TaskComment> {
+  const { data, error } = await supabase
+    .from('task_comments')
+    .update({ content, updated_at: new Date().toISOString() })
+    .eq('id', commentId)
+    .select('*, profiles(name, avatar)')
+    .single();
+  if (error) throw error;
+  return mapComment(data);
+}
+
+export async function deleteTaskComment(commentId: string) {
+  const { error } = await supabase.from('task_comments').delete().eq('id', commentId);
   return { error };
 }

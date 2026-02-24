@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { toast } from 'sonner';
 import {
   Trash2,
@@ -19,18 +19,25 @@ import {
   Users,
   MoreHorizontal,
   Edit2,
+  MessageSquare,
+  Send,
+  RotateCcw,
+  AlertTriangle,
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { RichTextEditor } from './RichTextEditor';
 import { MultiSelect } from './MultiSelect';
 import { CustomSelect } from './CustomSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
+import { Avatar } from './Avatar';
 import { Button, Input, Label, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useDataStore } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
-import { Task, CustomProperty } from '../types';
+import { Task, TaskComment, CustomProperty } from '../types';
 import { PRIORITY_COLORS, PRIORITY_DOT } from '../constants';
+import * as db from '../lib/database';
+import { supabase } from '../lib/supabase';
 
 export const TaskModal: React.FC = () => {
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
@@ -61,14 +68,202 @@ export const TaskModal: React.FC = () => {
 
   const currentUser = useAuthStore((s) => s.currentUser);
 
+  // --- Comments State ---
+  const [comments, setComments] = useState<TaskComment[]>([]);
+  const [commentText, setCommentText] = useState('');
+  const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
+  const [editingCommentText, setEditingCommentText] = useState('');
+  const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [showMentionDropdown, setShowMentionDropdown] = useState(false);
+  const [mentionFilter, setMentionFilter] = useState('');
+  const [mentionCursorPos, setMentionCursorPos] = useState(0);
+  const commentInputRef = useRef<HTMLTextAreaElement>(null);
+  const commentsEndRef = useRef<HTMLDivElement>(null);
+
+  // Load comments when modal opens with an existing task
+  const loadComments = useCallback(async (taskId: string) => {
+    setIsLoadingComments(true);
+    try {
+      const data = await db.fetchTaskComments(taskId);
+      setComments(data);
+    } catch {
+      toast.error('Failed to load comments');
+    } finally {
+      setIsLoadingComments(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (isTaskModalOpen && taskModalData.id) {
+      loadComments(taskModalData.id);
+    } else {
+      setComments([]);
+    }
+    setCommentText('');
+    setEditingCommentId(null);
+    setShowMentionDropdown(false);
+  }, [isTaskModalOpen, taskModalData.id, loadComments]);
+
+  // Realtime subscription for comments on the open task
+  useEffect(() => {
+    if (!isTaskModalOpen || !taskModalData.id) return;
+    const channel = supabase
+      .channel(`task-comments-${taskModalData.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'task_comments', filter: `task_id=eq.${taskModalData.id}` },
+        () => {
+          db.fetchTaskComments(taskModalData.id!).then(setComments).catch(console.error);
+        },
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [isTaskModalOpen, taskModalData.id]);
+
+  // Scroll to bottom when new comments arrive
+  useEffect(() => {
+    commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [comments.length]);
+
+  // Parse @mentions from text, return matched member IDs
+  const parseMentions = useCallback(
+    (text: string): string[] => {
+      const mentionRegex = /@(\S+)/g;
+      const mentioned: string[] = [];
+      let match;
+      while ((match = mentionRegex.exec(text)) !== null) {
+        const name = match[1].toLowerCase();
+        const member = members.find((m) => m.name.toLowerCase().replace(/\s+/g, '') === name);
+        if (member) mentioned.push(member.id);
+      }
+      return [...new Set(mentioned)];
+    },
+    [members],
+  );
+
+  const handleAddComment = async () => {
+    if (!commentText.trim() || !taskModalData.id || !currentUser) return;
+    const text = commentText.trim();
+    setCommentText('');
+    setShowMentionDropdown(false);
+    try {
+      const newComment = await db.insertTaskComment(taskModalData.id, currentUser.id, text);
+      setComments((prev) => [...prev, newComment]);
+      // Send notifications for @mentions
+      const mentionedIds = parseMentions(text);
+      if (mentionedIds.length > 0) {
+        const { notifyMention } = useDataStore.getState();
+        notifyMention(mentionedIds, currentUser.name, taskModalData.title || 'Untitled', taskModalData.id);
+      }
+    } catch {
+      toast.error('Failed to add comment');
+      setCommentText(text);
+    }
+  };
+
+  const handleUpdateComment = async (commentId: string) => {
+    if (!editingCommentText.trim()) return;
+    try {
+      const updated = await db.updateTaskComment(commentId, editingCommentText.trim());
+      setComments((prev) => prev.map((c) => (c.id === commentId ? updated : c)));
+      setEditingCommentId(null);
+    } catch {
+      toast.error('Failed to update comment');
+    }
+  };
+
+  const handleDeleteComment = async (commentId: string) => {
+    try {
+      await db.deleteTaskComment(commentId);
+      setComments((prev) => prev.filter((c) => c.id !== commentId));
+    } catch {
+      toast.error('Failed to delete comment');
+    }
+  };
+
+  // Handle @mention input
+  const handleCommentInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setCommentText(val);
+    const cursor = e.target.selectionStart;
+    // Find if we're typing after an @
+    const textBefore = val.slice(0, cursor);
+    const atMatch = textBefore.match(/@(\S*)$/);
+    if (atMatch) {
+      setShowMentionDropdown(true);
+      setMentionFilter(atMatch[1].toLowerCase());
+      setMentionCursorPos(cursor);
+    } else {
+      setShowMentionDropdown(false);
+    }
+  };
+
+  const insertMention = (memberName: string) => {
+    const textBefore = commentText.slice(0, mentionCursorPos);
+    const atIdx = textBefore.lastIndexOf('@');
+    const newText =
+      commentText.slice(0, atIdx) + '@' + memberName.replace(/\s+/g, '') + ' ' + commentText.slice(mentionCursorPos);
+    setCommentText(newText);
+    setShowMentionDropdown(false);
+    commentInputRef.current?.focus();
+  };
+
+  const filteredMembers = members.filter((m) => m.name.toLowerCase().includes(mentionFilter));
+
+  // Render comment text with highlighted @mentions
+  const renderCommentContent = (text: string) => {
+    const parts = text.split(/(@\S+)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('@')) {
+        const name = part.slice(1).toLowerCase();
+        const isMember = members.some((m) => m.name.toLowerCase().replace(/\s+/g, '') === name);
+        if (isMember) {
+          return (
+            <span key={i} className="text-blue-600 dark:text-blue-400 font-medium">
+              {part}
+            </span>
+          );
+        }
+      }
+      return <span key={i}>{part}</span>;
+    });
+  };
+
+  const formatCommentTime = (iso: string) => {
+    const d = new Date(iso);
+    const now = new Date();
+    const diffMs = now.getTime() - d.getTime();
+    const diffMin = Math.floor(diffMs / 60000);
+    if (diffMin < 1) return 'just now';
+    if (diffMin < 60) return `${diffMin}m ago`;
+    const diffH = Math.floor(diffMin / 60);
+    if (diffH < 24) return `${diffH}h ago`;
+    const diffD = Math.floor(diffH / 24);
+    if (diffD < 7) return `${diffD}d ago`;
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
   const handleSaveTask = () => {
     saveTask(taskModalData, teams);
     setIsTaskModalOpen(false);
   };
 
+  const { restoreTask } = useDataStore();
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+
   const handleDeleteTask = (taskId: string) => {
-    if (confirm('Are you sure you want to delete this task?')) {
-      deleteTask(taskId);
+    setPendingDeleteId(taskId);
+    setIsDeleteConfirmOpen(true);
+  };
+
+  const confirmDeleteTask = () => {
+    if (pendingDeleteId) {
+      deleteTask(pendingDeleteId);
+      setIsDeleteConfirmOpen(false);
+      setPendingDeleteId(null);
       setIsTaskModalOpen(false);
     }
   };
@@ -90,19 +285,37 @@ export const TaskModal: React.FC = () => {
       });
   };
 
-  const handleAddEmptyLink = () => {
+  // --- Links State ---
+  const [isAddingLink, setIsAddingLink] = useState(false);
+  const [newLinkTitle, setNewLinkTitle] = useState('');
+  const [newLinkUrl, setNewLinkUrl] = useState('');
+  const [editingLinkIdx, setEditingLinkIdx] = useState<number | null>(null);
+  const [editLinkTitle, setEditLinkTitle] = useState('');
+  const [editLinkUrl, setEditLinkUrl] = useState('');
+
+  const handleAddLink = () => {
+    const url = newLinkUrl.trim();
+    if (!url) return;
+    const title = newLinkTitle.trim() || url;
     setTaskModalData((prev: Partial<Task>) => ({
       ...prev,
-      links: [...(prev.links || []), { title: '', url: '' }],
+      links: [...(prev.links || []), { title, url }],
     }));
+    setNewLinkTitle('');
+    setNewLinkUrl('');
+    setIsAddingLink(false);
   };
 
-  const handleUpdateLink = (idx: number, field: 'title' | 'url', value: string) => {
+  const handleSaveEditLink = (idx: number) => {
+    const url = editLinkUrl.trim();
+    if (!url) return;
+    const title = editLinkTitle.trim() || url;
     setTaskModalData((prev: Partial<Task>) => {
       const newLinks = [...(prev.links || [])];
-      newLinks[idx] = { ...newLinks[idx], [field]: value };
+      newLinks[idx] = { title, url };
       return { ...prev, links: newLinks };
     });
+    setEditingLinkIdx(null);
   };
 
   const handleRemoveLink = (idx: number) => {
@@ -156,146 +369,206 @@ export const TaskModal: React.FC = () => {
         </div>
       }
       actions={
-        <>
-          <Button variant="ghost" onClick={() => setIsTaskModalOpen(false)}>
-            Cancel
-          </Button>
-          <Button onClick={handleSaveTask}>{taskModalData.id ? 'Save Changes' : 'Create Task'}</Button>
-        </>
+        taskModalData.deletedAt ? (
+          <>
+            <Button variant="ghost" onClick={() => setIsTaskModalOpen(false)}>
+              Close
+            </Button>
+            <Button
+              className="inline-flex items-center"
+              onClick={() => {
+                restoreTask(taskModalData.id!);
+                setIsTaskModalOpen(false);
+              }}
+            >
+              <RotateCcw size={14} className="mr-1.5" />
+              Restore
+            </Button>
+          </>
+        ) : (
+          <>
+            <Button variant="ghost" onClick={() => setIsTaskModalOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveTask}>{taskModalData.id ? 'Save Changes' : 'Create Task'}</Button>
+          </>
+        )
       }
     >
       <div className="flex flex-col gap-6">
-        <input
-          type="text"
-          placeholder="Task Title"
-          value={taskModalData.title || ''}
-          onChange={(e) => setTaskModalData({ ...taskModalData, title: e.target.value })}
-          className="w-full text-2xl font-bold bg-transparent border-none outline-none placeholder-zinc-300 dark:placeholder-zinc-700"
-          autoFocus
-        />
-
-        <RichTextEditor
-          value={taskModalData.description || ''}
-          onChange={(html) => setTaskModalData({ ...taskModalData, description: html })}
-          placeholder="Description..."
-          minHeight="120px"
-        />
-
-        <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
-            <CustomSelect
-              icon={CheckCircle}
-              label="Status"
-              options={teamStatuses[taskModalData.teamId || 'default'] || teamStatuses['default'] || ['To Do']}
-              value={taskModalData.status || ''}
-              onChange={(val) => setTaskModalData({ ...taskModalData, status: val })}
-              onAdd={(val) => {
-                addStatus(taskModalData.teamId || 'default', val);
-                setTaskModalData({ ...taskModalData, status: val });
-              }}
-            />
-            <CustomSelect
-              icon={Layout}
-              label="Content Type"
-              options={teamTypes[taskModalData.teamId || 'default'] || teamTypes['default'] || ['General']}
-              value={taskModalData.contentInfo?.type || ''}
-              onChange={(val) =>
-                setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } })
-              }
-              onAdd={(val) => {
-                addType(taskModalData.teamId || 'default', val);
-                setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } });
-              }}
-            />
-            <MultiSelect
-              icon={UserIcon}
-              label={getAuthorLabel()}
-              options={members.map((m) => ({ value: m.id, label: m.name }))}
-              selected={taskModalData.assigneeIds || []}
-              onChange={(ids) => setTaskModalData({ ...taskModalData, assigneeIds: ids })}
-              placeholder={`Select ${getAuthorLabel()}...`}
-            />
-            <MultiSelect
-              icon={Eye}
-              label={getEditorLabel()}
-              options={members.map((m) => ({ value: m.id, label: m.name }))}
-              selected={taskModalData.contentInfo?.editorIds || []}
-              onChange={(ids) =>
-                setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, editorIds: ids } })
-              }
-              placeholder={`Select ${getEditorLabel()}...`}
-            />
-            {taskModalData.teamId === 'social' && (
-              <MultiSelect
-                icon={Palette}
-                label="Designer"
-                options={members.map((m) => ({ value: m.id, label: m.name }))}
-                selected={taskModalData.contentInfo?.designerIds || []}
-                onChange={(ids) =>
-                  setTaskModalData({
-                    ...taskModalData,
-                    contentInfo: { ...taskModalData.contentInfo!, designerIds: ids },
-                  })
-                }
-                placeholder="Select Designer..."
-              />
-            )}
-            <CustomSelect
-              icon={Zap}
-              label="Priority"
-              options={['low', 'medium', 'high']}
-              value={taskModalData.priority || 'medium'}
-              onChange={(val) => setTaskModalData({ ...taskModalData, priority: val as Task['priority'] })}
-              renderValue={(v) => (
-                <span className={`capitalize inline-flex items-center gap-1.5 ${PRIORITY_COLORS[v] || ''}`}>
-                  <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[v] || 'bg-zinc-400'}`} />
-                  {v}
-                </span>
-              )}
-            />
-            <div className="space-y-1">
-              <label className="text-xs font-medium text-zinc-500 flex items-center gap-1.5">
-                <Calendar size={12} /> Due Date
-              </label>
-              <SimpleDatePicker
-                value={taskModalData.dueDate ? taskModalData.dueDate.split('T')[0] : ''}
-                onChange={(date) => setTaskModalData({ ...taskModalData, dueDate: new Date(date).toISOString() })}
-                placeholder="Set due date"
-              />
+        {/* Deleted task banner */}
+        {taskModalData.deletedAt && (
+          <div className="flex items-center gap-3 px-4 py-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg">
+            <AlertTriangle size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="text-sm text-amber-800 dark:text-amber-300">
+                This task is in the bin.{' '}
+                {taskModalData.deletedBy && (
+                  <span>
+                    Deleted by{' '}
+                    <span className="font-medium">
+                      {members.find((m) => m.id === taskModalData.deletedBy)?.name || 'Unknown'}
+                    </span>{' '}
+                    on{' '}
+                    {new Date(taskModalData.deletedAt).toLocaleDateString('en-US', {
+                      month: 'short',
+                      day: 'numeric',
+                      year: 'numeric',
+                    })}
+                    .
+                  </span>
+                )}
+              </p>
             </div>
-            <div className="md:col-span-2">
-              <MultiSelect
-                icon={Globe}
-                label="Placements"
-                options={allPlacements.map((p) => ({ value: p, label: p }))}
-                selected={taskModalData.placements || []}
-                onChange={(tags) => setTaskModalData({ ...taskModalData, placements: tags })}
-                onAdd={(newTag) => {
-                  setAllPlacements([...allPlacements, newTag]);
-                  setTaskModalData({ ...taskModalData, placements: [...(taskModalData.placements || []), newTag] });
+            <Button
+              size="sm"
+              className="inline-flex items-center"
+              onClick={() => {
+                restoreTask(taskModalData.id!);
+                setIsTaskModalOpen(false);
+              }}
+            >
+              <RotateCcw size={14} className="mr-1.5" />
+              Restore
+            </Button>
+          </div>
+        )}
+
+        <div className={taskModalData.deletedAt ? 'pointer-events-none opacity-60 space-y-6' : 'space-y-6'}>
+          <input
+            type="text"
+            placeholder="Task Title"
+            value={taskModalData.title || ''}
+            onChange={(e) => setTaskModalData({ ...taskModalData, title: e.target.value })}
+            className="w-full text-2xl font-bold bg-transparent border-none outline-none placeholder-zinc-300 dark:placeholder-zinc-700"
+            autoFocus={!taskModalData.deletedAt}
+          />
+
+          <RichTextEditor
+            value={taskModalData.description || ''}
+            onChange={(html) => setTaskModalData({ ...taskModalData, description: html })}
+            placeholder="Description..."
+            minHeight="120px"
+          />
+
+          <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+              <CustomSelect
+                icon={CheckCircle}
+                label="Status"
+                options={teamStatuses[taskModalData.teamId || 'default'] || teamStatuses['default'] || ['To Do']}
+                value={taskModalData.status || ''}
+                onChange={(val) => setTaskModalData({ ...taskModalData, status: val })}
+                onAdd={(val) => {
+                  addStatus(taskModalData.teamId || 'default', val);
+                  setTaskModalData({ ...taskModalData, status: val });
                 }}
-                placeholder="Add tags..."
               />
-            </div>
+              <CustomSelect
+                icon={Layout}
+                label="Content Type"
+                options={teamTypes[taskModalData.teamId || 'default'] || teamTypes['default'] || ['General']}
+                value={taskModalData.contentInfo?.type || ''}
+                onChange={(val) =>
+                  setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } })
+                }
+                onAdd={(val) => {
+                  addType(taskModalData.teamId || 'default', val);
+                  setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } });
+                }}
+              />
+              <MultiSelect
+                icon={UserIcon}
+                label={getAuthorLabel()}
+                options={members.map((m) => ({ value: m.id, label: m.name }))}
+                selected={taskModalData.assigneeIds || []}
+                onChange={(ids) => setTaskModalData({ ...taskModalData, assigneeIds: ids })}
+                placeholder={`Select ${getAuthorLabel()}...`}
+              />
+              <MultiSelect
+                icon={Eye}
+                label={getEditorLabel()}
+                options={members.map((m) => ({ value: m.id, label: m.name }))}
+                selected={taskModalData.contentInfo?.editorIds || []}
+                onChange={(ids) =>
+                  setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, editorIds: ids } })
+                }
+                placeholder={`Select ${getEditorLabel()}...`}
+              />
+              {taskModalData.teamId === 'social' && (
+                <MultiSelect
+                  icon={Palette}
+                  label="Designer"
+                  options={members.map((m) => ({ value: m.id, label: m.name }))}
+                  selected={taskModalData.contentInfo?.designerIds || []}
+                  onChange={(ids) =>
+                    setTaskModalData({
+                      ...taskModalData,
+                      contentInfo: { ...taskModalData.contentInfo!, designerIds: ids },
+                    })
+                  }
+                  placeholder="Select Designer..."
+                />
+              )}
+              <CustomSelect
+                icon={Zap}
+                label="Priority"
+                options={['low', 'medium', 'high']}
+                value={taskModalData.priority || 'medium'}
+                onChange={(val) => setTaskModalData({ ...taskModalData, priority: val as Task['priority'] })}
+                renderValue={(v) => (
+                  <span className={`capitalize inline-flex items-center gap-1.5 ${PRIORITY_COLORS[v] || ''}`}>
+                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[v] || 'bg-zinc-400'}`} />
+                    {v}
+                  </span>
+                )}
+              />
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500 flex items-center gap-1.5">
+                  <Calendar size={12} /> Due Date
+                </label>
+                <SimpleDatePicker
+                  value={taskModalData.dueDate ? taskModalData.dueDate.split('T')[0] : ''}
+                  onChange={(date) => setTaskModalData({ ...taskModalData, dueDate: new Date(date).toISOString() })}
+                  placeholder="Set due date"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-zinc-500 flex items-center gap-1.5">
+                  <CheckCircle size={12} /> Done
+                </label>
+                <SimpleDatePicker
+                  value={taskModalData.doneDate ? taskModalData.doneDate.split('T')[0] : ''}
+                  onChange={(date) => setTaskModalData({ ...taskModalData, doneDate: new Date(date).toISOString() })}
+                  placeholder="Set done date"
+                />
+              </div>
+              <div className="md:col-span-2">
+                <MultiSelect
+                  icon={Globe}
+                  label="Placements"
+                  options={allPlacements.map((p) => ({ value: p, label: p }))}
+                  selected={taskModalData.placements || []}
+                  onChange={(tags) => setTaskModalData({ ...taskModalData, placements: tags })}
+                  onAdd={(newTag) => {
+                    setAllPlacements([...allPlacements, newTag]);
+                    setTaskModalData({ ...taskModalData, placements: [...(taskModalData.placements || []), newTag] });
+                  }}
+                  placeholder="Add tags..."
+                />
+              </div>
 
-            {/* Custom Properties Inputs */}
-            {(teamProperties[taskModalData.teamId || 'default'] || []).map((prop) => (
-              <div key={prop.id} className="space-y-1 relative">
-                <div className="flex items-center justify-between group/prop">
-                  {editingPropId === prop.id ? (
-                    <input
-                      autoFocus
-                      className="text-xs font-medium bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 outline-none w-full"
-                      value={editingPropName}
-                      onChange={(e) => setEditingPropName(e.target.value)}
-                      onBlur={() => {
-                        if (editingPropName.trim()) {
-                          updateProperty(taskModalData.teamId || 'default', { ...prop, name: editingPropName.trim() });
-                        }
-                        setEditingPropId(null);
-                      }}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter') {
+              {/* Custom Properties Inputs */}
+              {(teamProperties[taskModalData.teamId || 'default'] || []).map((prop) => (
+                <div key={prop.id} className="space-y-1 relative">
+                  <div className="flex items-center justify-between group/prop">
+                    {editingPropId === prop.id ? (
+                      <input
+                        autoFocus
+                        className="text-xs font-medium bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 outline-none w-full"
+                        value={editingPropName}
+                        onChange={(e) => setEditingPropName(e.target.value)}
+                        onBlur={() => {
                           if (editingPropName.trim()) {
                             updateProperty(taskModalData.teamId || 'default', {
                               ...prop,
@@ -303,238 +576,498 @@ export const TaskModal: React.FC = () => {
                             });
                           }
                           setEditingPropId(null);
-                        }
-                        if (e.key === 'Escape') setEditingPropId(null);
-                      }}
-                    />
-                  ) : (
-                    <label className="text-xs font-medium text-zinc-500 flex items-center gap-1.5 capitalize">
-                      {prop.name}
-                    </label>
-                  )}
-                  {editingPropId !== prop.id && (
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPropMenuId(propMenuId === prop.id ? null : prop.id);
-                      }}
-                      className="opacity-0 group-hover/prop:opacity-100 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-opacity p-0.5"
-                    >
-                      <MoreHorizontal size={14} />
-                    </button>
-                  )}
-                </div>
-                {propMenuId === prop.id && (
-                  <div className="absolute right-0 top-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 w-44">
-                    <button
-                      onClick={() => {
-                        setEditingPropId(prop.id);
-                        setEditingPropName(prop.name);
-                        setPropMenuId(null);
-                      }}
-                      className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
-                    >
-                      <Edit2 size={12} /> Rename
-                    </button>
-                    <Divider className="my-1" />
-                    <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase">Change Type</p>
-                    {[
-                      { type: 'text' as const, icon: Type, label: 'Text' },
-                      { type: 'select' as const, icon: ListIcon, label: 'Select' },
-                      { type: 'date' as const, icon: Calendar, label: 'Date' },
-                      { type: 'person' as const, icon: Users, label: 'Person' },
-                    ].map(({ type, icon: Icon, label }) => (
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            if (editingPropName.trim()) {
+                              updateProperty(taskModalData.teamId || 'default', {
+                                ...prop,
+                                name: editingPropName.trim(),
+                              });
+                            }
+                            setEditingPropId(null);
+                          }
+                          if (e.key === 'Escape') setEditingPropId(null);
+                        }}
+                      />
+                    ) : (
+                      <label className="text-xs font-medium text-zinc-500 flex items-center gap-1.5 capitalize">
+                        {prop.name}
+                      </label>
+                    )}
+                    {editingPropId !== prop.id && (
                       <button
-                        key={type}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPropMenuId(propMenuId === prop.id ? null : prop.id);
+                        }}
+                        className="opacity-0 group-hover/prop:opacity-100 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-opacity p-0.5"
+                      >
+                        <MoreHorizontal size={14} />
+                      </button>
+                    )}
+                  </div>
+                  {propMenuId === prop.id && (
+                    <div className="absolute right-0 top-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 w-44">
+                      <button
                         onClick={() => {
-                          updateProperty(taskModalData.teamId || 'default', { ...prop, type });
+                          setEditingPropId(prop.id);
+                          setEditingPropName(prop.name);
                           setPropMenuId(null);
                         }}
-                        className={`w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs ${prop.type === type ? 'text-black dark:text-white font-medium' : ''}`}
+                        className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
                       >
-                        <Icon size={12} /> {label} {prop.type === type && '(current)'}
+                        <Edit2 size={12} /> Rename
                       </button>
-                    ))}
-                    <Divider className="my-1" />
-                    <button
-                      onClick={() => {
-                        if (confirm(`Delete "${prop.name}" property?`)) {
-                          deleteProperty(taskModalData.teamId || 'default', prop.id);
-                        }
-                        setPropMenuId(null);
+                      <Divider className="my-1" />
+                      <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase">Change Type</p>
+                      {[
+                        { type: 'text' as const, icon: Type, label: 'Text' },
+                        { type: 'select' as const, icon: ListIcon, label: 'Select' },
+                        { type: 'date' as const, icon: Calendar, label: 'Date' },
+                        { type: 'person' as const, icon: Users, label: 'Person' },
+                      ].map(({ type, icon: Icon, label }) => (
+                        <button
+                          key={type}
+                          onClick={() => {
+                            updateProperty(taskModalData.teamId || 'default', { ...prop, type });
+                            setPropMenuId(null);
+                          }}
+                          className={`w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs ${prop.type === type ? 'text-black dark:text-white font-medium' : ''}`}
+                        >
+                          <Icon size={12} /> {label} {prop.type === type && '(current)'}
+                        </button>
+                      ))}
+                      <Divider className="my-1" />
+                      <button
+                        onClick={() => {
+                          if (confirm(`Delete "${prop.name}" property?`)) {
+                            deleteProperty(taskModalData.teamId || 'default', prop.id);
+                          }
+                          setPropMenuId(null);
+                        }}
+                        className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs text-red-500"
+                      >
+                        <Trash2 size={12} /> Delete
+                      </button>
+                    </div>
+                  )}
+                  {prop.type === 'text' && (
+                    <Input
+                      value={taskModalData.customFieldValues?.[prop.id] || ''}
+                      onChange={(e) =>
+                        setTaskModalData({
+                          ...taskModalData,
+                          customFieldValues: { ...taskModalData.customFieldValues, [prop.id]: e.target.value },
+                        })
+                      }
+                    />
+                  )}
+                  {prop.type === 'date' && (
+                    <SimpleDatePicker
+                      value={taskModalData.customFieldValues?.[prop.id] || ''}
+                      onChange={(date) =>
+                        setTaskModalData({
+                          ...taskModalData,
+                          customFieldValues: { ...taskModalData.customFieldValues, [prop.id]: date },
+                        })
+                      }
+                      placeholder="Select Date"
+                    />
+                  )}
+                  {prop.type === 'select' && (
+                    <CustomSelect
+                      options={prop.options?.map((o) => ({ value: o, label: o })) || []}
+                      value={taskModalData.customFieldValues?.[prop.id] || ''}
+                      onChange={(val) =>
+                        setTaskModalData({
+                          ...taskModalData,
+                          customFieldValues: { ...taskModalData.customFieldValues, [prop.id]: val },
+                        })
+                      }
+                      placeholder="Select..."
+                      onAdd={(val) => {
+                        updateProperty(taskModalData.teamId || 'default', {
+                          ...prop,
+                          options: [...(prop.options || []), val],
+                        });
+                        setTaskModalData({
+                          ...taskModalData,
+                          customFieldValues: { ...taskModalData.customFieldValues, [prop.id]: val },
+                        });
                       }}
-                      className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs text-red-500"
+                    />
+                  )}
+                  {prop.type === 'person' && (
+                    <CustomSelect
+                      options={members.map((m) => ({ value: m.id, label: m.name }))}
+                      value={taskModalData.customFieldValues?.[prop.id] || ''}
+                      onChange={(val) =>
+                        setTaskModalData({
+                          ...taskModalData,
+                          customFieldValues: { ...taskModalData.customFieldValues, [prop.id]: val },
+                        })
+                      }
+                      placeholder="Select person..."
+                    />
+                  )}
+                </div>
+              ))}
+
+              <div className="md:col-span-2 relative">
+                {isAddPropertyOpen ? (
+                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">New Property</h4>
+                      <button onClick={() => setIsAddPropertyOpen(false)} className="text-zinc-400 hover:text-zinc-600">
+                        <X size={14} />
+                      </button>
+                    </div>
+                    <Input
+                      placeholder="Property Name"
+                      value={newPropName}
+                      onChange={(e) => setNewPropName(e.target.value)}
+                      autoFocus
+                    />
+                    <div className="space-y-1">
+                      {[
+                        { type: 'text' as const, icon: Type, label: 'Text' },
+                        { type: 'select' as const, icon: ListIcon, label: 'Select' },
+                        { type: 'date' as const, icon: Calendar, label: 'Date' },
+                        { type: 'person' as const, icon: Users, label: 'Person' },
+                      ].map(({ type, icon: Icon, label }) => (
+                        <button
+                          key={type}
+                          onClick={() => setNewPropType(type)}
+                          className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === type ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                        >
+                          <Icon size={12} /> {label}
+                        </button>
+                      ))}
+                    </div>
+                    <Button
+                      size="sm"
+                      className="w-full"
+                      onClick={() => {
+                        if (!newPropName || !addProperty) return;
+                        addProperty(taskModalData.teamId || 'default', {
+                          id: crypto.randomUUID(),
+                          name: newPropName,
+                          type: newPropType,
+                          options: [],
+                        });
+                        setNewPropName('');
+                        setIsAddPropertyOpen(false);
+                      }}
                     >
-                      <Trash2 size={12} /> Delete
-                    </button>
+                      Create
+                    </Button>
                   </div>
-                )}
-                {prop.type === 'text' && (
-                  <Input
-                    value={taskModalData.customFieldValues?.[prop.id] || ''}
-                    onChange={(e) =>
-                      setTaskModalData({
-                        ...taskModalData,
-                        customFieldValues: { ...taskModalData.customFieldValues, [prop.id]: e.target.value },
-                      })
-                    }
-                  />
-                )}
-                {prop.type === 'date' && (
-                  <SimpleDatePicker
-                    value={taskModalData.customFieldValues?.[prop.id] || ''}
-                    onChange={(date) =>
-                      setTaskModalData({
-                        ...taskModalData,
-                        customFieldValues: { ...taskModalData.customFieldValues, [prop.id]: date },
-                      })
-                    }
-                    placeholder="Select Date"
-                  />
-                )}
-                {prop.type === 'select' && (
-                  <CustomSelect
-                    options={prop.options?.map((o) => ({ value: o, label: o })) || []}
-                    value={taskModalData.customFieldValues?.[prop.id] || ''}
-                    onChange={(val) =>
-                      setTaskModalData({
-                        ...taskModalData,
-                        customFieldValues: { ...taskModalData.customFieldValues, [prop.id]: val },
-                      })
-                    }
-                    placeholder="Select..."
-                    onAdd={(val) => {
-                      updateProperty(taskModalData.teamId || 'default', {
-                        ...prop,
-                        options: [...(prop.options || []), val],
-                      });
-                      setTaskModalData({
-                        ...taskModalData,
-                        customFieldValues: { ...taskModalData.customFieldValues, [prop.id]: val },
-                      });
-                    }}
-                  />
-                )}
-                {prop.type === 'person' && (
-                  <CustomSelect
-                    options={members.map((m) => ({ value: m.id, label: m.name }))}
-                    value={taskModalData.customFieldValues?.[prop.id] || ''}
-                    onChange={(val) =>
-                      setTaskModalData({
-                        ...taskModalData,
-                        customFieldValues: { ...taskModalData.customFieldValues, [prop.id]: val },
-                      })
-                    }
-                    placeholder="Select person..."
-                  />
+                ) : (
+                  <button
+                    onClick={() => setIsAddPropertyOpen(true)}
+                    className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 font-medium transition-colors"
+                  >
+                    <Plus size={14} /> Add Property
+                  </button>
                 )}
               </div>
-            ))}
-
-            <div className="md:col-span-2 relative">
-              {isAddPropertyOpen ? (
-                <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 space-y-2">
-                  <div className="flex items-center justify-between">
-                    <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">New Property</h4>
-                    <button onClick={() => setIsAddPropertyOpen(false)} className="text-zinc-400 hover:text-zinc-600">
-                      <X size={14} />
-                    </button>
-                  </div>
-                  <Input
-                    placeholder="Property Name"
-                    value={newPropName}
-                    onChange={(e) => setNewPropName(e.target.value)}
-                    autoFocus
-                  />
-                  <div className="space-y-1">
-                    {[
-                      { type: 'text' as const, icon: Type, label: 'Text' },
-                      { type: 'select' as const, icon: ListIcon, label: 'Select' },
-                      { type: 'date' as const, icon: Calendar, label: 'Date' },
-                      { type: 'person' as const, icon: Users, label: 'Person' },
-                    ].map(({ type, icon: Icon, label }) => (
-                      <button
-                        key={type}
-                        onClick={() => setNewPropType(type)}
-                        className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === type ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
-                      >
-                        <Icon size={12} /> {label}
-                      </button>
-                    ))}
-                  </div>
-                  <Button
-                    size="sm"
-                    className="w-full"
-                    onClick={() => {
-                      if (!newPropName || !addProperty) return;
-                      addProperty(taskModalData.teamId || 'default', {
-                        id: crypto.randomUUID(),
-                        name: newPropName,
-                        type: newPropType,
-                        options: [],
-                      });
-                      setNewPropName('');
-                      setIsAddPropertyOpen(false);
-                    }}
-                  >
-                    Create
-                  </Button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => setIsAddPropertyOpen(true)}
-                  className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 font-medium transition-colors"
-                >
-                  <Plus size={14} /> Add Property
-                </button>
-              )}
             </div>
           </div>
-        </div>
 
-        <div className="space-y-2">
-          <Label variant="section">Notes</Label>
-          <RichTextEditor
-            value={taskModalData.contentInfo?.notes || ''}
-            onChange={(html) =>
-              setTaskModalData({
-                ...taskModalData,
-                contentInfo: { ...taskModalData.contentInfo!, notes: html },
-              })
-            }
-            placeholder="Add notes..."
-            minHeight="100px"
-          />
-        </div>
+          {/* Comments Section */}
+          {taskModalData.id && (
+            <div className="space-y-3">
+              <Label variant="section" className="flex items-center gap-2">
+                <MessageSquare size={12} /> Comments ({comments.length})
+              </Label>
 
-        <div className="space-y-2">
-          <Label variant="section" className="flex items-center gap-2">
-            <LinkIcon size={12} /> Links Attachments
-          </Label>
-          {taskModalData.links?.map((link, idx) => (
-            <div key={idx} className="flex gap-2 mb-2">
-              <Input
-                className="flex-1"
-                placeholder="Title (e.g. Reference)"
-                value={link.title}
-                onChange={(e) => handleUpdateLink(idx, 'title', e.target.value)}
-              />
-              <Input
-                className="flex-[2] font-mono text-blue-600 dark:text-blue-400"
-                placeholder="URL (https://...)"
-                value={link.url}
-                onChange={(e) => handleUpdateLink(idx, 'url', e.target.value)}
-              />
-              <button onClick={() => handleRemoveLink(idx)} className="p-2 text-zinc-400 hover:text-red-500">
-                <X size={14} />
-              </button>
+              {/* Comment list */}
+              <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-3">
+                {isLoadingComments ? (
+                  <p className="text-xs text-zinc-400 italic py-4 text-center">Loading comments...</p>
+                ) : comments.length === 0 ? (
+                  <p className="text-xs text-zinc-400 italic py-4 text-center">No comments yet</p>
+                ) : (
+                  comments.map((c) => (
+                    <div key={c.id} className="flex gap-2.5 group/comment">
+                      <Avatar
+                        src={c.userAvatar || ''}
+                        alt={c.userName || ''}
+                        size="sm"
+                        className="flex-shrink-0 mt-0.5"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-xs font-semibold text-zinc-900 dark:text-white">{c.userName}</span>
+                          <span className="text-[10px] text-zinc-400">{formatCommentTime(c.createdAt)}</span>
+                          {c.updatedAt && <span className="text-[10px] text-zinc-400 italic">(edited)</span>}
+                          {currentUser && (currentUser.id === c.userId || currentUser.role === 'admin') && (
+                            <div className="opacity-0 group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
+                              {currentUser.id === c.userId && (
+                                <button
+                                  onClick={() => {
+                                    setEditingCommentId(c.id);
+                                    setEditingCommentText(c.content);
+                                  }}
+                                  className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                >
+                                  <Edit2 size={12} />
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDeleteComment(c.id)}
+                                className="text-zinc-400 hover:text-red-500"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                        {editingCommentId === c.id ? (
+                          <div className="space-y-1.5">
+                            <textarea
+                              autoFocus
+                              className="w-full p-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 resize-none"
+                              rows={2}
+                              value={editingCommentText}
+                              onChange={(e) => setEditingCommentText(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) {
+                                  e.preventDefault();
+                                  handleUpdateComment(c.id);
+                                }
+                                if (e.key === 'Escape') setEditingCommentId(null);
+                              }}
+                            />
+                            <div className="flex gap-1.5">
+                              <Button size="sm" onClick={() => handleUpdateComment(c.id)}>
+                                Save
+                              </Button>
+                              <Button size="sm" variant="ghost" onClick={() => setEditingCommentId(null)}>
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <p className="text-xs text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">
+                            {renderCommentContent(c.content)}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  ))
+                )}
+                <div ref={commentsEndRef} />
+              </div>
+
+              {/* Add comment input */}
+              <div className="flex gap-2.5 items-start">
+                {currentUser && (
+                  <Avatar src={currentUser.avatar} alt={currentUser.name} size="sm" className="flex-shrink-0 mt-1.5" />
+                )}
+                <div className="flex-1 space-y-2 relative">
+                  <textarea
+                    ref={commentInputRef}
+                    className="w-full p-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 focus:border-zinc-400 resize-none placeholder-zinc-400"
+                    rows={2}
+                    placeholder="Write a comment... Use @ to mention someone"
+                    value={commentText}
+                    onChange={handleCommentInput}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && !e.shiftKey && !showMentionDropdown) {
+                        e.preventDefault();
+                        handleAddComment();
+                      }
+                    }}
+                  />
+                  {/* @mention dropdown */}
+                  {showMentionDropdown && filteredMembers.length > 0 && (
+                    <div className="absolute left-0 bottom-full mb-1 w-56 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
+                      {filteredMembers.map((m) => (
+                        <button
+                          key={m.id}
+                          onClick={() => insertMention(m.name)}
+                          className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
+                        >
+                          <Avatar src={m.avatar} alt={m.name} size="sm" />
+                          <span className="text-zinc-900 dark:text-white">{m.name}</span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  <div className="flex justify-end">
+                    <button
+                      onClick={handleAddComment}
+                      disabled={!commentText.trim()}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-medium rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                    >
+                      <Send size={12} />
+                      Send
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
-          ))}
-          <Button variant="link" size="sm" onClick={handleAddEmptyLink} className="flex items-center gap-1">
-            <Plus size={12} /> Add Link
-          </Button>
+          )}
+
+          <div className="space-y-2">
+            <Label variant="section" className="flex items-center gap-2">
+              <LinkIcon size={12} /> Links
+              {taskModalData.links && taskModalData.links.length > 0 && (
+                <span className="text-[10px] text-zinc-400 font-normal">({taskModalData.links.length})</span>
+              )}
+            </Label>
+
+            {/* Links list */}
+            {taskModalData.links && taskModalData.links.length > 0 && (
+              <div className="space-y-1.5">
+                {taskModalData.links.map((link, idx) =>
+                  editingLinkIdx === idx ? (
+                    <div
+                      key={idx}
+                      className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 space-y-2"
+                    >
+                      <Input
+                        placeholder="Title (optional)"
+                        value={editLinkTitle}
+                        onChange={(e) => setEditLinkTitle(e.target.value)}
+                        autoFocus
+                      />
+                      <Input
+                        placeholder="https://..."
+                        value={editLinkUrl}
+                        onChange={(e) => setEditLinkUrl(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleSaveEditLink(idx);
+                          if (e.key === 'Escape') setEditingLinkIdx(null);
+                        }}
+                      />
+                      <div className="flex gap-1.5">
+                        <Button size="sm" onClick={() => handleSaveEditLink(idx)}>
+                          Save
+                        </Button>
+                        <Button size="sm" variant="ghost" onClick={() => setEditingLinkIdx(null)}>
+                          Cancel
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div
+                      key={idx}
+                      className="flex items-center gap-2 px-2.5 py-2 rounded-lg border border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-900/50 group/link transition-colors"
+                    >
+                      <LinkIcon size={14} className="text-zinc-400 flex-shrink-0" />
+                      <div className="flex-1 min-w-0">
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs font-medium text-blue-600 dark:text-blue-400 hover:underline truncate block"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {link.title || link.url}
+                        </a>
+                        {link.title && <span className="text-[10px] text-zinc-400 truncate block">{link.url}</span>}
+                      </div>
+                      <div className="flex items-center gap-0.5 opacity-0 group-hover/link:opacity-100 transition-opacity flex-shrink-0">
+                        <button
+                          onClick={() => {
+                            setEditingLinkIdx(idx);
+                            setEditLinkTitle(link.title);
+                            setEditLinkUrl(link.url);
+                          }}
+                          className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded"
+                        >
+                          <Edit2 size={12} />
+                        </button>
+                        <button
+                          onClick={() => handleRemoveLink(idx)}
+                          className="p-1 text-zinc-400 hover:text-red-500 rounded"
+                        >
+                          <X size={12} />
+                        </button>
+                      </div>
+                    </div>
+                  ),
+                )}
+              </div>
+            )}
+
+            {/* Add link form */}
+            {isAddingLink ? (
+              <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 space-y-2">
+                <Input
+                  placeholder="https://..."
+                  value={newLinkUrl}
+                  onChange={(e) => setNewLinkUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAddLink();
+                    if (e.key === 'Escape') {
+                      setIsAddingLink(false);
+                      setNewLinkTitle('');
+                      setNewLinkUrl('');
+                    }
+                  }}
+                  autoFocus
+                />
+                <Input
+                  placeholder="Title (optional)"
+                  value={newLinkTitle}
+                  onChange={(e) => setNewLinkTitle(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAddLink();
+                  }}
+                />
+                <div className="flex gap-1.5">
+                  <Button size="sm" onClick={handleAddLink} disabled={!newLinkUrl.trim()}>
+                    Add
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => {
+                      setIsAddingLink(false);
+                      setNewLinkTitle('');
+                      setNewLinkUrl('');
+                    }}
+                  >
+                    Cancel
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <button
+                onClick={() => setIsAddingLink(true)}
+                className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 font-medium transition-colors"
+              >
+                <Plus size={14} /> Add Link
+              </button>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* Delete Confirmation Modal */}
+      <Modal
+        isOpen={isDeleteConfirmOpen}
+        onClose={() => setIsDeleteConfirmOpen(false)}
+        title="Move to Bin"
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setIsDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="danger" onClick={confirmDeleteTask}>
+              Move to Bin
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          This task will be moved to the bin and can be restored within 30 days.
+        </p>
+      </Modal>
     </Modal>
   );
 };

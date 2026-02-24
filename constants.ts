@@ -146,11 +146,11 @@ export const STATUS_HEX_COLORS: Record<string, string> = {
   'Working on This Week': '#3b82f6', // blue-500
   'Working on Today': '#ea580c', // orange-600
   'Ready for Editing': '#a855f7', // purple-500
-  'Published This Week': '#18181b', // zinc-900
+  'Published This Week': '#64748b', // slate-500
   'Need to Update (SEO)': '#ca8a04', // yellow-600
 
   // Legacy
-  Published: '#18181b', // zinc-900
+  Published: '#64748b', // slate-500
 };
 
 const HEX_FALLBACK_PALETTE = [

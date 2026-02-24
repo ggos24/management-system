@@ -6,6 +6,7 @@ import LoginPage from './components/LoginPage';
 import Dashboard from './components/Dashboard';
 import Workspace from './components/Workspace';
 import Schedule from './components/Schedule';
+import Bin from './components/Bin';
 import { useAuthStore } from './stores/authStore';
 import { useDataStore } from './stores/dataStore';
 import { useUiStore } from './stores/uiStore';
@@ -22,8 +23,10 @@ interface LayoutContext {
 // These map store data to the existing prop interfaces, keeping page components untouched.
 
 const DashboardRoute: React.FC = () => {
-  const { tasks, members, absences, teams } = useDataStore();
-  return <Dashboard tasks={tasks} members={members} absences={absences} teams={teams} />;
+  const { tasks, members, absences, teams, statusCategories } = useDataStore();
+  return (
+    <Dashboard tasks={tasks} members={members} absences={absences} teams={teams} statusCategories={statusCategories} />
+  );
 };
 
 const ScheduleRoute: React.FC = () => {
@@ -54,8 +57,10 @@ const MyWorkspaceRoute: React.FC = () => {
     teamStatuses,
     reorderStatuses,
     archivedStatuses,
+    statusCategories,
     archiveStatus,
     duplicateStatus,
+    setStatusCategory,
     teamProperties,
     addProperty,
     updateProperty,
@@ -63,6 +68,7 @@ const MyWorkspaceRoute: React.FC = () => {
     reorderProperties,
     reorderTaskInStatus,
     allPlacements,
+    teamTypes,
   } = useDataStore();
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setIsAiChatOpen = useUiStore((s) => s.setIsAiChatOpen);
@@ -84,8 +90,10 @@ const MyWorkspaceRoute: React.FC = () => {
       teamStatuses={teamStatuses}
       onUpdateTeamStatuses={reorderStatuses}
       archivedStatuses={archivedStatuses}
+      statusCategories={statusCategories}
       onArchiveStatus={archiveStatus}
       onDuplicateStatus={duplicateStatus}
+      onSetStatusCategory={setStatusCategory}
       customProperties={teamProperties['my-work'] || []}
       onAddProperty={(prop) => addProperty('my-work', prop)}
       onUpdateProperty={(prop) => updateProperty('my-work', prop)}
@@ -94,6 +102,7 @@ const MyWorkspaceRoute: React.FC = () => {
       userRole={currentUser.role}
       onReorderTask={reorderTaskInStatus}
       allPlacements={allPlacements}
+      teamTypes={teamTypes}
     />
   );
 };
@@ -110,8 +119,10 @@ const TeamWorkspaceRoute: React.FC = () => {
     teamStatuses,
     reorderStatuses,
     archivedStatuses,
+    statusCategories,
     archiveStatus,
     duplicateStatus,
+    setStatusCategory,
     teamProperties,
     addProperty,
     updateProperty,
@@ -119,6 +130,7 @@ const TeamWorkspaceRoute: React.FC = () => {
     reorderProperties,
     reorderTaskInStatus,
     allPlacements,
+    teamTypes,
   } = useDataStore();
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setIsAiChatOpen = useUiStore((s) => s.setIsAiChatOpen);
@@ -147,8 +159,10 @@ const TeamWorkspaceRoute: React.FC = () => {
       teamStatuses={teamStatuses}
       onUpdateTeamStatuses={reorderStatuses}
       archivedStatuses={archivedStatuses}
+      statusCategories={statusCategories}
       onArchiveStatus={archiveStatus}
       onDuplicateStatus={duplicateStatus}
+      onSetStatusCategory={setStatusCategory}
       customProperties={teamProperties[team.id] || []}
       onAddProperty={(prop) => addProperty(team.id, prop)}
       onUpdateProperty={(prop) => updateProperty(team.id, prop)}
@@ -157,8 +171,17 @@ const TeamWorkspaceRoute: React.FC = () => {
       userRole={currentUser.role}
       onReorderTask={reorderTaskInStatus}
       allPlacements={allPlacements}
+      teamTypes={teamTypes}
     />
   );
+};
+
+const BinRoute: React.FC = () => {
+  const loadDeletedTasks = useDataStore((s) => s.loadDeletedTasks);
+  React.useEffect(() => {
+    loadDeletedTasks();
+  }, [loadDeletedTasks]);
+  return <Bin />;
 };
 
 const LoginRoute: React.FC = () => {
@@ -214,6 +237,7 @@ export const router = createBrowserRouter([
           { path: 'dashboard', element: <DashboardRoute /> },
           { path: 'workspace', element: <MyWorkspaceRoute /> },
           { path: 'schedule', element: <ScheduleRoute /> },
+          { path: 'bin', element: <BinRoute /> },
           { path: 'teams/:teamId', element: <TeamWorkspaceRoute /> },
           { path: '*', element: <Navigate to="/dashboard" replace /> },
         ],

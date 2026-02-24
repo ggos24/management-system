@@ -1,6 +1,6 @@
 import React from 'react';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Edit2, Archive, Trash2, Shield } from 'lucide-react';
+import { Eye, EyeOff, Edit2, Archive, Trash2, Lock, Unlock } from 'lucide-react';
 import { Modal } from './Modal';
 import { IconComponent, ICONS } from './IconComponent';
 import { Button, Input, Label, Badge, Divider } from './ui';
@@ -142,9 +142,10 @@ export const ManageTeamsModal: React.FC = () => {
                       <p className="text-sm font-semibold">
                         {team.name}{' '}
                         {team.adminOnly && (
-                          <Badge color="purple" className="ml-2">
-                            Admin
-                          </Badge>
+                          <span className="inline-flex items-center gap-1 ml-2 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded">
+                            <Lock size={10} />
+                            Admin Only
+                          </span>
                         )}
                         {team.archived && (
                           <span className="text-[10px] font-normal text-zinc-400 uppercase ml-2">(Archived)</span>
@@ -155,10 +156,10 @@ export const ManageTeamsModal: React.FC = () => {
                   <div className="flex items-center gap-2">
                     <button
                       onClick={() => toggleTeamAdminOnly(team.id)}
-                      className={`p-1.5 text-zinc-400 hover:text-purple-500 ${team.adminOnly ? 'text-purple-500' : ''}`}
-                      title={team.adminOnly ? 'Visible to all' : 'Admin only'}
+                      className={`p-1.5 rounded transition-colors ${team.adminOnly ? 'text-amber-600 dark:text-amber-400 hover:text-amber-700 bg-amber-50 dark:bg-amber-900/20' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
+                      title={team.adminOnly ? 'Make visible to all' : 'Restrict to admins'}
                     >
-                      <Shield size={14} />
+                      {team.adminOnly ? <Lock size={14} /> : <Unlock size={14} />}
                     </button>
                     <button
                       onClick={() => toggleTeamVisibility(team.id)}
