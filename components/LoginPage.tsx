@@ -103,7 +103,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
               ? 'Create a password to complete your account setup'
               : currentMode === 'reset-password'
                 ? "Enter your email and we'll send you a reset link"
-                : 'Enter your credentials to access the workspace'}
+                : ''}
           </p>
         </div>
 
