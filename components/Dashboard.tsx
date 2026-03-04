@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
-  BarChart,
-  Bar,
+  AreaChart,
+  Area,
   XAxis,
   YAxis,
   CartesianGrid,
@@ -276,13 +276,34 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
       rangeStart = new Date(startDate + 'T00:00:00');
       rangeEnd = new Date(endDate + 'T00:00:00');
     } else {
-      const today = new Date();
-      rangeEnd = today;
-      rangeStart = new Date(today);
-      rangeStart.setDate(today.getDate() - 6);
+      // "All Time" — derive range from actual done dates
+      if (doneTasks.length === 0) return [];
+      const dates = doneTasks.map((t) => t.doneDate!).sort();
+      rangeStart = new Date(dates[0] + 'T00:00:00');
+      rangeEnd = new Date(dates[dates.length - 1] + 'T00:00:00');
     }
 
     const diffDays = Math.round((rangeEnd.getTime() - rangeStart.getTime()) / (1000 * 60 * 60 * 24)) + 1;
+
+    // For large ranges, aggregate by month instead of by day
+    if (diffDays > 90) {
+      const months: Record<string, number> = {};
+      doneTasks.forEach((t) => {
+        const d = new Date(t.doneDate + 'T00:00:00');
+        const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+        months[key] = (months[key] || 0) + 1;
+      });
+      return Object.keys(months)
+        .sort()
+        .map((key) => {
+          const [y, m] = key.split('-').map(Number);
+          return {
+            name: new Date(y, m - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+            done: months[key],
+          };
+        });
+    }
+
     const days: { name: string; done: number }[] = [];
     for (let i = 0; i < diffDays; i++) {
       const d = new Date(rangeStart);
@@ -526,12 +547,18 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
           <span className="bg-zinc-100 dark:bg-zinc-800 px-3 py-1 rounded-md text-xs font-semibold text-zinc-500 dark:text-zinc-400">
             {startDate && endDate
               ? `${new Date(startDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(endDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-              : 'Last 7 Days'}
+              : 'All Time'}
           </span>
         </div>
         <div className="flex-1 w-full min-h-0">
           <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={progressData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+            <AreaChart data={progressData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+              <defs>
+                <linearGradient id="completedGradient" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#10b981" stopOpacity={0.2} />
+                  <stop offset="100%" stopColor="#10b981" stopOpacity={0} />
+                </linearGradient>
+              </defs>
               <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="var(--color-chart-grid)" />
               <XAxis
                 dataKey="name"
@@ -546,9 +573,16 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
                 tick={{ fontSize: 12, fill: 'var(--color-chart-text)' }}
                 allowDecimals={false}
               />
-              <Tooltip cursor={{ fill: 'transparent' }} contentStyle={tooltipStyle} />
-              <Bar dataKey="done" name="Completed" fill="#10b981" radius={[4, 4, 0, 0]} barSize={40} />
-            </BarChart>
+              <Tooltip contentStyle={tooltipStyle} />
+              <Area
+                type="monotone"
+                dataKey="done"
+                name="Completed"
+                stroke="#10b981"
+                strokeWidth={2}
+                fill="url(#completedGradient)"
+              />
+            </AreaChart>
           </ResponsiveContainer>
         </div>
       </Card>

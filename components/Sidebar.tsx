@@ -170,27 +170,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                 Schedule
               </span>
             </button>
-            <button
-              onClick={() => onChangeView('bin')}
-              className={`relative w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-                currentView === 'bin' ? activeClass : inactiveClass
-              } ${isCollapsed ? 'justify-center px-0' : ''}`}
-              title="Bin"
-            >
-              <Trash2 size={18} />
-              <span
-                className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
-              >
-                Bin
-              </span>
-              {!isCollapsed && deletedTaskCount > 0 && (
-                <span
-                  className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'bin' ? activeBadgeClass : inactiveBadgeClass}`}
-                >
-                  {deletedTaskCount}
-                </span>
-              )}
-            </button>
           </div>
 
           {/* Teams Section */}
@@ -259,6 +238,27 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div className="mt-auto p-2 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
+          <button
+            onClick={() => onChangeView('bin')}
+            className={`w-full flex items-center gap-3 text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white text-sm font-medium transition-colors px-3 py-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+              currentView === 'bin' ? activeClass : ''
+            } ${isCollapsed ? 'justify-center px-0' : ''}`}
+            title="Bin"
+          >
+            <Trash2 size={18} />
+            <span
+              className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+            >
+              Bin
+            </span>
+            {!isCollapsed && deletedTaskCount > 0 && (
+              <span
+                className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'bin' ? activeBadgeClass : inactiveBadgeClass}`}
+              >
+                {deletedTaskCount}
+              </span>
+            )}
+          </button>
           <button
             onClick={onOpenSettings}
             className={`w-full flex items-center gap-3 text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white text-sm font-medium transition-colors px-3 py-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${isCollapsed ? 'justify-center px-0' : ''}`}

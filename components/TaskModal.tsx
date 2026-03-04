@@ -46,7 +46,7 @@ export const TaskModal: React.FC = () => {
   const [editingPropId, setEditingPropId] = useState<string | null>(null);
   const [editingPropName, setEditingPropName] = useState('');
   const [propMenuId, setPropMenuId] = useState<string | null>(null);
-  const { isTaskModalOpen, taskModalData, isShareOpen, setIsTaskModalOpen, setTaskModalData, setIsShareOpen } =
+  const { isTaskModalOpen, taskModalData, setIsTaskModalOpen, setTaskModalData } =
     useUiStore();
 
   const {
@@ -227,6 +227,30 @@ export const TaskModal: React.FC = () => {
           );
         }
       }
+      // Linkify URLs within the text segment
+      const urlParts = part.split(/(https?:\/\/[^\s<]+)/g);
+      if (urlParts.length > 1) {
+        return (
+          <span key={i}>
+            {urlParts.map((seg, j) =>
+              /^https?:\/\//.test(seg) ? (
+                <a
+                  key={j}
+                  href={seg}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-blue-600 dark:text-blue-400 underline hover:text-blue-800 dark:hover:text-blue-300 break-all"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {seg}
+                </a>
+              ) : (
+                seg
+              ),
+            )}
+          </span>
+        );
+      }
       return <span key={i}>{part}</span>;
     });
   };
@@ -246,6 +270,10 @@ export const TaskModal: React.FC = () => {
   };
 
   const handleSaveTask = () => {
+    if (!taskModalData.title?.trim()) {
+      toast.error('Title is required');
+      return;
+    }
     saveTask(taskModalData, teams);
     setIsTaskModalOpen(false);
   };
@@ -268,20 +296,22 @@ export const TaskModal: React.FC = () => {
     }
   };
 
-  const handleShareTask = (mode: 'view' | 'edit') => {
+  const [linkCopied, setLinkCopied] = useState(false);
+
+  const handleShareTask = () => {
     if (!taskModalData.id) {
       toast.warning('Please create the task first before sharing.');
       return;
     }
-    const url = `https://mediaflow.app/task/${taskModalData.id}?mode=${mode}`;
+    const url = `${window.location.origin}${window.location.pathname}?task=${taskModalData.id}`;
     navigator.clipboard
       .writeText(url)
       .then(() => {
-        toast.success('Link copied to clipboard');
-        setIsShareOpen(false);
+        setLinkCopied(true);
+        setTimeout(() => setLinkCopied(false), 2000);
       })
       .catch(() => {
-        toast.error(`Could not copy to clipboard. Link: ${url}`);
+        toast.error('Could not copy link');
       });
   };
 
@@ -343,29 +373,20 @@ export const TaskModal: React.FC = () => {
           >
             <Trash2 size={18} />
           </button>
-          <button
-            onClick={() => setIsShareOpen(!isShareOpen)}
-            className="p-1.5 text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
-            title="Share"
-          >
-            <Share2 size={18} />
-          </button>
-          {isShareOpen && (
-            <div className="absolute top-full right-0 mt-2 w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded shadow-xl z-50 p-1 flex flex-col">
-              <button
-                onClick={() => handleShareTask('view')}
-                className="text-left px-3 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-700 dark:text-zinc-300"
-              >
-                Share for View
-              </button>
-              <button
-                onClick={() => handleShareTask('edit')}
-                className="text-left px-3 py-2 text-sm hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-700 dark:text-zinc-300"
-              >
-                Share for Edit
-              </button>
-            </div>
-          )}
+          <div className="relative">
+            <button
+              onClick={handleShareTask}
+              className="p-1.5 text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
+              title="Copy link"
+            >
+              {linkCopied ? <CheckCircle size={18} className="text-emerald-500" /> : <Share2 size={18} />}
+            </button>
+            {linkCopied && (
+              <div className="absolute top-full right-0 mt-1 px-2 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-800 rounded whitespace-nowrap">
+                Link copied
+              </div>
+            )}
+          </div>
         </div>
       }
       actions={
@@ -535,12 +556,12 @@ export const TaskModal: React.FC = () => {
               </div>
               <div className="space-y-1">
                 <label className="text-xs font-medium text-zinc-500 flex items-center gap-1.5">
-                  <CheckCircle size={12} /> Done
+                  <CheckCircle size={12} /> Pub Date
                 </label>
                 <SimpleDatePicker
                   value={taskModalData.doneDate ? taskModalData.doneDate.split('T')[0] : ''}
                   onChange={(date) => setTaskModalData({ ...taskModalData, doneDate: new Date(date).toISOString() })}
-                  placeholder="Set done date"
+                  placeholder="Set publish date"
                 />
               </div>
               <div className="md:col-span-2">

@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { toast } from 'sonner';
 import { Task, TaskStatus, TeamType, Member, Priority, Team, CustomProperty, UserRole } from '../types';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent } from '../constants';
@@ -34,6 +34,8 @@ import {
   List as ListIcon,
   Users,
   ArrowLeftRight,
+  Check,
+  ArrowRight,
 } from 'lucide-react';
 import { generateContentIdeas } from '../services/geminiService';
 import { MultiSelect } from './MultiSelect';
@@ -195,6 +197,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const [newPropName, setNewPropName] = useState('');
   const [newPropType, setNewPropType] = useState<CustomProperty['type']>('text');
 
+  // Bulk selection state (table view)
+  const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
+  const [bulkStatusMenuOpen, setBulkStatusMenuOpen] = useState(false);
+  const lastClickedTaskRef = useRef<string | null>(null);
+
   // --- Data-driven table columns with persistent ordering ---
   const allTableColumns = useMemo(() => {
     const base: { key: string; label: string; className: string }[] = [
@@ -205,7 +212,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       { key: 'designer', label: 'Designer', className: 'w-32' },
       { key: 'priority', label: 'Priority', className: 'w-24' },
       { key: 'deadline', label: 'Deadline', className: 'w-24' },
-      { key: 'done', label: 'Done', className: 'w-24' },
+      { key: 'done', label: 'Pub Date', className: 'w-24' },
     ];
     const propCols = customProperties.map((p) => ({
       key: `prop:${p.id}`,
@@ -550,6 +557,88 @@ const Workspace: React.FC<WorkspaceProps> = ({
       }
     });
   };
+
+  // --- Bulk selection helpers ---
+  const selectedCount = selectedTaskIds.size;
+
+  const toggleTaskSelection = (taskId: string, shiftKey: boolean) => {
+    setSelectedTaskIds((prev) => {
+      const next = new Set(prev);
+      if (shiftKey && lastClickedTaskRef.current) {
+        // Range selection: find all visible tasks between last clicked and current
+        const allVisibleIds = displayColumns.flatMap((col) =>
+          sortTasks(filteredTasks.filter((t) => t.status === col.id)).map((t) => t.id),
+        );
+        const lastIdx = allVisibleIds.indexOf(lastClickedTaskRef.current);
+        const curIdx = allVisibleIds.indexOf(taskId);
+        if (lastIdx !== -1 && curIdx !== -1) {
+          const [from, to] = lastIdx < curIdx ? [lastIdx, curIdx] : [curIdx, lastIdx];
+          for (let i = from; i <= to; i++) next.add(allVisibleIds[i]);
+        } else {
+          next.has(taskId) ? next.delete(taskId) : next.add(taskId);
+        }
+      } else {
+        next.has(taskId) ? next.delete(taskId) : next.add(taskId);
+      }
+      return next;
+    });
+    lastClickedTaskRef.current = taskId;
+  };
+
+  const toggleGroupSelection = (statusId: string) => {
+    const groupIds = filteredTasks.filter((t) => t.status === statusId).map((t) => t.id);
+    setSelectedTaskIds((prev) => {
+      const allSelected = groupIds.length > 0 && groupIds.every((id) => prev.has(id));
+      const next = new Set(prev);
+      if (allSelected) {
+        groupIds.forEach((id) => next.delete(id));
+      } else {
+        groupIds.forEach((id) => next.add(id));
+      }
+      return next;
+    });
+    lastClickedTaskRef.current = null;
+  };
+
+  const clearSelection = () => {
+    setSelectedTaskIds(new Set());
+    setBulkStatusMenuOpen(false);
+    lastClickedTaskRef.current = null;
+  };
+
+  const handleBulkMove = (targetStatus: string) => {
+    const tasksToMove = filteredTasks.filter(
+      (t) => selectedTaskIds.has(t.id) && t.status !== targetStatus,
+    );
+    if (tasksToMove.length > 0) {
+      tasksToMove.forEach((t) => onUpdateTaskStatus(t.id, targetStatus as TaskStatus));
+      toast.success(`Moved ${tasksToMove.length} task${tasksToMove.length > 1 ? 's' : ''} to ${targetStatus}`);
+      clearSelection();
+    } else {
+      setBulkStatusMenuOpen(false);
+    }
+  };
+
+  // Clear selection on team/view/filter/search changes
+  useEffect(() => {
+    setSelectedTaskIds(new Set());
+    setBulkStatusMenuOpen(false);
+    lastClickedTaskRef.current = null;
+  }, [teamFilter, viewMode, searchQuery]);
+
+  // Escape key clears selection
+  useEffect(() => {
+    if (selectedCount === 0) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setSelectedTaskIds(new Set());
+        setBulkStatusMenuOpen(false);
+        lastClickedTaskRef.current = null;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [selectedCount]);
 
   // HTML5 Drag and Drop Handlers for TASKS
   const handleDragStart = (e: React.DragEvent, taskId: string, sourceStatus: string) => {
@@ -1156,6 +1245,22 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             className={`border-b ${isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
                           >
                             <tr>
+                              <th className="p-3 w-10">
+                                <input
+                                  type="checkbox"
+                                  ref={(el) => {
+                                    if (el) {
+                                      const someSelected = colTasks.some((t) => selectedTaskIds.has(t.id));
+                                      const allSelected = colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id));
+                                      el.indeterminate = someSelected && !allSelected;
+                                    }
+                                  }}
+                                  checked={colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id))}
+                                  onChange={() => toggleGroupSelection(col.id)}
+                                  className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </th>
                               {orderedTableColumns.map((tc) => {
                                 const isProp = tc.key.startsWith('prop:');
                                 const prop = isProp
@@ -1248,7 +1353,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     onDragOver={(e) => !sortColumn && handleTaskDragOver(e, task.id)}
                                     onDragLeave={handleTaskDragLeave}
                                     onDrop={(e) => handleDropOnTask(e, task.id, col.id)}
-                                    className={`hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group ${!sortColumn ? 'cursor-grab active:cursor-grabbing' : ''} relative`}
+                                    className={`hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group ${!sortColumn ? 'cursor-grab active:cursor-grabbing' : ''} relative ${selectedTaskIds.has(task.id) ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
                                     style={
                                       isDragOver && !sortColumn
                                         ? {
@@ -1261,6 +1366,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     }
                                     onClick={() => onTaskClick(task)}
                                   >
+                                    <td className="p-3 w-10" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedTaskIds.has(task.id)}
+                                        onChange={(e) => toggleTaskSelection(task.id, e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey)}
+                                        className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                      />
+                                    </td>
                                     {/* Data-driven cells */}
                                     {orderedTableColumns.map((tc) => {
                                       switch (tc.key) {
@@ -1506,7 +1619,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             ) : (
                               <tr>
                                 <td
-                                  colSpan={orderedTableColumns.length + 1}
+                                  colSpan={orderedTableColumns.length + 2}
                                   className="p-4 text-center text-xs text-zinc-400 italic"
                                 >
                                   No tasks in this step
@@ -1520,10 +1633,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 onClick={() => onAddTask({ status: col.id })}
                               >
                                 <td
-                                  colSpan={orderedTableColumns.length + 1}
-                                  className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium flex items-center gap-2"
+                                  colSpan={orderedTableColumns.length + 2}
+                                  className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium"
                                 >
-                                  <Plus size={14} /> Add Task
+                                  <span className="flex items-center gap-2">
+                                    <Plus size={14} /> Add Task
+                                  </span>
                                 </td>
                               </tr>
                             )}
@@ -1629,7 +1744,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left max-h-[400px] overflow-y-auto custom-scrollbar"
                           onClick={(e) => e.stopPropagation()}
                         >
-                          <h4 className="text-xs font-semibold text-zinc-900 dark:text-white mb-2">Reorder Columns</h4>
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">Reorder Columns</h4>
+                            <button
+                              onClick={() => setIsReorderColumnsOpen(null)}
+                              className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded transition-colors"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
                           <div className="space-y-1">
                             {orderedTableColumns.map((tc, idx) => (
                               <div
@@ -1683,6 +1806,51 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 Add Status
               </button>
             )}
+          </div>
+        )}
+
+        {/* Floating Bulk Action Bar */}
+        {viewMode === 'table' && selectedCount > 0 && (
+          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200">
+            <div className="flex items-center gap-3 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-full px-5 py-2.5 shadow-2xl text-sm font-medium">
+              <span className="flex items-center gap-1.5">
+                <Check size={14} />
+                {selectedCount} selected
+              </span>
+              <div className="w-px h-4 bg-zinc-700 dark:bg-zinc-300" />
+              <div className="relative">
+                <button
+                  onClick={() => setBulkStatusMenuOpen(!bulkStatusMenuOpen)}
+                  className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
+                >
+                  <ArrowRight size={14} />
+                  Move to…
+                  <ChevronUp size={12} />
+                </button>
+                {bulkStatusMenuOpen && (
+                  <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-xl py-1 min-w-[180px] text-zinc-900 dark:text-zinc-100">
+                    {displayColumns.map((col) => (
+                      <button
+                        key={col.id}
+                        onClick={() => handleBulkMove(col.id)}
+                        className="w-full text-left px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-2"
+                      >
+                        <span className="w-2 h-2 rounded-full flex-shrink-0 bg-zinc-400" />
+                        {col.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <div className="w-px h-4 bg-zinc-700 dark:bg-zinc-300" />
+              <button
+                onClick={clearSelection}
+                className="p-1 rounded-md hover:bg-zinc-800 dark:hover:bg-zinc-200 transition-colors"
+                title="Clear selection"
+              >
+                <X size={14} />
+              </button>
+            </div>
           </div>
         )}
 
