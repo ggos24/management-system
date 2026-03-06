@@ -217,7 +217,8 @@ const Schedule: React.FC<ScheduleProps> = ({
   };
 
   const membersByTeam = useMemo(() => {
-    return teams
+    const teamIds = new Set(teams.map((t) => t.id));
+    const groups = teams
       .map((team) => {
         let teamMembers = members.filter((m) => m.teamId === team.id);
         if (filterPerson !== 'all') {
@@ -237,6 +238,31 @@ const Schedule: React.FC<ScheduleProps> = ({
         return { team, members: teamMembers };
       })
       .filter((group) => group.members.length > 0);
+
+    // Add unassigned members (no teamId or teamId not matching any team)
+    let unassigned = members.filter((m) => !m.teamId || !teamIds.has(m.teamId));
+    if (filterPerson !== 'all') {
+      unassigned = unassigned.filter((m) => m.id === filterPerson);
+    }
+    if (filterAbsenceType !== 'all') {
+      unassigned = unassigned.filter((m) => {
+        return absences.some(
+          (a) =>
+            a.memberId === m.id &&
+            a.type === filterAbsenceType &&
+            (new Date(a.startDate).getMonth() === currentDate.getMonth() ||
+              new Date(a.endDate).getMonth() === currentDate.getMonth()),
+        );
+      });
+    }
+    if (unassigned.length > 0) {
+      groups.push({
+        team: { id: '__unassigned', name: 'Unassigned', icon: 'User' } as Team,
+        members: unassigned,
+      });
+    }
+
+    return groups;
   }, [teams, members, filterPerson, filterAbsenceType, absences, currentDate]);
 
   return (

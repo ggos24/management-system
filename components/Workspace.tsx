@@ -874,7 +874,16 @@ const Workspace: React.FC<WorkspaceProps> = ({
           </div>
         )}
 
-        {viewMode === 'board' && displayColumns.length > 0 && (
+        {viewMode === 'board' && filteredTasks.length === 0 && (
+          <div className="flex flex-col items-center justify-center flex-1 text-center">
+            <div className="text-zinc-300 dark:text-zinc-600 mb-3">
+              <CheckCircle size={40} strokeWidth={1.5} />
+            </div>
+            <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">No tasks yet</p>
+            <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Tasks assigned to you will appear here</p>
+          </div>
+        )}
+        {viewMode === 'board' && filteredTasks.length > 0 && displayColumns.length > 0 && (
           <div className="flex gap-6 overflow-x-auto pb-4 h-full">
             {displayColumns.map((col) => {
               const isCollapsed = collapsedSections[col.id];
@@ -1129,6 +1138,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
         {viewMode === 'table' && (
           <div className="h-full overflow-auto custom-scrollbar space-y-8 pr-2 pb-10">
+            {filteredTasks.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-full text-center">
+                <div className="text-zinc-300 dark:text-zinc-600 mb-3">
+                  <CheckCircle size={40} strokeWidth={1.5} />
+                </div>
+                <p className="text-sm font-medium text-zinc-500 dark:text-zinc-400">No tasks yet</p>
+                <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Tasks assigned to you will appear here</p>
+              </div>
+            )}
             {displayColumns.map((col) => {
               const colTasks = filteredTasks.filter((t) => t.status === col.id);
               const isCollapsed = collapsedSections[col.id];
@@ -1890,20 +1908,41 @@ const Workspace: React.FC<WorkspaceProps> = ({
             </div>
 
             {/* Full Height Grid with Scroll Fix */}
-            <div className="flex-1 overflow-y-auto bg-white dark:bg-black custom-scrollbar pb-10">
-              <div className="grid grid-cols-7 auto-rows-fr border-b border-zinc-200 dark:border-zinc-800 min-h-[500px]">
+            <div className="flex-1 overflow-y-auto bg-white dark:bg-black custom-scrollbar">
+              <div className="grid grid-cols-7 auto-rows-fr border-b border-zinc-200 dark:border-zinc-800 h-full min-h-[500px]">
                 {calendarDays.map((dateObj, i) => {
                   const isCurrentMonth = dateObj.type === 'current';
                   const isToday = isCurrentMonth && dateObj.date.toDateString() === new Date().toDateString();
                   const dateStr = dateObj.date.toISOString();
 
                   if (!isCurrentMonth) {
-                    // Render empty placeholder for structure but minimal
+                    const overflowTasks = filteredTasks.filter(
+                      (t) => new Date(t.dueDate).toDateString() === dateObj.date.toDateString(),
+                    );
                     return (
                       <div
                         key={i}
-                        className="bg-zinc-50/20 dark:bg-zinc-900/20 border-b border-r border-zinc-200 dark:border-zinc-800 last:border-r-0"
-                      ></div>
+                        className="flex flex-col min-h-[100px] bg-zinc-100 dark:bg-zinc-900/60 border-b border-r border-zinc-200 dark:border-zinc-800 last:border-r-0"
+                      >
+                        <div className="p-1 text-[10px] font-medium text-right text-zinc-400 dark:text-zinc-500">
+                          {dateObj.day}
+                        </div>
+                        {overflowTasks.length > 0 && (
+                          <div className="flex-1 p-1 space-y-1 overflow-y-auto max-h-[130px] custom-scrollbar">
+                            {overflowTasks.map((t) => (
+                              <div
+                                key={t.id}
+                                onClick={() => onTaskClick(t)}
+                                className="cursor-pointer"
+                              >
+                                <div className="text-[10px] px-1.5 py-1 rounded border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 text-zinc-400 dark:text-zinc-500 truncate leading-tight">
+                                  {t.title}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
                     );
                   }
 
