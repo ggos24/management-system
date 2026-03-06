@@ -46,8 +46,7 @@ export const TaskModal: React.FC = () => {
   const [editingPropId, setEditingPropId] = useState<string | null>(null);
   const [editingPropName, setEditingPropName] = useState('');
   const [propMenuId, setPropMenuId] = useState<string | null>(null);
-  const { isTaskModalOpen, taskModalData, setIsTaskModalOpen, setTaskModalData } =
-    useUiStore();
+  const { isTaskModalOpen, taskModalData, setIsTaskModalOpen, setTaskModalData } = useUiStore();
 
   const {
     teams,
@@ -356,8 +355,12 @@ export const TaskModal: React.FC = () => {
     });
   };
 
-  const getAuthorLabel = () => (taskModalData.teamId === 'management' ? 'Executive' : 'Author');
-  const getEditorLabel = () => (taskModalData.teamId === 'management' ? 'Manager' : 'Editor');
+  const isManagement = teams
+    .find((t) => t.id === taskModalData.teamId)
+    ?.name.toLowerCase()
+    .includes('management');
+  const getAuthorLabel = () => (isManagement ? 'Executive' : 'Author');
+  const getEditorLabel = () => (isManagement ? 'Manager' : 'Editor');
 
   return (
     <Modal

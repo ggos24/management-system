@@ -183,8 +183,8 @@ export const Header: React.FC = () => {
           <Avatar src={currentUser?.avatar} alt={currentUser?.name} size="md" />
           <div className="text-left hidden md:block">
             <p className="text-xs font-semibold leading-none">{currentUser?.name}</p>
-            <p className="text-[10px] text-zinc-500 leading-none mt-0.5 uppercase tracking-wider">
-              {currentUser?.role}
+            <p className="text-[10px] text-zinc-500 leading-none mt-0.5 tracking-wider">
+              {currentUser?.jobTitle || currentUser?.role}
             </p>
           </div>
         </button>

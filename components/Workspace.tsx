@@ -207,8 +207,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
     const base: { key: string; label: string; className: string }[] = [
       { key: 'title', label: 'Title', className: 'w-[20%]' },
       { key: 'type', label: 'Type', className: 'w-28' },
-      { key: 'assignee', label: teamFilter === 'management' ? 'Executive' : 'Author', className: 'w-32' },
-      { key: 'editor', label: teamFilter === 'management' ? 'Manager' : 'Editor', className: 'w-32' },
+      {
+        key: 'assignee',
+        label: teamName.toLowerCase().includes('management') ? 'Executive' : 'Author',
+        className: 'w-32',
+      },
+      { key: 'editor', label: teamName.toLowerCase().includes('management') ? 'Manager' : 'Editor', className: 'w-32' },
       { key: 'designer', label: 'Designer', className: 'w-32' },
       { key: 'priority', label: 'Priority', className: 'w-24' },
       { key: 'deadline', label: 'Deadline', className: 'w-24' },
@@ -575,10 +579,18 @@ const Workspace: React.FC<WorkspaceProps> = ({
           const [from, to] = lastIdx < curIdx ? [lastIdx, curIdx] : [curIdx, lastIdx];
           for (let i = from; i <= to; i++) next.add(allVisibleIds[i]);
         } else {
-          next.has(taskId) ? next.delete(taskId) : next.add(taskId);
+          if (next.has(taskId)) {
+            next.delete(taskId);
+          } else {
+            next.add(taskId);
+          }
         }
       } else {
-        next.has(taskId) ? next.delete(taskId) : next.add(taskId);
+        if (next.has(taskId)) {
+          next.delete(taskId);
+        } else {
+          next.add(taskId);
+        }
       }
       return next;
     });
@@ -607,9 +619,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleBulkMove = (targetStatus: string) => {
-    const tasksToMove = filteredTasks.filter(
-      (t) => selectedTaskIds.has(t.id) && t.status !== targetStatus,
-    );
+    const tasksToMove = filteredTasks.filter((t) => selectedTaskIds.has(t.id) && t.status !== targetStatus);
     if (tasksToMove.length > 0) {
       tasksToMove.forEach((t) => onUpdateTaskStatus(t.id, targetStatus as TaskStatus));
       toast.success(`Moved ${tasksToMove.length} task${tasksToMove.length > 1 ? 's' : ''} to ${targetStatus}`);
@@ -620,11 +630,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   // Clear selection on team/view/filter/search changes
-  useEffect(() => {
+  const clearKey = `${teamFilter}-${viewMode}-${searchQuery}`;
+  const [prevClearKey, setPrevClearKey] = useState(clearKey);
+  if (clearKey !== prevClearKey) {
+    setPrevClearKey(clearKey);
     setSelectedTaskIds(new Set());
     setBulkStatusMenuOpen(false);
-    lastClickedTaskRef.current = null;
-  }, [teamFilter, viewMode, searchQuery]);
+  }
 
   // Escape key clears selection
   useEffect(() => {
@@ -1269,7 +1281,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   ref={(el) => {
                                     if (el) {
                                       const someSelected = colTasks.some((t) => selectedTaskIds.has(t.id));
-                                      const allSelected = colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id));
+                                      const allSelected =
+                                        colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id));
                                       el.indeterminate = someSelected && !allSelected;
                                     }
                                   }}
@@ -1388,7 +1401,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       <input
                                         type="checkbox"
                                         checked={selectedTaskIds.has(task.id)}
-                                        onChange={(e) => toggleTaskSelection(task.id, e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey)}
+                                        onChange={(e) =>
+                                          toggleTaskSelection(
+                                            task.id,
+                                            e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey,
+                                          )
+                                        }
                                         className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
                                       />
                                     </td>
@@ -1930,11 +1948,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         {overflowTasks.length > 0 && (
                           <div className="flex-1 p-1 space-y-1 overflow-y-auto max-h-[130px] custom-scrollbar">
                             {overflowTasks.map((t) => (
-                              <div
-                                key={t.id}
-                                onClick={() => onTaskClick(t)}
-                                className="cursor-pointer"
-                              >
+                              <div key={t.id} onClick={() => onTaskClick(t)} className="cursor-pointer">
                                 <div className="text-[10px] px-1.5 py-1 rounded border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 text-zinc-400 dark:text-zinc-500 truncate leading-tight">
                                   {t.title}
                                 </div>

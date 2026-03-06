@@ -12,7 +12,7 @@ import {
   deleteTelegramLink,
   TelegramLink,
 } from '../lib/database';
-import { Button, Label, Badge } from './ui';
+import { Label, Badge } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
@@ -22,13 +22,24 @@ export const SettingsModal: React.FC = () => {
     useUiStore();
   const currentUser = useAuthStore((s) => s.currentUser);
   const setCurrentUser = useAuthStore((s) => s.setCurrentUser);
-  const { members, absences, logs, teams, removeMember, updateMemberAvatar, updateMemberName, updateMemberTeam } =
-    useDataStore();
+  const {
+    members,
+    absences,
+    logs,
+    teams,
+    removeMember,
+    updateMemberAvatar,
+    updateMemberName,
+    updateMemberJobTitle,
+    updateMemberTeam,
+  } = useDataStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
+  const [editingJobTitle, setEditingJobTitle] = useState(false);
+  const [jobTitleDraft, setJobTitleDraft] = useState('');
 
   // Telegram linking state
   const [telegramLink, setTelegramLink] = useState<TelegramLink | null>(null);
@@ -125,9 +136,29 @@ export const SettingsModal: React.FC = () => {
         const myAbsenceStats = calculateAbsenceStats(currentUser.id, absences);
         return (
           <div className="space-y-6">
-            <div className="flex items-center gap-4 border-b border-zinc-100 dark:border-zinc-800 pb-6">
-              <Avatar src={currentUser.avatar} size="lg" className="!w-20 !h-20" />
-              <div>
+            <div className="flex items-start gap-5 border-b border-zinc-100 dark:border-zinc-800 pb-6">
+              <div className="relative group flex-shrink-0">
+                <Avatar src={currentUser.avatar} size="lg" className="!w-20 !h-20" />
+                <button
+                  onClick={handleChangeAvatar}
+                  disabled={uploading}
+                  className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                >
+                  {uploading ? (
+                    <Loader2 size={18} className="text-white animate-spin" />
+                  ) : (
+                    <Pencil size={18} className="text-white" />
+                  )}
+                </button>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={handleFileSelected}
+                />
+              </div>
+              <div className="flex-1 min-w-0 pt-1">
                 <div className="flex items-center gap-3">
                   {editingName ? (
                     <form
@@ -177,24 +208,49 @@ export const SettingsModal: React.FC = () => {
                   )}
                   <Badge className="px-2">{currentUser.role}</Badge>
                 </div>
-                <p className="text-zinc-500 text-sm">{currentUser.jobTitle}</p>
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={handleFileSelected}
-                />
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={handleChangeAvatar}
-                  disabled={uploading}
-                  className="mt-2 flex items-center gap-1.5"
-                >
-                  {uploading && <Loader2 size={14} className="animate-spin" />}
-                  {uploading ? 'Uploading...' : 'Change Avatar'}
-                </Button>
+                {editingJobTitle ? (
+                  <form
+                    className="flex items-center gap-1.5 mt-1"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const trimmed = jobTitleDraft.trim();
+                      if (trimmed !== currentUser.jobTitle) {
+                        updateMemberJobTitle(currentUser.id, trimmed);
+                        setCurrentUser({ ...currentUser, jobTitle: trimmed });
+                        toast.success('Job title updated');
+                      }
+                      setEditingJobTitle(false);
+                    }}
+                  >
+                    <input
+                      autoFocus
+                      value={jobTitleDraft}
+                      onChange={(e) => setJobTitleDraft(e.target.value)}
+                      className="text-sm bg-zinc-100 dark:bg-zinc-800 rounded px-2 py-0.5 outline-none focus:ring-2 focus:ring-blue-500 w-48 text-zinc-600 dark:text-zinc-400"
+                    />
+                    <button type="submit" className="text-emerald-500 hover:text-emerald-600">
+                      <Check size={16} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEditingJobTitle(false)}
+                      className="text-zinc-400 hover:text-zinc-600"
+                    >
+                      <X size={16} />
+                    </button>
+                  </form>
+                ) : (
+                  <p
+                    className="text-zinc-500 text-sm group flex items-center gap-1.5 cursor-pointer mt-1"
+                    onClick={() => {
+                      setJobTitleDraft(currentUser.jobTitle || '');
+                      setEditingJobTitle(true);
+                    }}
+                  >
+                    {currentUser.jobTitle || 'Add job title...'}
+                    <Pencil size={12} className="text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  </p>
+                )}
               </div>
             </div>
             <div className="space-y-2">

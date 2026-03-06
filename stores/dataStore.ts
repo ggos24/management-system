@@ -129,6 +129,7 @@ interface DataState {
   removeMember: (id: string, currentUserId: string) => void;
   updateMemberAvatar: (memberId: string, newAvatar: string) => void;
   updateMemberName: (memberId: string, newName: string) => void;
+  updateMemberJobTitle: (memberId: string, jobTitle: string) => void;
   updateMemberTeam: (memberId: string, teamId: string) => void;
 
   // Integration actions
@@ -627,6 +628,13 @@ export const useDataStore = create<DataState>((set, get) => ({
     const updatedMembers = members.map((m) => (m.id === memberId ? { ...m, name: newName } : m));
     set({ members: updatedMembers });
     db.updateProfileName(memberId, newName).catch(() => toast.error('Failed to update name'));
+  },
+
+  updateMemberJobTitle: (memberId, jobTitle) => {
+    const { members } = get();
+    const updatedMembers = members.map((m) => (m.id === memberId ? { ...m, jobTitle } : m));
+    set({ members: updatedMembers });
+    db.updateProfileJobTitle(memberId, jobTitle).catch(() => toast.error('Failed to update job title'));
   },
 
   // Integration actions

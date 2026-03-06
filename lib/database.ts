@@ -620,6 +620,11 @@ export async function updateProfileName(memberId: string, name: string): Promise
   if (error) throw error;
 }
 
+export async function updateProfileJobTitle(memberId: string, jobTitle: string): Promise<void> {
+  const { error } = await supabase.from('profiles').update({ job_title: jobTitle }).eq('id', memberId);
+  if (error) throw error;
+}
+
 export async function updateProfileTeam(memberId: string, teamId: string | null): Promise<void> {
   const { error } = await supabase.from('profiles').update({ team_id: teamId }).eq('id', memberId);
   if (error) throw error;
