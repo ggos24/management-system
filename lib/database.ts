@@ -620,6 +620,11 @@ export async function updateProfileName(memberId: string, name: string): Promise
   if (error) throw error;
 }
 
+export async function updateProfileTeam(memberId: string, teamId: string | null): Promise<void> {
+  const { error } = await supabase.from('profiles').update({ team_id: teamId }).eq('id', memberId);
+  if (error) throw error;
+}
+
 export async function uploadAvatar(memberId: string, file: File): Promise<string> {
   const ext = file.name.split('.').pop() || 'jpg';
   const path = `avatars/${memberId}.${ext}`;

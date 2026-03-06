@@ -22,7 +22,8 @@ export const SettingsModal: React.FC = () => {
     useUiStore();
   const currentUser = useAuthStore((s) => s.currentUser);
   const setCurrentUser = useAuthStore((s) => s.setCurrentUser);
-  const { members, absences, logs, removeMember, updateMemberAvatar, updateMemberName } = useDataStore();
+  const { members, absences, logs, teams, removeMember, updateMemberAvatar, updateMemberName, updateMemberTeam } =
+    useDataStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
@@ -195,6 +196,28 @@ export const SettingsModal: React.FC = () => {
                   {uploading ? 'Uploading...' : 'Change Avatar'}
                 </Button>
               </div>
+            </div>
+            <div className="space-y-2">
+              <Label variant="section">Main Team</Label>
+              <select
+                value={currentUser.teamId || ''}
+                onChange={(e) => {
+                  const teamId = e.target.value;
+                  updateMemberTeam(currentUser.id, teamId);
+                  setCurrentUser({ ...currentUser, teamId });
+                  toast.success('Team updated');
+                }}
+                className="w-full rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+              >
+                <option value="">No team</option>
+                {teams
+                  .filter((t) => !t.hidden && !t.archived)
+                  .map((t) => (
+                    <option key={t.id} value={t.id}>
+                      {t.name}
+                    </option>
+                  ))}
+              </select>
             </div>
             <div className="space-y-2">
               <Label variant="section">My Absences</Label>
