@@ -173,6 +173,7 @@ const AppLayout: React.FC = () => {
           isOpen={isLogoutModalOpen}
           onClose={() => setIsLogoutModalOpen(false)}
           title="Confirm Logout"
+          size="sm"
           actions={
             <>
               <button

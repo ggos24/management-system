@@ -32,7 +32,12 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         ref={ref}
-        className={cn('inline-flex items-center', buttonVariants[variant], sizeClass, className)}
+        className={cn(
+          'inline-flex items-center justify-center cursor-pointer',
+          buttonVariants[variant],
+          sizeClass,
+          className,
+        )}
         {...props}
       />
     );

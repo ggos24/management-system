@@ -181,10 +181,13 @@ export const Header: React.FC = () => {
           className="flex items-center gap-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 pr-3 pl-1 py-1 rounded-full transition-colors"
         >
           <Avatar src={currentUser?.avatar} alt={currentUser?.name} size="md" />
-          <div className="text-left hidden md:block">
-            <p className="text-xs font-semibold leading-none">{currentUser?.name}</p>
-            <p className="text-[10px] text-zinc-500 leading-none mt-0.5 tracking-wider">
-              {currentUser?.jobTitle || currentUser?.role}
+          <div className="text-left hidden md:block max-w-[180px]">
+            <p className="text-xs font-semibold leading-normal truncate">{currentUser?.name}</p>
+            <p className="text-xs text-zinc-500 leading-normal truncate">
+              {(() => {
+                const role = currentUser?.jobTitle || currentUser?.role || '';
+                return role.length > 30 ? role.slice(0, 30) + '…' : role;
+              })()}
             </p>
           </div>
         </button>

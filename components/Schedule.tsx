@@ -383,9 +383,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                           <p className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate group-hover:underline">
                             {member.name}
                           </p>
-                          <p className="text-[10px] text-zinc-400 uppercase tracking-wider truncate">
-                            {member.jobTitle}
-                          </p>
+                          <p className="text-[11px] text-zinc-400 truncate">{member.jobTitle}</p>
                         </div>
                       </div>
                       {days.map((day) => {
@@ -474,7 +472,7 @@ const Schedule: React.FC<ScheduleProps> = ({
         </div>
       </div>
 
-      <Modal isOpen={!!selectedMemberStats} onClose={() => setSelectedMemberStats(null)} title="">
+      <Modal isOpen={!!selectedMemberStats} onClose={() => setSelectedMemberStats(null)} title="" size="md">
         {selectedMemberStats && (
           <div>
             <div className="flex items-center gap-3 mb-6">
@@ -532,18 +530,20 @@ const Schedule: React.FC<ScheduleProps> = ({
         isOpen={!!selectedCell}
         onClose={() => setSelectedCell(null)}
         title="Edit Schedule"
+        size="md"
+        allowOverflow
         actions={
-          <>
+          <div className="flex items-center gap-3 w-full">
             <button
               onClick={handleDelete}
               className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-red-200"
             >
               <Trash2 size={18} />
             </button>
-            <Button onClick={handleSave} className="flex-1 py-2">
+            <Button onClick={handleSave} className="flex-1 py-2 text-center cursor-pointer">
               Save
             </Button>
-          </>
+          </div>
         }
       >
         {selectedCell && (

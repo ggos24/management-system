@@ -1,6 +1,12 @@
 import React, { useEffect, useCallback } from 'react';
 import { X } from 'lucide-react';
 
+const sizeClasses = {
+  sm: 'max-w-md',
+  md: 'max-w-lg',
+  lg: 'max-w-3xl',
+};
+
 interface ModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -8,9 +14,20 @@ interface ModalProps {
   children: React.ReactNode;
   actions?: React.ReactNode;
   headerActions?: React.ReactNode;
+  allowOverflow?: boolean;
+  size?: 'sm' | 'md' | 'lg';
 }
 
-export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, actions, headerActions }) => {
+export const Modal: React.FC<ModalProps> = ({
+  isOpen,
+  onClose,
+  title,
+  children,
+  actions,
+  headerActions,
+  allowOverflow,
+  size = 'lg',
+}) => {
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
@@ -31,7 +48,7 @@ export const Modal: React.FC<ModalProps> = ({ isOpen, onClose, title, children, 
       onClick={onClose}
     >
       <div
-        className="bg-white dark:bg-zinc-900 w-full max-w-3xl max-h-[90vh] overflow-y-auto rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in duration-200"
+        className={`bg-white dark:bg-zinc-900 w-full ${sizeClasses[size]} rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in duration-200 ${allowOverflow ? 'overflow-visible' : 'max-h-[90vh] overflow-y-auto'}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center px-6 py-4">

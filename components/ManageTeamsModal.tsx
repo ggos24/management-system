@@ -65,7 +65,12 @@ export const ManageTeamsModal: React.FC = () => {
   };
 
   return (
-    <Modal isOpen={isManageTeamsModalOpen} onClose={() => setIsManageTeamsModalOpen(false)} title="Manage Workspaces">
+    <Modal
+      isOpen={isManageTeamsModalOpen}
+      onClose={() => setIsManageTeamsModalOpen(false)}
+      title="Manage Workspaces"
+      size="md"
+    >
       <div className="space-y-6 min-h-[400px] flex flex-col">
         <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-4">
           <Label variant="section">Create New Workspace</Label>

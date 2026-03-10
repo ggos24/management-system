@@ -77,7 +77,12 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
     setIsLoading(false);
 
     if (authError) {
-      setError(authError.message);
+      const msg =
+        authError.message === 'Invalid login credentials'
+          ? 'Invalid email or password. Please try again.'
+          : authError.message;
+      setError(msg);
+      toast.error(msg);
       return;
     }
 

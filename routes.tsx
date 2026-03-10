@@ -140,7 +140,7 @@ const TeamWorkspaceRoute: React.FC = () => {
   const team = teamParam ? findTeamByParam(teams, teamParam) : undefined;
 
   if (!team || (team.adminOnly && currentUser.role !== 'admin')) {
-    return <Navigate to="/dashboard" replace />;
+    return <Navigate to="/workspace" replace />;
   }
 
   return (
@@ -196,6 +196,7 @@ const BinRoute: React.FC = () => {
 
 const LoginRoute: React.FC = () => {
   const session = useAuthStore((s) => s.session);
+  const currentUser = useAuthStore((s) => s.currentUser);
   const setSession = useAuthStore((s) => s.setSession);
   const setIsLoading = useAuthStore((s) => s.setIsLoading);
   const loadAllData = useDataStore((s) => s.loadAllData);
@@ -203,26 +204,27 @@ const LoginRoute: React.FC = () => {
   const setProfileError = useAuthStore((s) => s.setProfileError);
   const loadNotifications = useUiStore((s) => s.loadNotifications);
 
-  // If already authenticated, redirect to dashboard
-  if (session) {
-    return <Navigate to="/dashboard" replace />;
+  // Only redirect if fully authenticated (session + profile loaded)
+  if (session && currentUser) {
+    return <Navigate to="/workspace" replace />;
   }
 
   return (
     <LoginPage
       onLogin={async (newSession) => {
-        setSession(newSession);
         setIsLoading(true);
         try {
           const profile = await loadAllData(newSession.user.id);
           if (!profile) {
-            setProfileError('No profile found for this account. Please contact an administrator.');
             setIsLoading(false);
+            setProfileError('No profile found for this account. Please contact an administrator.');
             return;
           }
           setCurrentUser(profile);
+          setSession(newSession);
           loadNotifications();
         } catch {
+          setIsLoading(false);
           setProfileError('Failed to load application data. Please try refreshing.');
         } finally {
           setIsLoading(false);
@@ -243,7 +245,7 @@ export const router = createBrowserRouter([
       {
         element: <AppLayout />,
         children: [
-          { index: true, element: <Navigate to="/dashboard" replace /> },
+          { index: true, element: <Navigate to="/workspace" replace /> },
           { path: 'dashboard', element: <DashboardRoute /> },
           { path: 'workspace', element: <MyWorkspaceRoute /> },
           { path: 'schedule', element: <ScheduleRoute /> },
@@ -259,7 +261,7 @@ export const router = createBrowserRouter([
             ],
           },
           { path: 'teams/:teamId', element: <TeamWorkspaceRoute /> },
-          { path: '*', element: <Navigate to="/dashboard" replace /> },
+          { path: '*', element: <Navigate to="/workspace" replace /> },
         ],
       },
     ],

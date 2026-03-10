@@ -94,6 +94,7 @@ export const InviteModal: React.FC = () => {
         setInviteError(null);
       }}
       title="Invite Member"
+      size="md"
       actions={
         <>
           <Button

@@ -360,6 +360,7 @@ export const DocsView: React.FC<DocsViewProps> = ({ section, docId, onNavigate }
         isOpen={!!deleteConfirm}
         onClose={() => setDeleteConfirm(null)}
         title={deleteConfirm?.isFolder ? 'Delete folder' : 'Delete article'}
+        size="sm"
         actions={
           <>
             <Button variant="ghost" onClick={() => setDeleteConfirm(null)}>

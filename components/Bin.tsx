@@ -225,6 +225,7 @@ export const Bin: React.FC = () => {
         isOpen={isEmptyBinModalOpen}
         onClose={() => setIsEmptyBinModalOpen(false)}
         title="Empty Bin"
+        size="sm"
         actions={
           <>
             <Button variant="ghost" onClick={() => setIsEmptyBinModalOpen(false)}>
@@ -247,6 +248,7 @@ export const Bin: React.FC = () => {
         isOpen={!!pendingDeleteId}
         onClose={() => setPendingDeleteId(null)}
         title="Delete Forever"
+        size="sm"
         actions={
           <>
             <Button variant="ghost" onClick={() => setPendingDeleteId(null)}>

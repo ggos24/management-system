@@ -382,7 +382,7 @@ export const SettingsModal: React.FC = () => {
         );
       case 'Logs History':
         return (
-          <div className="space-y-4 h-[400px] overflow-hidden flex flex-col">
+          <div className="space-y-4 h-full overflow-hidden flex flex-col">
             <Label variant="section" className="flex-shrink-0">
               Activity Logs
             </Label>
@@ -418,8 +418,8 @@ export const SettingsModal: React.FC = () => {
 
   return (
     <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="Settings">
-      <div className="flex gap-6 min-h-[400px]">
-        <div className="w-48 border-r border-zinc-100 dark:border-zinc-800 pr-4 space-y-1">
+      <div className="flex gap-6 h-[560px]">
+        <div className="w-48 border-r border-zinc-100 dark:border-zinc-800 pr-4 space-y-1 shrink-0">
           {['My Profile', 'Notifications', 'Team Members', 'Logs History'].map((tab) => (
             <button
               key={tab}
@@ -430,7 +430,7 @@ export const SettingsModal: React.FC = () => {
             </button>
           ))}
         </div>
-        <div className="flex-1">{renderSettingsContent()}</div>
+        <div className="flex-1 overflow-y-auto">{renderSettingsContent()}</div>
       </div>
     </Modal>
   );
