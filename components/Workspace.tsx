@@ -1,13 +1,13 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
-import { Task, TaskStatus, TeamType, Member, Priority, Team, CustomProperty, UserRole } from '../types';
+import { Task, TaskStatus, TeamType, Member, Priority, CustomProperty, UserRole } from '../types';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent } from '../constants';
 import {
   Plus,
   MoreHorizontal,
   Calendar as CalendarIcon,
   User,
-  Wand2,
   LayoutGrid,
   List,
   Filter,
@@ -56,6 +56,8 @@ const ColumnMenu: React.FC<{
   onToggleDone: () => void;
   isArchived: boolean;
   isDone: boolean;
+  triggerKey: string;
+  triggerRefs: React.RefObject<Record<string, HTMLButtonElement | null>>;
 }> = ({
   isOpen,
   onClose,
@@ -67,11 +69,39 @@ const ColumnMenu: React.FC<{
   onToggleDone,
   isArchived,
   isDone,
+  triggerKey,
+  triggerRefs,
 }) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const getPos = () => {
+    const el = triggerRefs.current[triggerKey];
+    if (!el) return { top: 0, left: 0 };
+    const rect = el.getBoundingClientRect();
+    const menuWidth = 192;
+    let left = rect.right - menuWidth;
+    if (left < 8) left = 8;
+    return { top: rect.bottom + 4, left };
+  };
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        onClose();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
-  return (
+  const pos = getPos();
+  return createPortal(
     <div
-      className="absolute right-0 top-6 w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 flex flex-col text-xs"
+      ref={menuRef}
+      style={{ position: 'fixed', top: pos.top, left: pos.left }}
+      className="w-48 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] py-1 flex flex-col text-xs"
       onClick={(e) => e.stopPropagation()}
     >
       <button
@@ -111,7 +141,8 @@ const ColumnMenu: React.FC<{
       >
         <Trash2 size={12} /> Delete
       </button>
-    </div>
+    </div>,
+    document.body,
   );
 };
 
@@ -213,7 +244,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         className: 'w-32',
       },
       { key: 'editor', label: teamName.toLowerCase().includes('management') ? 'Manager' : 'Editor', className: 'w-32' },
-      { key: 'designer', label: 'Designer', className: 'w-32' },
+
       { key: 'priority', label: 'Priority', className: 'w-24' },
       { key: 'deadline', label: 'Deadline', className: 'w-24' },
       { key: 'done', label: 'Pub Date', className: 'w-24' },
@@ -331,6 +362,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Menu State for Columns
   const [activeColumnMenu, setActiveColumnMenu] = useState<string | null>(null);
+  const columnMenuTriggerRefs = useRef<Record<string, HTMLButtonElement | null>>({});
   const [activePropertyMenu, setActivePropertyMenu] = useState<string | null>(null);
 
   // Calendar State
@@ -541,11 +573,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           const edB = members.find((m) => b.contentInfo?.editorIds?.[0] === m.id)?.name || '';
           return dir * edA.localeCompare(edB);
         }
-        case 'designer': {
-          const dA = members.find((m) => a.contentInfo?.designerIds?.[0] === m.id)?.name || '';
-          const dB = members.find((m) => b.contentInfo?.designerIds?.[0] === m.id)?.name || '';
-          return dir * dA.localeCompare(dB);
-        }
+
         case 'placements':
           return dir * (a.placements || []).join(', ').localeCompare((b.placements || []).join(', '));
         default: {
@@ -993,6 +1021,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           <div className="relative">
                             <div className="opacity-0 group-hover/header:opacity-100 flex items-center transition-opacity">
                               <button
+                                ref={(el) => {
+                                  columnMenuTriggerRefs.current[`board-${col.id}`] = el;
+                                }}
                                 onClick={(e) => {
                                   e.stopPropagation();
                                   setActiveColumnMenu(activeColumnMenu === col.id ? null : col.id);
@@ -1012,6 +1043,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             <ColumnMenu
                               isOpen={activeColumnMenu === col.id}
                               onClose={() => setActiveColumnMenu(null)}
+                              triggerKey={`board-${col.id}`}
+                              triggerRefs={columnMenuTriggerRefs}
                               onRename={() => handleStartRename(col.id, col.label)}
                               onDuplicateEmpty={() => {
                                 onDuplicateStatus(teamFilter, col.id, false);
@@ -1226,6 +1259,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     {teamFilter !== 'my-work' && (
                       <div className="relative ml-2">
                         <button
+                          ref={(el) => {
+                            columnMenuTriggerRefs.current[`table-${col.id}`] = el;
+                          }}
                           onClick={(e) => {
                             e.stopPropagation();
                             setActiveColumnMenu(activeColumnMenu === col.id ? null : col.id);
@@ -1238,6 +1274,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         <ColumnMenu
                           isOpen={activeColumnMenu === col.id}
                           onClose={() => setActiveColumnMenu(null)}
+                          triggerKey={`table-${col.id}`}
+                          triggerRefs={columnMenuTriggerRefs}
                           onRename={() => handleStartRename(col.id, col.label)}
                           onDuplicateEmpty={() => {
                             onDuplicateStatus(teamFilter, col.id, false);
@@ -1447,27 +1485,19 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                             </td>
                                           );
                                         case 'assignee':
-                                        case 'editor':
-                                        case 'designer': {
+                                        case 'editor': {
                                           const personKey = tc.key;
                                           const selectedIds =
                                             personKey === 'assignee'
                                               ? task.assigneeIds
-                                              : personKey === 'editor'
-                                                ? task.contentInfo?.editorIds || []
-                                                : task.contentInfo?.designerIds || [];
+                                              : task.contentInfo?.editorIds || [];
                                           const handleChange = (ids: string[]) => {
                                             if (personKey === 'assignee') {
                                               onUpdateTask({ ...task, assigneeIds: ids });
-                                            } else if (personKey === 'editor') {
-                                              onUpdateTask({
-                                                ...task,
-                                                contentInfo: { ...task.contentInfo!, editorIds: ids },
-                                              });
                                             } else {
                                               onUpdateTask({
                                                 ...task,
-                                                contentInfo: { ...task.contentInfo!, designerIds: ids },
+                                                contentInfo: { ...task.contentInfo!, editorIds: ids },
                                               });
                                             }
                                           };

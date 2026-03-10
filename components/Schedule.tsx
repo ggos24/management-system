@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Member, Absence, Team, Shift, UserRole } from '../types';
-import { ChevronLeft, ChevronRight, Calendar, X, Trash2, ChevronDown, User, Filter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Trash2, ChevronDown, User, Filter } from 'lucide-react';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
 import { SimpleDatePicker } from './SimpleDatePicker';
@@ -35,7 +35,6 @@ const Schedule: React.FC<ScheduleProps> = ({
   const [selectedCell, setSelectedCell] = useState<{
     member: Member;
     day: number;
-    type: 'absence-only' | 'shift-based';
   } | null>(null);
 
   // Drag Selection State
@@ -97,7 +96,7 @@ const Schedule: React.FC<ScheduleProps> = ({
     return shifts.find((s) => s.memberId === memberId && s.date === dateStr);
   };
 
-  const handleMouseDown = (member: Member, day: number, teamScheduleType: 'absence-only' | 'shift-based') => {
+  const handleMouseDown = (member: Member, day: number) => {
     if (userRole !== 'admin') return;
     setIsDragging(true);
     setDragStart({ memberId: member.id, day });
@@ -110,7 +109,7 @@ const Schedule: React.FC<ScheduleProps> = ({
     }
   };
 
-  const handleMouseUp = (member: Member, day: number, teamScheduleType: 'absence-only' | 'shift-based') => {
+  const handleMouseUp = (member: Member, day: number) => {
     if (!isDragging || !dragStart) return;
     setIsDragging(false);
 
@@ -126,7 +125,7 @@ const Schedule: React.FC<ScheduleProps> = ({
     const existingAbsence = getAbsenceForDay(member.id, startDay);
     const existingShift = getShiftForDay(member.id, startDay);
 
-    setSelectedCell({ member, day: startDay, type: teamScheduleType });
+    setSelectedCell({ member, day: startDay });
 
     // Always pre-populate absence state
     if (existingAbsence) {
@@ -149,11 +148,7 @@ const Schedule: React.FC<ScheduleProps> = ({
     }
 
     // Determine which tab to show
-    if (teamScheduleType === 'absence-only') {
-      setEditType('absence');
-    } else {
-      setEditType(existingAbsence ? 'absence' : 'shift');
-    }
+    setEditType(existingAbsence ? 'absence' : 'shift');
 
     setDragStart(null);
     setDragEnd(null);
@@ -443,7 +438,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                             </div>
                           );
                           cellClass = '';
-                        } else if (shift && group.team.scheduleType === 'shift-based') {
+                        } else if (shift) {
                           content = (
                             <div
                               className={`flex flex-col items-center justify-center h-full w-full select-none ${isToday ? 'bg-red-50/20 dark:bg-red-900/10' : 'bg-zinc-50 dark:bg-zinc-900'}`}
@@ -462,9 +457,9 @@ const Schedule: React.FC<ScheduleProps> = ({
                         return (
                           <div
                             key={day}
-                            onMouseDown={() => handleMouseDown(member, day, group.team.scheduleType)}
+                            onMouseDown={() => handleMouseDown(member, day)}
                             onMouseEnter={() => handleMouseEnter(member, day)}
-                            onMouseUp={() => handleMouseUp(member, day, group.team.scheduleType)}
+                            onMouseUp={() => handleMouseUp(member, day)}
                             className={`w-10 flex-shrink-0 border-r border-zinc-100 dark:border-zinc-800 relative cursor-pointer last:border-r-0 transition-colors ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : ''}`}
                           >
                             {content}
@@ -556,22 +551,20 @@ const Schedule: React.FC<ScheduleProps> = ({
             <p className="text-xs text-zinc-500 mb-4 font-medium">{selectedCell.member.name}</p>
 
             <div className="space-y-4">
-              {selectedCell.type === 'shift-based' && (
-                <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded mb-4">
-                  <button
-                    onClick={() => setEditType('shift')}
-                    className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'shift' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
-                  >
-                    Shift
-                  </button>
-                  <button
-                    onClick={() => setEditType('absence')}
-                    className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'absence' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
-                  >
-                    Absence
-                  </button>
-                </div>
-              )}
+              <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded mb-4">
+                <button
+                  onClick={() => setEditType('shift')}
+                  className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'shift' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+                >
+                  Shift
+                </button>
+                <button
+                  onClick={() => setEditType('absence')}
+                  className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'absence' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+                >
+                  Absence
+                </button>
+              </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <div>

@@ -4,6 +4,7 @@ import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
 import { AbsenceStatsCard } from './AbsenceStatsCard';
+import { CustomSelect } from './CustomSelect';
 import { calculateAbsenceStats } from '../lib/utils';
 import {
   uploadAvatar,
@@ -255,25 +256,19 @@ export const SettingsModal: React.FC = () => {
             </div>
             <div className="space-y-2">
               <Label variant="section">Main Team</Label>
-              <select
+              <CustomSelect
                 value={currentUser.teamId || ''}
-                onChange={(e) => {
-                  const teamId = e.target.value;
+                onChange={(teamId) => {
                   updateMemberTeam(currentUser.id, teamId);
                   setCurrentUser({ ...currentUser, teamId });
                   toast.success('Team updated');
                 }}
-                className="w-full rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-800 px-3 py-2 text-sm text-zinc-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
-              >
-                <option value="">No team</option>
-                {teams
-                  .filter((t) => !t.hidden && !t.archived)
-                  .map((t) => (
-                    <option key={t.id} value={t.id}>
-                      {t.name}
-                    </option>
-                  ))}
-              </select>
+                placeholder="No team"
+                options={[
+                  { value: '', label: 'No team' },
+                  ...teams.filter((t) => !t.hidden && !t.archived).map((t) => ({ value: t.id, label: t.name })),
+                ]}
+              />
             </div>
             <div className="space-y-2">
               <Label variant="section">My Absences</Label>

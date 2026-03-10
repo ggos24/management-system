@@ -12,7 +12,6 @@ import {
   Eye,
   Zap,
   Globe,
-  Palette,
   Link as LinkIcon,
   Type,
   List as ListIcon,
@@ -519,21 +518,7 @@ export const TaskModal: React.FC = () => {
                 }
                 placeholder={`Select ${getEditorLabel()}...`}
               />
-              {taskModalData.teamId === 'social' && (
-                <MultiSelect
-                  icon={Palette}
-                  label="Designer"
-                  options={members.map((m) => ({ value: m.id, label: m.name }))}
-                  selected={taskModalData.contentInfo?.designerIds || []}
-                  onChange={(ids) =>
-                    setTaskModalData({
-                      ...taskModalData,
-                      contentInfo: { ...taskModalData.contentInfo!, designerIds: ids },
-                    })
-                  }
-                  placeholder="Select Designer..."
-                />
-              )}
+
               <CustomSelect
                 icon={Zap}
                 label="Priority"
