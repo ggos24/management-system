@@ -1,5 +1,17 @@
 import { supabase } from './supabase';
-import { Task, Team, Member, Absence, Shift, LogEntry, CustomProperty, Notification, TaskComment } from '../types';
+import {
+  Task,
+  Team,
+  Member,
+  Absence,
+  Shift,
+  LogEntry,
+  CustomProperty,
+  Notification,
+  TaskComment,
+  Doc,
+  DocSection,
+} from '../types';
 
 // === Mappers ===
 
@@ -835,4 +847,91 @@ export async function updateTaskComment(commentId: string, content: string): Pro
 export async function deleteTaskComment(commentId: string) {
   const { error } = await supabase.from('task_comments').delete().eq('id', commentId);
   return { error };
+}
+
+// === Docs ===
+
+function mapDoc(row: any): Doc {
+  return {
+    id: row.id,
+    parentId: row.parent_id || null,
+    section: row.section,
+    title: row.title,
+    slug: row.slug,
+    content: row.content || {},
+    contentHtml: row.content_html || '',
+    description: row.description || null,
+    icon: row.icon || null,
+    isFolder: row.is_folder || false,
+    sortOrder: row.sort_order ?? 0,
+    createdBy: row.created_by || null,
+    updatedBy: row.updated_by || null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+export async function fetchDocs(section: DocSection): Promise<Doc[]> {
+  const { data, error } = await supabase
+    .from('docs')
+    .select('*')
+    .eq('section', section)
+    .order('sort_order')
+    .order('title');
+  if (error) throw error;
+  return (data || []).map(mapDoc);
+}
+
+export async function fetchDoc(id: string): Promise<Doc | null> {
+  const { data, error } = await supabase.from('docs').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ? mapDoc(data) : null;
+}
+
+export async function searchDocs(query: string, section?: DocSection): Promise<Doc[]> {
+  let q = supabase.from('docs').select('*').textSearch('search_vector', query, { type: 'plain' });
+  if (section) q = q.eq('section', section);
+  const { data, error } = await q.order('updated_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapDoc);
+}
+
+export async function upsertDoc(
+  doc: Partial<Doc> & { section: DocSection; title: string; slug: string },
+  userId: string,
+): Promise<Doc> {
+  const row: Record<string, unknown> = {
+    section: doc.section,
+    title: doc.title,
+    slug: doc.slug,
+    parent_id: doc.parentId || null,
+    content: doc.content || {},
+    content_html: doc.contentHtml || '',
+    description: doc.description || null,
+    icon: doc.icon || null,
+    is_folder: doc.isFolder || false,
+    sort_order: doc.sortOrder ?? 0,
+    updated_by: userId,
+  };
+  if (doc.id) {
+    row.id = doc.id;
+  } else {
+    row.created_by = userId;
+  }
+  const { data, error } = await supabase.from('docs').upsert(row, { onConflict: 'id' }).select().single();
+  if (error) throw error;
+  return mapDoc(data);
+}
+
+export async function deleteDoc(id: string): Promise<void> {
+  const { error } = await supabase.from('docs').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function uploadDocImage(file: File): Promise<string> {
+  const path = `${Date.now()}-${file.name}`;
+  const { error } = await supabase.storage.from('docs-assets').upload(path, file);
+  if (error) throw error;
+  const { data } = supabase.storage.from('docs-assets').getPublicUrl(path);
+  return data.publicUrl;
 }

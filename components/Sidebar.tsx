@@ -9,6 +9,8 @@ import {
   GripVertical,
   CheckCircle2,
   Trash2,
+  HelpCircle,
+  BookOpen,
 } from 'lucide-react';
 import { Team } from '../types';
 import { IconComponent } from './IconComponent';
@@ -238,6 +240,39 @@ const Sidebar: React.FC<SidebarProps> = ({
         </div>
 
         <div className="mt-auto p-2 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
+          <button
+            onClick={() => onChangeView('docs-kb')}
+            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+              currentView === 'docs-kb'
+                ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+            } ${isCollapsed ? 'justify-center px-0' : ''}`}
+            title="Knowledge Base"
+          >
+            <BookOpen size={18} />
+            <span
+              className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+            >
+              Knowledge Base
+            </span>
+          </button>
+          <button
+            onClick={() => onChangeView('docs-help')}
+            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+              currentView === 'docs-help'
+                ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+            } ${isCollapsed ? 'justify-center px-0' : ''}`}
+            title="Help"
+          >
+            <HelpCircle size={18} />
+            <span
+              className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+            >
+              Help
+            </span>
+          </button>
+          <div className="h-px bg-zinc-200 dark:bg-zinc-800 mx-2 my-1" />
           <button
             onClick={() => onChangeView('bin')}
             className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${

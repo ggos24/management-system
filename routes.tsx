@@ -1,5 +1,5 @@
 import React from 'react';
-import { createBrowserRouter, Navigate, useParams, useOutletContext } from 'react-router-dom';
+import { createBrowserRouter, Navigate, Outlet, useParams, useNavigate, useOutletContext } from 'react-router-dom';
 import { AuthGuard } from './components/AuthGuard';
 import AppLayout from './layouts/AppLayout';
 import LoginPage from './components/LoginPage';
@@ -7,11 +7,12 @@ import Dashboard from './components/Dashboard';
 import Workspace from './components/Workspace';
 import Schedule from './components/Schedule';
 import Bin from './components/Bin';
+import { DocsView } from './components/DocsView';
 import { useAuthStore } from './stores/authStore';
 import { useDataStore } from './stores/dataStore';
 import { useUiStore } from './stores/uiStore';
 import { findTeamByParam } from './lib/utils';
-import { Task } from './types';
+import { Task, DocSection } from './types';
 
 // Outlet context type used by route wrappers
 interface LayoutContext {
@@ -176,6 +177,15 @@ const TeamWorkspaceRoute: React.FC = () => {
   );
 };
 
+const DocsRoute: React.FC<{ section: DocSection }> = ({ section }) => {
+  const { docId } = useParams<{ docId: string }>();
+  const navigate = useNavigate();
+  const basePath = section === 'help' ? '/docs/help' : '/docs/kb';
+  return (
+    <DocsView section={section} docId={docId} onNavigate={(id) => navigate(id ? `${basePath}/${id}` : basePath)} />
+  );
+};
+
 const BinRoute: React.FC = () => {
   const loadDeletedTasks = useDataStore((s) => s.loadDeletedTasks);
   React.useEffect(() => {
@@ -238,6 +248,16 @@ export const router = createBrowserRouter([
           { path: 'workspace', element: <MyWorkspaceRoute /> },
           { path: 'schedule', element: <ScheduleRoute /> },
           { path: 'bin', element: <BinRoute /> },
+          {
+            path: 'docs',
+            element: <Outlet />,
+            children: [
+              { path: 'help', element: <DocsRoute section="help" /> },
+              { path: 'help/:docId', element: <DocsRoute section="help" /> },
+              { path: 'kb', element: <DocsRoute section="knowledge-base" /> },
+              { path: 'kb/:docId', element: <DocsRoute section="knowledge-base" /> },
+            ],
+          },
           { path: 'teams/:teamId', element: <TeamWorkspaceRoute /> },
           { path: '*', element: <Navigate to="/dashboard" replace /> },
         ],

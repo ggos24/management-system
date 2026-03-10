@@ -29,7 +29,13 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     const useTight = variant === 'primary' || variant === 'danger';
     const sizeClass = useTight ? buttonSizes[size] : looseSizes[size];
 
-    return <button ref={ref} className={cn(buttonVariants[variant], sizeClass, className)} {...props} />;
+    return (
+      <button
+        ref={ref}
+        className={cn('inline-flex items-center', buttonVariants[variant], sizeClass, className)}
+        {...props}
+      />
+    );
   },
 );
 

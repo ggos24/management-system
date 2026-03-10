@@ -116,6 +116,26 @@ export interface TaskComment {
   userAvatar?: string;
 }
 
+export type DocSection = 'help' | 'knowledge-base';
+
+export interface Doc {
+  id: string;
+  parentId: string | null;
+  section: DocSection;
+  title: string;
+  slug: string;
+  content: Record<string, unknown>;
+  contentHtml: string;
+  description: string | null;
+  icon: string | null;
+  isFolder: boolean;
+  sortOrder: number;
+  createdBy: string | null;
+  updatedBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export type NotificationType =
   | 'task_assigned'
   | 'task_status_changed'

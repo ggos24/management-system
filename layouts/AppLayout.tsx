@@ -55,6 +55,8 @@ const AppLayout: React.FC = () => {
     if (location.pathname === '/workspace') return 'my-workspace';
     if (location.pathname === '/schedule') return 'schedule';
     if (location.pathname === '/bin') return 'bin';
+    if (location.pathname.startsWith('/docs/help')) return 'docs-help';
+    if (location.pathname.startsWith('/docs/kb')) return 'docs-kb';
     return 'dashboard';
   }, [activeTeam, location.pathname]);
 
@@ -134,6 +136,8 @@ const AppLayout: React.FC = () => {
             else if (view === 'dashboard') navigate('/dashboard');
             else if (view === 'schedule') navigate('/schedule');
             else if (view === 'bin') navigate('/bin');
+            else if (view === 'docs-help') navigate('/docs/help');
+            else if (view === 'docs-kb') navigate('/docs/kb');
             else {
               const team = teams.find((t) => t.id === view);
               navigate(`/teams/${team ? teamSlug(team) : view}`);
