@@ -18,6 +18,7 @@ interface CustomSelectProps {
   className?: string;
   renderValue?: (value: string) => React.ReactNode;
   compact?: boolean;
+  dropdownMinWidth?: number;
 }
 
 export const CustomSelect: React.FC<CustomSelectProps> = ({
@@ -31,6 +32,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   className,
   renderValue,
   compact,
+  dropdownMinWidth = 150,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [newItem, setNewItem] = useState('');
@@ -107,7 +109,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
               position: 'fixed',
               top: dropdownPos.top,
               left: dropdownPos.left,
-              width: Math.max(dropdownPos.width, 150),
+              width: Math.max(dropdownPos.width, dropdownMinWidth),
             }}
             className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-[10000] max-h-60 overflow-y-auto p-1 animate-in fade-in zoom-in-95 duration-100"
           >

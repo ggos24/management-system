@@ -258,6 +258,25 @@ export async function fetchPlacements(): Promise<string[]> {
   return (data || []).map((r) => r.name);
 }
 
+export async function renamePlacement(oldName: string, newName: string): Promise<void> {
+  const { error } = await supabase.from('placements').update({ name: newName }).eq('name', oldName);
+  if (error) throw error;
+}
+
+export async function deletePlacement(name: string): Promise<void> {
+  const { data: placement } = await supabase.from('placements').select('id').eq('name', name).single();
+  if (placement) {
+    await supabase.from('task_placements').delete().eq('placement_id', placement.id);
+    const { error } = await supabase.from('placements').delete().eq('id', placement.id);
+    if (error) throw error;
+  }
+}
+
+export async function addPlacement(name: string): Promise<void> {
+  const { error } = await supabase.from('placements').insert({ name });
+  if (error) throw error;
+}
+
 // === Auth helpers ===
 
 export async function findProfileByAuthId(authUserId: string): Promise<Member | null> {
@@ -634,6 +653,11 @@ export async function updateProfileName(memberId: string, name: string): Promise
 
 export async function updateProfileJobTitle(memberId: string, jobTitle: string): Promise<void> {
   const { error } = await supabase.from('profiles').update({ job_title: jobTitle }).eq('id', memberId);
+  if (error) throw error;
+}
+
+export async function updateProfileRole(memberId: string, role: string): Promise<void> {
+  const { error } = await supabase.from('profiles').update({ role }).eq('id', memberId);
   if (error) throw error;
 }
 

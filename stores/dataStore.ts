@@ -79,6 +79,9 @@ interface DataState {
   setArchivedStatuses: (statuses: Record<string, string[]>) => void;
   setPermissions: (perms: Record<string, { canEdit: boolean; canDelete: boolean; canCreate: boolean }>) => void;
   setAllPlacements: (placements: string[]) => void;
+  addPlacement: (name: string) => void;
+  renamePlacement: (oldName: string, newName: string) => void;
+  deletePlacement: (name: string) => void;
   setIntegrations: (integrations: Record<string, boolean>) => void;
   setDeletedTasks: (tasks: Task[]) => void;
   setDeletedTaskCount: (count: number) => void;
@@ -131,6 +134,7 @@ interface DataState {
   updateMemberName: (memberId: string, newName: string) => void;
   updateMemberJobTitle: (memberId: string, jobTitle: string) => void;
   updateMemberTeam: (memberId: string, teamId: string) => void;
+  updateMemberRole: (memberId: string, role: 'admin' | 'user') => void;
 
   // Integration actions
   toggleIntegration: (key: string, currentUserId: string) => void;
@@ -180,6 +184,34 @@ export const useDataStore = create<DataState>((set, get) => ({
   setArchivedStatuses: (statuses) => set({ archivedStatuses: statuses }),
   setPermissions: (perms) => set({ permissions: perms }),
   setAllPlacements: (placements) => set({ allPlacements: placements }),
+  addPlacement: (name) => {
+    const { allPlacements } = get();
+    if (allPlacements.includes(name)) return;
+    set({ allPlacements: [...allPlacements, name] });
+    db.addPlacement(name).catch(() => toast.error('Failed to add placement'));
+  },
+  renamePlacement: (oldName, newName) => {
+    const { allPlacements, tasks } = get();
+    set({
+      allPlacements: allPlacements.map((p) => (p === oldName ? newName : p)),
+      tasks: tasks.map((t) => ({
+        ...t,
+        placements: t.placements.map((p) => (p === oldName ? newName : p)),
+      })),
+    });
+    db.renamePlacement(oldName, newName).catch(() => toast.error('Failed to rename placement'));
+  },
+  deletePlacement: (name) => {
+    const { allPlacements, tasks } = get();
+    set({
+      allPlacements: allPlacements.filter((p) => p !== name),
+      tasks: tasks.map((t) => ({
+        ...t,
+        placements: t.placements.filter((p) => p !== name),
+      })),
+    });
+    db.deletePlacement(name).catch(() => toast.error('Failed to delete placement'));
+  },
   setIntegrations: (integrations) => set({ integrations }),
   setDeletedTasks: (deletedTasks) => set({ deletedTasks }),
   setDeletedTaskCount: (deletedTaskCount) => set({ deletedTaskCount }),
@@ -635,6 +667,13 @@ export const useDataStore = create<DataState>((set, get) => ({
     const updatedMembers = members.map((m) => (m.id === memberId ? { ...m, jobTitle } : m));
     set({ members: updatedMembers });
     db.updateProfileJobTitle(memberId, jobTitle).catch(() => toast.error('Failed to update job title'));
+  },
+
+  updateMemberRole: (memberId, role) => {
+    const { members } = get();
+    const updatedMembers = members.map((m) => (m.id === memberId ? { ...m, role } : m));
+    set({ members: updatedMembers });
+    db.updateProfileRole(memberId, role).catch(() => toast.error('Failed to update role'));
   },
 
   // Integration actions

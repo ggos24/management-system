@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Loader2, CheckCircle2, Unlink, Pencil, Check, X } from 'lucide-react';
+import { Send, Loader2, CheckCircle2, Unlink, Pencil, Check, X, ChevronDown, Plus, Trash2, Globe } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
@@ -33,6 +33,11 @@ export const SettingsModal: React.FC = () => {
     updateMemberName,
     updateMemberJobTitle,
     updateMemberTeam,
+    updateMemberRole,
+    allPlacements,
+    addPlacement,
+    renamePlacement,
+    deletePlacement,
   } = useDataStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -41,6 +46,9 @@ export const SettingsModal: React.FC = () => {
   const [nameDraft, setNameDraft] = useState('');
   const [editingJobTitle, setEditingJobTitle] = useState(false);
   const [jobTitleDraft, setJobTitleDraft] = useState('');
+  const [editingPlacementId, setEditingPlacementId] = useState<string | null>(null);
+  const [placementDraft, setPlacementDraft] = useState('');
+  const [newPlacementName, setNewPlacementName] = useState('');
 
   // Telegram linking state
   const [telegramLink, setTelegramLink] = useState<TelegramLink | null>(null);
@@ -341,39 +349,74 @@ export const SettingsModal: React.FC = () => {
       }
       case 'Team Members':
         return (
-          <div className="space-y-2">
-            {members.map((m) => (
-              <div
-                key={m.id}
-                className="flex items-center justify-between p-2 border border-zinc-100 dark:border-zinc-800 rounded hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
-              >
-                <div className="flex items-center gap-3">
-                  <Avatar src={m.avatar} size="md" />
-                  <div>
-                    <p className="text-sm font-medium">{m.name}</p>
-                    <p className="text-xs text-zinc-500">
-                      {m.jobTitle} &bull; {m.role}
-                    </p>
-                  </div>
-                </div>
-                {currentUser.role === 'admin' && (
-                  <button
-                    onClick={() => {
-                      if (confirm('Are you sure you want to remove this member?')) {
-                        removeMember(m.id, currentUser.id);
-                      }
-                    }}
-                    className="text-xs text-zinc-400 hover:text-red-500"
+          <div>
+            <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
+              {members.map((m) => {
+                const isMe = m.id === currentUser.id;
+                const canManage = currentUser.role === 'admin' && !isMe;
+                return (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between px-3 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
                   >
-                    Remove
-                  </button>
-                )}
-              </div>
-            ))}
+                    <div className="flex items-center gap-3 min-w-0">
+                      <Avatar src={m.avatar} size="md" />
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium truncate">
+                          {m.name}
+                          {isMe && <span className="text-zinc-400 font-normal ml-1">(you)</span>}
+                        </p>
+                        {m.jobTitle && <p className="text-xs text-zinc-500 truncate">{m.jobTitle}</p>}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2 flex-shrink-0">
+                      {canManage ? (
+                        <>
+                          <CustomSelect
+                            compact
+                            value={m.role}
+                            onChange={(newRole) => {
+                              updateMemberRole(m.id, newRole as 'admin' | 'user');
+                              toast.success(`${m.name} is now ${newRole}`);
+                            }}
+                            options={[
+                              { value: 'admin', label: 'Admin' },
+                              { value: 'user', label: 'User' },
+                            ]}
+                            renderValue={(v) => (
+                              <span className="flex items-center gap-1 text-xs">
+                                {v === 'admin' ? 'Admin' : 'User'}
+                                <ChevronDown size={12} className="text-zinc-400" />
+                              </span>
+                            )}
+                            dropdownMinWidth={90}
+                            className="w-auto"
+                          />
+                          <button
+                            onClick={() => {
+                              if (confirm(`Remove ${m.name} from the team?`)) {
+                                removeMember(m.id, currentUser.id);
+                              }
+                            }}
+                            className="text-xs text-zinc-400 hover:text-red-500 transition-colors"
+                          >
+                            Remove
+                          </button>
+                        </>
+                      ) : (
+                        <Badge color={m.role === 'admin' ? 'blue' : 'zinc'} className="px-2">
+                          {m.role}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
             {currentUser.role === 'admin' && (
               <button
                 onClick={() => setIsInviteModalOpen(true)}
-                className="w-full py-2 border border-dashed border-zinc-300 dark:border-zinc-700 rounded text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 mt-2"
+                className="w-full py-2 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors mt-3"
               >
                 + Invite Member
               </button>
@@ -411,6 +454,128 @@ export const SettingsModal: React.FC = () => {
             </div>
           </div>
         );
+      case 'Placements':
+        return (
+          <div>
+            <div className="flex items-center gap-2 mb-3">
+              <Globe size={16} className="text-zinc-400" />
+              <Label variant="section" className="!mb-0">
+                Placements
+              </Label>
+              <span className="text-xs text-zinc-400">{allPlacements.length}</span>
+            </div>
+            <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
+              {allPlacements.map((p) => (
+                <div
+                  key={p}
+                  className="flex items-center justify-between px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
+                >
+                  {editingPlacementId === p ? (
+                    <form
+                      className="flex items-center gap-1.5 flex-1"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        const trimmed = placementDraft.trim();
+                        if (trimmed && trimmed !== p) {
+                          if (allPlacements.includes(trimmed)) {
+                            toast.error('Placement already exists');
+                            return;
+                          }
+                          renamePlacement(p, trimmed);
+                          toast.success('Placement renamed');
+                        }
+                        setEditingPlacementId(null);
+                      }}
+                    >
+                      <input
+                        autoFocus
+                        value={placementDraft}
+                        onChange={(e) => setPlacementDraft(e.target.value)}
+                        className="flex-1 text-sm bg-zinc-100 dark:bg-zinc-800 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <button type="submit" className="text-emerald-500 hover:text-emerald-600">
+                        <Check size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingPlacementId(null)}
+                        className="text-zinc-400 hover:text-zinc-600"
+                      >
+                        <X size={14} />
+                      </button>
+                    </form>
+                  ) : (
+                    <>
+                      <span
+                        className="text-sm cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                        onClick={() => {
+                          setEditingPlacementId(p);
+                          setPlacementDraft(p);
+                        }}
+                      >
+                        {p}
+                      </span>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={() => {
+                            setEditingPlacementId(p);
+                            setPlacementDraft(p);
+                          }}
+                          className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                        >
+                          <Pencil size={12} />
+                        </button>
+                        <button
+                          onClick={() => {
+                            if (confirm(`Delete "${p}"? It will be removed from all tasks.`)) {
+                              deletePlacement(p);
+                              toast.success('Placement deleted');
+                            }
+                          }}
+                          className="p-1 text-zinc-400 hover:text-red-500"
+                        >
+                          <Trash2 size={12} />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+              {allPlacements.length === 0 && (
+                <div className="px-3 py-4 text-sm text-zinc-400 text-center">No placements yet</div>
+              )}
+            </div>
+            <form
+              className="flex gap-2 mt-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                const trimmed = newPlacementName.trim();
+                if (!trimmed) return;
+                if (allPlacements.includes(trimmed)) {
+                  toast.error('Placement already exists');
+                  return;
+                }
+                addPlacement(trimmed);
+                setNewPlacementName('');
+                toast.success('Placement added');
+              }}
+            >
+              <input
+                value={newPlacementName}
+                onChange={(e) => setNewPlacementName(e.target.value)}
+                placeholder="New placement..."
+                className="flex-1 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+              />
+              <button
+                type="submit"
+                disabled={!newPlacementName.trim()}
+                className="px-3 py-2 bg-black dark:bg-white text-white dark:text-black text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center gap-1.5"
+              >
+                <Plus size={14} /> Add
+              </button>
+            </form>
+          </div>
+        );
       default:
         return null;
     }
@@ -420,7 +585,13 @@ export const SettingsModal: React.FC = () => {
     <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="Settings">
       <div className="flex gap-6 h-[560px]">
         <div className="w-48 border-r border-zinc-100 dark:border-zinc-800 pr-4 space-y-1 shrink-0">
-          {['My Profile', 'Notifications', 'Team Members', 'Logs History'].map((tab) => (
+          {[
+            'My Profile',
+            'Notifications',
+            'Team Members',
+            ...(currentUser?.role === 'admin' ? ['Placements'] : []),
+            'Logs History',
+          ].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveSettingsTab(tab)}
