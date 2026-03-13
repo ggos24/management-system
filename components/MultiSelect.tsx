@@ -11,6 +11,7 @@ interface MultiSelectProps {
   placeholder?: string;
   className?: string;
   compact?: boolean;
+  maxVisible?: number;
   renderTrigger?: (onClick: () => void, selected: string[]) => React.ReactNode;
 }
 
@@ -24,6 +25,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   placeholder = 'Select...',
   className,
   compact,
+  maxVisible,
   renderTrigger,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -64,26 +66,39 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
           }
         >
           {selected.length === 0 && <span className="text-zinc-400">{placeholder}</span>}
-          {selected.map((val) => {
-            const optionLabel = options.find((o) => o.value === val)?.label || val;
+          {(() => {
+            const visible = maxVisible != null && !isOpen ? selected.slice(0, maxVisible) : selected;
+            const hiddenCount = maxVisible != null && !isOpen ? Math.max(0, selected.length - maxVisible) : 0;
             return (
-              <span
-                key={val}
-                className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-medium border border-zinc-200 dark:border-zinc-700"
-              >
-                {optionLabel}
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onChange(selected.filter((s) => s !== val));
-                  }}
-                  className="hover:text-red-500"
-                >
-                  <X size={10} />
-                </button>
-              </span>
+              <>
+                {visible.map((val) => {
+                  const optionLabel = options.find((o) => o.value === val)?.label || val;
+                  return (
+                    <span
+                      key={val}
+                      className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-medium border border-zinc-200 dark:border-zinc-700"
+                    >
+                      {optionLabel}
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onChange(selected.filter((s) => s !== val));
+                        }}
+                        className="hover:text-red-500"
+                      >
+                        <X size={10} />
+                      </button>
+                    </span>
+                  );
+                })}
+                {hiddenCount > 0 && (
+                  <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 px-1 py-0.5">
+                    +{hiddenCount}
+                  </span>
+                )}
+              </>
             );
-          })}
+          })()}
           {!compact && (
             <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
               <ChevronDown size={12} />
