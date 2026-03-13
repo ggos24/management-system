@@ -5,6 +5,7 @@ import { IconComponent } from './IconComponent';
 import { Doc, DocSection } from '../types';
 import { fetchDocs, upsertDoc, deleteDoc as deleteDocDb } from '../lib/database';
 import { useAuthStore } from '../stores/authStore';
+import { isAdminOrAbove } from '../constants';
 import { DocsTreeSidebar } from './DocsTreeSidebar';
 import { DocViewer } from './DocViewer';
 import { DocEditor } from './DocEditor';
@@ -21,7 +22,7 @@ type Mode = 'view' | 'edit' | 'create-doc' | 'create-folder';
 
 export const DocsView: React.FC<DocsViewProps> = ({ section, docId, onNavigate }) => {
   const currentUser = useAuthStore((s) => s.currentUser);
-  const isAdmin = currentUser?.role === 'admin';
+  const isAdmin = currentUser ? isAdminOrAbove(currentUser.role) : false;
 
   const [docs, setDocs] = useState<Doc[]>([]);
   const [loading, setLoading] = useState(true);

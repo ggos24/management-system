@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       .eq('auth_user_id', callerUser.id)
       .single();
 
-    if (!callerProfile || callerProfile.role !== 'admin') {
+    if (!callerProfile || (callerProfile.role !== 'admin' && callerProfile.role !== 'super_admin')) {
       return new Response(JSON.stringify({ error: 'Only admins can invite users' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -158,8 +158,13 @@ Deno.serve(async (req) => {
       timestamp: new Date().toISOString(),
     });
 
-    // Notify all existing members about the new team member
-    const { data: existingProfiles } = await adminClient.from('profiles').select('id').neq('id', profileId);
+    // Notify admins about the new team member (exclude inviter and new user)
+    const { data: existingProfiles } = await adminClient
+      .from('profiles')
+      .select('id')
+      .neq('id', profileId)
+      .neq('id', callerFullProfile?.id || '')
+      .in('role', ['admin', 'super_admin']);
     if (existingProfiles && existingProfiles.length > 0) {
       const callerName = callerFullProfile?.id
         ? (await adminClient.from('profiles').select('name').eq('id', callerFullProfile.id).single()).data?.name ||

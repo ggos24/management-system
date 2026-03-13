@@ -28,7 +28,7 @@ export function calculateAbsenceStats(memberId: string, absences: Absence[]) {
   let daysOff = 0;
 
   absences
-    .filter((a) => a.memberId === memberId)
+    .filter((a) => a.memberId === memberId && a.status === 'approved')
     .forEach((a) => {
       const start = new Date(a.startDate);
       const end = new Date(a.endDate);

@@ -28,7 +28,7 @@ const AppLayout: React.FC = () => {
 
   const currentUser = useAuthStore((s) => s.currentUser)!;
 
-  const { tasks, teams, teamStatuses, teamTypes, statusCategories } = useDataStore();
+  const { tasks, teams, teamStatuses, teamTypes, statusCategories, absences } = useDataStore();
 
   const {
     isDarkMode,
@@ -85,6 +85,11 @@ const AppLayout: React.FC = () => {
     counts['my-workspace'] = myCount;
     return counts;
   }, [tasks, statusCategories, currentUser]);
+
+  const pendingAbsenceCount = useMemo(
+    () => absences.filter((a) => a.status === 'pending').length,
+    [absences],
+  );
 
   const openTaskModal = (taskOrPreset?: Partial<Task>) => {
     const defaultTeamId =
@@ -153,6 +158,7 @@ const AppLayout: React.FC = () => {
           setIsCollapsed={setSidebarCollapsed}
           isMobileOpen={mobileSidebarOpen}
           setIsMobileOpen={setMobileSidebarOpen}
+          pendingAbsenceCount={pendingAbsenceCount}
         />
 
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">

@@ -1,6 +1,19 @@
 import React from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { Sun, Moon, Bell, Search, X, Menu, ClipboardList, Calendar, UserPlus } from 'lucide-react';
+import {
+  Sun,
+  Moon,
+  Bell,
+  Search,
+  X,
+  Menu,
+  ClipboardList,
+  Calendar,
+  UserPlus,
+  MessageCircle,
+  UserMinus,
+  Trash2,
+} from 'lucide-react';
 import { Avatar } from './Avatar';
 import { IconButton, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
@@ -13,9 +26,17 @@ function getNotificationIcon(type: NotificationType) {
   switch (type) {
     case 'task_assigned':
     case 'task_status_changed':
+    case 'task_updated':
       return <ClipboardList size={14} className="shrink-0" />;
+    case 'task_unassigned':
+      return <UserMinus size={14} className="shrink-0" />;
+    case 'task_deleted':
+      return <Trash2 size={14} className="shrink-0" />;
+    case 'comment_mention':
+      return <MessageCircle size={14} className="shrink-0" />;
     case 'absence_submitted':
     case 'absence_decided':
+    case 'absence_cancelled':
       return <Calendar size={14} className="shrink-0" />;
     case 'member_invited':
       return <UserPlus size={14} className="shrink-0" />;
@@ -69,7 +90,12 @@ export const Header: React.FC = () => {
     markNotificationRead(n.id);
 
     // Navigate based on notification type
-    if (n.type === 'task_assigned' || n.type === 'task_status_changed') {
+    if (
+      n.type === 'task_assigned' ||
+      n.type === 'task_status_changed' ||
+      n.type === 'task_updated' ||
+      n.type === 'comment_mention'
+    ) {
       const taskId = n.entityData?.taskId;
       const teamId = n.entityData?.teamId;
       if (teamId) {
@@ -83,7 +109,13 @@ export const Header: React.FC = () => {
           setIsTaskModalOpen(true);
         }
       }
-    } else if (n.type === 'absence_submitted' || n.type === 'absence_decided') {
+    } else if (n.type === 'task_unassigned' || n.type === 'task_deleted') {
+      const teamId = n.entityData?.teamId;
+      if (teamId) {
+        const team = teams.find((t) => t.id === teamId);
+        navigate(`/teams/${team ? teamSlug(team) : teamId}`);
+      }
+    } else if (n.type === 'absence_submitted' || n.type === 'absence_decided' || n.type === 'absence_cancelled') {
       navigate('/schedule');
     } else if (n.type === 'member_invited') {
       navigate('/dashboard');

@@ -74,7 +74,10 @@ function mapAbsence(row: any): Absence {
     type: row.type,
     startDate: row.start_date,
     endDate: row.end_date,
-    approved: row.approved,
+    status: row.status || 'pending',
+    decidedBy: row.decided_by || null,
+    decidedAt: row.decided_at || null,
+    declineReason: row.decline_reason || null,
   };
 }
 
@@ -246,6 +249,7 @@ export async function fetchCustomProperties(): Promise<Record<string, CustomProp
       name: row.name,
       type: row.type,
       options: row.options || [],
+      optionColors: row.option_colors || {},
       sortOrder: row.sort_order ?? 0,
     });
   }
@@ -461,16 +465,45 @@ export async function syncTaskPlacements(taskId: string, placementNames: string[
 // === Absence mutations ===
 
 export async function upsertAbsence(absence: Absence) {
-  const row = {
+  const row: Record<string, unknown> = {
     id: absence.id || undefined,
     member_id: absence.memberId,
     type: absence.type,
     start_date: absence.startDate,
     end_date: absence.endDate,
-    approved: absence.approved,
+    status: absence.status || 'pending',
   };
+  if (absence.decidedBy) row.decided_by = absence.decidedBy;
+  if (absence.decidedAt) row.decided_at = absence.decidedAt;
+  if (absence.declineReason !== undefined) row.decline_reason = absence.declineReason;
   const { data, error } = await supabase.from('absences').upsert(row, { onConflict: 'id' }).select().single();
   return { data, error };
+}
+
+export async function updateAbsenceDecision(
+  id: string,
+  decision: 'approved' | 'declined',
+  decidedBy: string,
+  reason?: string,
+) {
+  const row: Record<string, unknown> = {
+    status: decision,
+    decided_by: decidedBy,
+    decided_at: new Date().toISOString(),
+  };
+  if (reason !== undefined) row.decline_reason = reason;
+  const { error } = await supabase.from('absences').update(row).eq('id', id);
+  return { error };
+}
+
+export async function fetchPendingAbsences(): Promise<Absence[]> {
+  const { data, error } = await supabase
+    .from('absences')
+    .select('*')
+    .eq('status', 'pending')
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(mapAbsence);
 }
 
 export async function deleteAbsence(id: string) {
@@ -626,6 +659,7 @@ export async function upsertCustomProperty(teamId: string, prop: CustomProperty)
     name: prop.name,
     type: prop.type,
     options: prop.options || [],
+    option_colors: prop.optionColors || {},
     sort_order: prop.sortOrder ?? 0,
   };
   const { data, error } = await supabase.from('custom_properties').upsert(row, { onConflict: 'id' }).select().single();

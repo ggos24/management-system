@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { Task, TaskStatus, TeamType, Member, Priority, CustomProperty, UserRole } from '../types';
-import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent } from '../constants';
+import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent, isAdminOrAbove } from '../constants';
 import {
   Plus,
   MoreHorizontal,
@@ -36,10 +36,12 @@ import {
   ArrowLeftRight,
   Check,
   ArrowRight,
+  Tags as TagsIcon,
 } from 'lucide-react';
 import { generateContentIdeas } from '../services/geminiService';
 import { MultiSelect } from './MultiSelect';
 import { CustomSelect } from './CustomSelect';
+import { TagSelect, getTagColorClasses } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
 import { Button, Badge, Divider } from './ui';
@@ -404,7 +406,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Derived columns to display: If searching, only show columns with tasks; then apply status sort
   const displayColumns = useMemo(() => {
-    let cols = searchQuery ? columns.filter((col) => filteredTasks.some((t) => t.status === col.id)) : [...columns];
+    const hasActiveFilter = searchQuery || filterPerson !== 'all' || filterPriority !== 'all' || filterPlacements.length > 0;
+    let cols = hasActiveFilter ? columns.filter((col) => filteredTasks.some((t) => t.status === col.id)) : [...columns];
 
     if (statusSort) {
       const dir = statusSortDirection === 'asc' ? 1 : -1;
@@ -424,7 +427,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
     }
 
     return cols;
-  }, [columns, filteredTasks, searchQuery, statusSort, statusSortDirection]);
+  }, [columns, filteredTasks, searchQuery, filterPerson, filterPriority, filterPlacements, statusSort, statusSortDirection]);
 
   const getMembersByIds = (ids: string[]) => members.filter((m) => ids.includes(m.id));
 
@@ -480,7 +483,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleDeleteColumn = (id: string) => {
-    if (userRole !== 'admin') {
+    if (!userRole || !isAdminOrAbove(userRole)) {
       toast.error('Only admins can delete statuses.');
       return;
     }
@@ -853,13 +856,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
           </div>
 
           {/* Actions: AI & New Task */}
-          <div className="flex gap-2 items-center">
-            {/* Show Archived and AI Assist hidden for now */}
-            <Button size="sm" onClick={() => onAddTask()} className="flex items-center gap-1.5">
-              <Plus size={14} />
-              New
-            </Button>
-          </div>
+          {teamFilter !== 'my-work' && (
+            <div className="flex gap-2 items-center">
+              <Button size="sm" onClick={() => onAddTask()} className="flex items-center gap-1.5">
+                <Plus size={14} />
+                New
+              </Button>
+            </div>
+          )}
         </div>
 
         {/* Filters Bar */}
@@ -1113,7 +1117,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               </h3>
 
                               <div className="flex flex-wrap gap-1 mb-3">
-                                {task.placements.map((placement) => (
+                                {task.placements.slice(0, 3).map((placement) => (
                                   <span
                                     key={placement}
                                     className="text-[10px] bg-zinc-50 dark:bg-zinc-800 text-zinc-500 border border-zinc-100 dark:border-zinc-700 px-1 rounded"
@@ -1121,6 +1125,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     #{placement}
                                   </span>
                                 ))}
+                                {task.placements.length > 3 && (
+                                  <span className="text-[10px] font-medium text-zinc-400 px-1">
+                                    +{task.placements.length - 3}
+                                  </span>
+                                )}
                               </div>
 
                               <div className="flex items-center justify-between pt-2">
@@ -1629,6 +1638,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                 onChange={(tags) => onUpdateTask({ ...task, placements: tags })}
                                                 placeholder="—"
                                                 compact
+                                                maxVisible={3}
                                               />
                                             </td>
                                           );
@@ -1662,6 +1672,40 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                   ) : (
                                                     <span className="text-xs text-zinc-400">-</span>
                                                   )}
+                                                </td>
+                                              );
+                                            }
+                                            if (prop?.type === 'tags') {
+                                              const tagVals: string[] = Array.isArray(val) ? val : val ? [val] : [];
+                                              return (
+                                                <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                                  <TagSelect
+                                                    tags={prop.options || []}
+                                                    selected={tagVals}
+                                                    tagColors={prop.optionColors || {}}
+                                                    onChange={(tags) =>
+                                                      onUpdateTask({ ...task, customFieldValues: { ...task.customFieldValues, [propId]: tags } })
+                                                    }
+                                                    onAddTag={(name, color) => {
+                                                      if (onUpdateProperty) {
+                                                        onUpdateProperty({
+                                                          ...prop,
+                                                          options: [...(prop.options || []), name],
+                                                          optionColors: { ...(prop.optionColors || {}), [name]: color },
+                                                        });
+                                                      }
+                                                    }}
+                                                    onUpdateTagColor={(name, color) => {
+                                                      if (onUpdateProperty) {
+                                                        onUpdateProperty({
+                                                          ...prop,
+                                                          optionColors: { ...(prop.optionColors || {}), [name]: color },
+                                                        });
+                                                      }
+                                                    }}
+                                                    compact
+                                                    maxVisible={3}
+                                                  />
                                                 </td>
                                               );
                                             }
@@ -1735,6 +1779,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               {[
                                 { type: 'text' as const, icon: Type, label: 'Text' },
                                 { type: 'select' as const, icon: ListIcon, label: 'Select' },
+                                { type: 'tags' as const, icon: TagsIcon, label: 'Tags' },
                                 { type: 'date' as const, icon: CalendarIcon, label: 'Date' },
                                 { type: 'person' as const, icon: Users, label: 'Person' },
                               ].map(({ type, icon: Icon, label }) => (
@@ -1786,6 +1831,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'select' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
                             >
                               <ListIcon size={12} /> Select
+                            </button>
+                            <button
+                              onClick={() => setNewPropType('tags')}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'tags' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                            >
+                              <TagsIcon size={12} /> Tags
                             </button>
                             <button
                               onClick={() => setNewPropType('date')}

@@ -79,7 +79,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   });
 
-  const visibleTeams = useMemo(() => teams.filter((t) => !t.hidden && t.id !== 'management'), [teams]);
+  const visibleTeams = useMemo(() => teams.filter((t) => !t.hidden && !t.adminOnly && t.id !== 'management'), [teams]);
 
   useEffect(() => {
     if (teamFilter !== ALL_TEAMS) {

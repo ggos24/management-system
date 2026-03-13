@@ -8,6 +8,7 @@ import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { Team } from '../types';
+import { isAdminOrAbove } from '../constants';
 
 export const ManageTeamsModal: React.FC = () => {
   const {
@@ -48,7 +49,7 @@ export const ManageTeamsModal: React.FC = () => {
   };
 
   const handleDeleteTeam = (id: string) => {
-    if (!currentUser || currentUser.role !== 'admin') {
+    if (!currentUser || !isAdminOrAbove(currentUser.role)) {
       toast.error('Only admins can delete workspaces.');
       return;
     }

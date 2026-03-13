@@ -1,7 +1,8 @@
 export type TeamType = 'editorial' | 'video' | 'social' | 'management' | string;
 export type TaskStatus = string; // Was specific union, now string to support custom columns
 export type Priority = 'low' | 'medium' | 'high';
-export type UserRole = 'admin' | 'user';
+export type UserRole = 'super_admin' | 'admin' | 'user';
+export type AbsenceStatus = 'pending' | 'approved' | 'declined';
 
 export interface User {
   id: string;
@@ -44,8 +45,9 @@ export interface ContentInfo {
 export interface CustomProperty {
   id: string;
   name: string;
-  type: 'text' | 'date' | 'select' | 'multiselect' | 'person';
+  type: 'text' | 'date' | 'select' | 'multiselect' | 'person' | 'tags';
   options?: string[];
+  optionColors?: Record<string, string>;
   sortOrder?: number;
 }
 
@@ -71,10 +73,13 @@ export interface Task {
 export interface Absence {
   id: string;
   memberId: string;
-  type: 'holiday' | 'sick' | 'business_trip' | 'day_off'; // Removed vacation
+  type: 'holiday' | 'sick' | 'business_trip' | 'day_off';
   startDate: string;
   endDate: string;
-  approved: boolean;
+  status: AbsenceStatus;
+  decidedBy?: string | null;
+  decidedAt?: string | null;
+  declineReason?: string | null;
 }
 
 export interface Shift {
@@ -139,10 +144,14 @@ export interface Doc {
 export type NotificationType =
   | 'task_assigned'
   | 'task_status_changed'
+  | 'task_updated'
+  | 'task_unassigned'
+  | 'task_deleted'
   | 'absence_submitted'
   | 'absence_decided'
   | 'member_invited'
-  | 'comment_mention';
+  | 'comment_mention'
+  | 'absence_cancelled';
 
 export interface Notification {
   id: string;

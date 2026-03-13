@@ -1,12 +1,14 @@
 import React, { useState, useMemo } from 'react';
 import { Member, Absence, Team, Shift, UserRole } from '../types';
-import { ChevronLeft, ChevronRight, Calendar, Trash2, ChevronDown, User, Filter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Calendar, Trash2, ChevronDown, User, Filter, Clock, XCircle, Check, X, AlertCircle } from 'lucide-react';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { CustomSelect } from './CustomSelect';
 import { calculateAbsenceStats } from '../lib/utils';
-import { Button, Label, Input } from './ui';
+import { isSuperAdmin, isAdminOrAbove } from '../constants';
+import { Button, Label, Input, Badge } from './ui';
+import { AbsenceApprovalQueue } from './AbsenceApprovalQueue';
 
 interface ScheduleProps {
   members: Member[];
@@ -14,8 +16,12 @@ interface ScheduleProps {
   shifts: Shift[];
   teams: Team[];
   userRole: UserRole;
+  currentUserId: string;
   onUpdateAbsence: (absence: Absence) => void;
   onDeleteAbsence: (id: string) => void;
+  onApproveAbsence: (id: string) => void;
+  onDeclineAbsence: (id: string, reason?: string) => void;
+  onCancelAbsence: (id: string) => void;
   onUpdateShift: (shift: Shift) => void;
   onDeleteShift: (id: string) => void;
 }
@@ -26,8 +32,12 @@ const Schedule: React.FC<ScheduleProps> = ({
   shifts,
   teams,
   userRole,
+  currentUserId,
   onUpdateAbsence,
   onDeleteAbsence,
+  onApproveAbsence,
+  onDeclineAbsence,
+  onCancelAbsence,
   onUpdateShift,
   onDeleteShift,
 }) => {
@@ -37,6 +47,9 @@ const Schedule: React.FC<ScheduleProps> = ({
     day: number;
   } | null>(null);
 
+  // Tab state: calendar vs pending requests
+  const [activeTab, setActiveTab] = useState<'calendar' | 'pending'>('calendar');
+
   // Drag Selection State
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState<{ memberId: string; day: number } | null>(null);
@@ -45,6 +58,8 @@ const Schedule: React.FC<ScheduleProps> = ({
   // Edit Modal State
   const [editType, setEditType] = useState<'absence' | 'shift'>('absence');
   const [absenceType, setAbsenceType] = useState<Absence['type']>('holiday');
+  const [modalDeclineMode, setModalDeclineMode] = useState(false);
+  const [modalDeclineReason, setModalDeclineReason] = useState('');
 
   // Member Stats Modal State
   const [selectedMemberStats, setSelectedMemberStats] = useState<Member | null>(null);
@@ -97,7 +112,7 @@ const Schedule: React.FC<ScheduleProps> = ({
   };
 
   const handleMouseDown = (member: Member, day: number) => {
-    if (userRole !== 'admin') return;
+    if (!isAdminOrAbove(userRole) && member.id !== currentUserId) return;
     setIsDragging(true);
     setDragStart({ memberId: member.id, day });
     setDragEnd({ memberId: member.id, day });
@@ -150,6 +165,10 @@ const Schedule: React.FC<ScheduleProps> = ({
     // Determine which tab to show
     setEditType(existingAbsence ? 'absence' : 'shift');
 
+    // Reset decline mode
+    setModalDeclineMode(false);
+    setModalDeclineReason('');
+
     setDragStart(null);
     setDragEnd(null);
   };
@@ -167,7 +186,7 @@ const Schedule: React.FC<ScheduleProps> = ({
         type: absenceType,
         startDate: rangeStartDate,
         endDate: rangeEndDate,
-        approved: true,
+        status: existing?.status || (isSuperAdmin(userRole) ? 'approved' : 'pending'),
       };
       onUpdateAbsence(newAbsence);
     } else {
@@ -265,6 +284,18 @@ const Schedule: React.FC<ScheduleProps> = ({
     return groups;
   }, [teams, members, filterPerson, filterAbsenceType, absences, currentDate]);
 
+  const pendingAbsences = useMemo(
+    () => absences.filter((a) => a.status === 'pending'),
+    [absences],
+  );
+
+  const decidedAbsences = useMemo(
+    () => absences.filter((a) => a.status === 'approved' || a.status === 'declined'),
+    [absences],
+  );
+  const pendingCount = pendingAbsences.length;
+  const showPendingTab = isSuperAdmin(userRole);
+
   return (
     <div className="p-6 h-full flex flex-col bg-white dark:bg-black relative">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 flex-shrink-0">
@@ -320,6 +351,40 @@ const Schedule: React.FC<ScheduleProps> = ({
         </div>
       </div>
 
+      {showPendingTab && (
+        <div className="flex gap-1 mb-4 p-1 bg-zinc-100 dark:bg-zinc-800 rounded-lg w-fit">
+          <button
+            onClick={() => setActiveTab('calendar')}
+            className={`text-xs px-3 py-1.5 rounded font-medium transition-colors ${activeTab === 'calendar' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+          >
+            Calendar
+          </button>
+          <button
+            onClick={() => setActiveTab('pending')}
+            className={`text-xs px-3 py-1.5 rounded font-medium transition-colors flex items-center gap-1.5 ${activeTab === 'pending' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+          >
+            Pending Requests
+            {pendingCount > 0 && (
+              <span className="min-w-[18px] h-[18px] flex items-center justify-center bg-amber-500 text-white text-[10px] font-semibold rounded-full px-1">
+                {pendingCount}
+              </span>
+            )}
+          </button>
+        </div>
+      )}
+
+      {activeTab === 'pending' && showPendingTab ? (
+        <div className="flex-1 overflow-y-auto">
+          <AbsenceApprovalQueue
+            pendingAbsences={pendingAbsences}
+            decidedAbsences={decidedAbsences}
+            allAbsences={absences}
+            members={members}
+            onApprove={onApproveAbsence}
+            onDecline={onDeclineAbsence}
+          />
+        </div>
+      ) : (
       <div className="bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 flex-1 flex flex-col overflow-hidden shadow-sm relative">
         <div className="flex-1 overflow-auto custom-scrollbar relative">
           <div style={{ width: 'max-content', minWidth: '100%' }}>
@@ -428,11 +493,23 @@ const Schedule: React.FC<ScheduleProps> = ({
                               text = 'OUT';
                           }
 
+                          // Visual status indicators
+                          let statusClass = '';
+                          let statusIcon: React.ReactNode = null;
+                          if (absence.status === 'pending') {
+                            statusClass = 'opacity-60 border-dashed border-2 border-current';
+                            statusIcon = <Clock size={8} className="absolute top-0.5 right-0.5" />;
+                          } else if (absence.status === 'declined') {
+                            statusClass = 'opacity-30 line-through';
+                            statusIcon = <XCircle size={8} className="absolute top-0.5 right-0.5" />;
+                          }
+
                           content = (
                             <div
-                              className={`w-full h-full flex items-center justify-center ${bgClass} text-[10px] font-semibold tracking-tight select-none`}
+                              className={`w-full h-full flex items-center justify-center ${bgClass} ${statusClass} text-[10px] font-semibold tracking-tight select-none relative`}
                             >
                               {text}
+                              {statusIcon}
                             </div>
                           );
                           cellClass = '';
@@ -471,6 +548,7 @@ const Schedule: React.FC<ScheduleProps> = ({
           </div>
         </div>
       </div>
+      )}
 
       <Modal isOpen={!!selectedMemberStats} onClose={() => setSelectedMemberStats(null)} title="" size="md">
         {selectedMemberStats && (
@@ -534,83 +612,230 @@ const Schedule: React.FC<ScheduleProps> = ({
         allowOverflow
         actions={
           <div className="flex items-center gap-3 w-full">
-            <button
-              onClick={handleDelete}
-              className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-red-200"
-            >
-              <Trash2 size={18} />
-            </button>
-            <Button onClick={handleSave} className="flex-1 py-2 text-center cursor-pointer">
-              Save
-            </Button>
+            {(() => {
+              const existingAbsence = selectedCell ? getAbsenceForDay(selectedCell.member.id, selectedCell.day) : null;
+              const isOwnPending = existingAbsence && existingAbsence.memberId === currentUserId && existingAbsence.status === 'pending';
+              const isReadOnly = existingAbsence && existingAbsence.status !== 'pending' && !isSuperAdmin(userRole);
+              return (
+                <>
+                  {isOwnPending && (
+                    <Button
+                      variant="danger"
+                      size="sm"
+                      onClick={() => {
+                        onCancelAbsence(existingAbsence.id);
+                        setSelectedCell(null);
+                      }}
+                    >
+                      Cancel Request
+                    </Button>
+                  )}
+                  {!isReadOnly && (
+                    <>
+                      <button
+                        onClick={handleDelete}
+                        className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-red-200"
+                      >
+                        <Trash2 size={18} />
+                      </button>
+                      <Button onClick={handleSave} className="flex-1 py-2 text-center cursor-pointer">
+                        Save
+                      </Button>
+                    </>
+                  )}
+                  {isReadOnly && (
+                    <p className="text-xs text-zinc-400 flex-1 text-center">
+                      This absence has been {existingAbsence.status} and cannot be edited.
+                    </p>
+                  )}
+                </>
+              );
+            })()}
           </div>
         }
       >
-        {selectedCell && (
-          <div>
-            <p className="text-xs text-zinc-500 mb-4 font-medium">{selectedCell.member.name}</p>
+        {selectedCell && (() => {
+          const existingAbsence = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
+          const isSA = isSuperAdmin(userRole);
+          const decider = existingAbsence?.decidedBy ? members.find((m) => m.id === existingAbsence.decidedBy) : null;
+          const holidayStats = existingAbsence?.type === 'holiday'
+            ? calculateAbsenceStats(selectedCell.member.id, absences)
+            : null;
 
-            <div className="space-y-4">
-              <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded mb-4">
-                <button
-                  onClick={() => setEditType('shift')}
-                  className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'shift' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
-                >
-                  Shift
-                </button>
-                <button
-                  onClick={() => setEditType('absence')}
-                  className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'absence' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
-                >
-                  Absence
-                </button>
-              </div>
+          return (
+            <div>
+              <p className="text-xs text-zinc-500 mb-4 font-medium">{selectedCell.member.name}</p>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label className="mb-1 block">From</Label>
-                  <SimpleDatePicker value={rangeStartDate} onChange={setRangeStartDate} placeholder="Select Date" />
-                </div>
-                <div>
-                  <Label className="mb-1 block">To</Label>
-                  <SimpleDatePicker value={rangeEndDate} onChange={setRangeEndDate} placeholder="Select Date" />
-                </div>
-              </div>
-
-              {editType === 'absence' ? (
-                <div>
-                  <CustomSelect
-                    label="Absence Type"
-                    options={[
-                      { value: 'holiday', label: 'Holiday' },
-                      { value: 'sick', label: 'Sick Leave' },
-                      { value: 'business_trip', label: 'Business Trip' },
-                      { value: 'day_off', label: 'Day Off' },
-                    ]}
-                    value={absenceType}
-                    onChange={(v) => setAbsenceType(v as any)}
-                  />
-                </div>
-              ) : (
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="mb-1 block">Start Time</Label>
-                    <Input
-                      type="time"
-                      value={startTime}
-                      onChange={(e) => setStartTime(e.target.value)}
-                      className="p-2"
-                    />
+              {/* Status banner for existing absences */}
+              {existingAbsence && existingAbsence.status === 'pending' && (
+                <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Clock size={14} className="text-amber-500" />
+                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">Pending Approval</span>
+                    </div>
+                    {holidayStats && (
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                        {24 - holidayStats.holidayDays} / 24 holiday days left
+                      </span>
+                    )}
                   </div>
-                  <div>
-                    <Label className="mb-1 block">End Time</Label>
-                    <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="p-2" />
+                  {isSA && !modalDeclineMode && (
+                    <div className="flex gap-2 mt-2.5">
+                      <button
+                        onClick={() => {
+                          onApproveAbsence(existingAbsence.id);
+                          setSelectedCell(null);
+                        }}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 rounded-md transition-colors"
+                      >
+                        <Check size={14} /> Approve
+                      </button>
+                      <button
+                        onClick={() => setModalDeclineMode(true)}
+                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 rounded-md transition-colors"
+                      >
+                        <X size={14} /> Decline
+                      </button>
+                    </div>
+                  )}
+                  {isSA && modalDeclineMode && (
+                    <div className="mt-2.5 space-y-2">
+                      <Input
+                        placeholder="Reason for declining (optional)..."
+                        value={modalDeclineReason}
+                        onChange={(e) => setModalDeclineReason(e.target.value)}
+                        autoFocus
+                        className="!py-1.5 !text-xs"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') {
+                            onDeclineAbsence(existingAbsence.id, modalDeclineReason || undefined);
+                            setSelectedCell(null);
+                          }
+                          if (e.key === 'Escape') setModalDeclineMode(false);
+                        }}
+                      />
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            onDeclineAbsence(existingAbsence.id, modalDeclineReason || undefined);
+                            setSelectedCell(null);
+                          }}
+                          className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+                        >
+                          Confirm Decline
+                        </button>
+                        <button
+                          onClick={() => { setModalDeclineMode(false); setModalDeclineReason(''); }}
+                          className="px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 transition-colors"
+                        >
+                          Back
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {existingAbsence && existingAbsence.status === 'approved' && (
+                <div className="mb-4 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Check size={14} className="text-emerald-500" />
+                      <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Approved</span>
+                    </div>
+                    {decider && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                        by {decider.name}{existingAbsence.decidedAt ? ` on ${new Date(existingAbsence.decidedAt).toLocaleDateString()}` : ''}
+                      </span>
+                    )}
                   </div>
                 </div>
               )}
+
+              {existingAbsence && existingAbsence.status === 'declined' && (
+                <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <AlertCircle size={14} className="text-red-500" />
+                      <span className="text-xs font-semibold text-red-700 dark:text-red-300">Declined</span>
+                    </div>
+                    {decider && (
+                      <span className="text-[10px] text-red-600 dark:text-red-400">
+                        by {decider.name}{existingAbsence.decidedAt ? ` on ${new Date(existingAbsence.decidedAt).toLocaleDateString()}` : ''}
+                      </span>
+                    )}
+                  </div>
+                  {existingAbsence.declineReason && (
+                    <p className="text-xs text-red-600 dark:text-red-400 mt-1.5 italic">
+                      &ldquo;{existingAbsence.declineReason}&rdquo;
+                    </p>
+                  )}
+                </div>
+              )}
+
+              <div className="space-y-4">
+                <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded mb-4">
+                  <button
+                    onClick={() => setEditType('shift')}
+                    className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'shift' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+                  >
+                    Shift
+                  </button>
+                  <button
+                    onClick={() => setEditType('absence')}
+                    className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'absence' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+                  >
+                    Absence
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <Label className="mb-1 block">From</Label>
+                    <SimpleDatePicker value={rangeStartDate} onChange={setRangeStartDate} placeholder="Select Date" />
+                  </div>
+                  <div>
+                    <Label className="mb-1 block">To</Label>
+                    <SimpleDatePicker value={rangeEndDate} onChange={setRangeEndDate} placeholder="Select Date" />
+                  </div>
+                </div>
+
+                {editType === 'absence' ? (
+                  <div>
+                    <CustomSelect
+                      label="Absence Type"
+                      options={[
+                        { value: 'holiday', label: 'Holiday' },
+                        { value: 'sick', label: 'Sick Leave' },
+                        { value: 'business_trip', label: 'Business Trip' },
+                        { value: 'day_off', label: 'Day Off' },
+                      ]}
+                      value={absenceType}
+                      onChange={(v) => setAbsenceType(v as any)}
+                    />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="mb-1 block">Start Time</Label>
+                      <Input
+                        type="time"
+                        value={startTime}
+                        onChange={(e) => setStartTime(e.target.value)}
+                        className="p-2"
+                      />
+                    </div>
+                    <div>
+                      <Label className="mb-1 block">End Time</Label>
+                      <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="p-2" />
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
       </Modal>
     </div>
   );

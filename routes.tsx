@@ -13,6 +13,7 @@ import { useDataStore } from './stores/dataStore';
 import { useUiStore } from './stores/uiStore';
 import { findTeamByParam } from './lib/utils';
 import { Task, DocSection } from './types';
+import { isAdminOrAbove } from './constants';
 
 // Outlet context type used by route wrappers
 interface LayoutContext {
@@ -32,7 +33,19 @@ const DashboardRoute: React.FC = () => {
 
 const ScheduleRoute: React.FC = () => {
   const currentUser = useAuthStore((s) => s.currentUser)!;
-  const { members, absences, shifts, teams, updateAbsence, deleteAbsence, updateShift, deleteShift } = useDataStore();
+  const {
+    members,
+    absences,
+    shifts,
+    teams,
+    updateAbsence,
+    deleteAbsence,
+    approveAbsence,
+    declineAbsence,
+    cancelAbsence,
+    updateShift,
+    deleteShift,
+  } = useDataStore();
   return (
     <Schedule
       members={members}
@@ -40,8 +53,12 @@ const ScheduleRoute: React.FC = () => {
       shifts={shifts}
       teams={teams}
       userRole={currentUser.role}
+      currentUserId={currentUser.id}
       onUpdateAbsence={updateAbsence}
       onDeleteAbsence={deleteAbsence}
+      onApproveAbsence={approveAbsence}
+      onDeclineAbsence={declineAbsence}
+      onCancelAbsence={cancelAbsence}
       onUpdateShift={updateShift}
       onDeleteShift={deleteShift}
     />
@@ -139,7 +156,7 @@ const TeamWorkspaceRoute: React.FC = () => {
 
   const team = teamParam ? findTeamByParam(teams, teamParam) : undefined;
 
-  if (!team || (team.adminOnly && currentUser.role !== 'admin')) {
+  if (!team || (team.adminOnly && !isAdminOrAbove(currentUser.role))) {
     return <Navigate to="/workspace" replace />;
   }
 

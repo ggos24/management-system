@@ -12,8 +12,9 @@ import {
   HelpCircle,
   BookOpen,
 } from 'lucide-react';
-import { Team } from '../types';
+import { Team, UserRole } from '../types';
 import { IconComponent } from './IconComponent';
+import { isAdminOrAbove, isSuperAdmin } from '../constants';
 
 interface SidebarProps {
   currentView: string;
@@ -23,13 +24,14 @@ interface SidebarProps {
   onManageTeams: () => void;
   onReorderTeams: (draggedId: string, targetId: string) => void;
   teams: Team[];
-  userRole: 'admin' | 'user';
+  userRole: UserRole;
   isCollapsed: boolean;
   setIsCollapsed: (v: boolean) => void;
   isMobileOpen: boolean;
   setIsMobileOpen: (v: boolean) => void;
   deletedTaskCount?: number;
   taskCounts?: Record<string, number>;
+  pendingAbsenceCount?: number;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -47,6 +49,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   setIsMobileOpen,
   deletedTaskCount = 0,
   taskCounts = {},
+  pendingAbsenceCount = 0,
 }) => {
   // Icon rendering uses the shared IconComponent
 
@@ -171,6 +174,11 @@ const Sidebar: React.FC<SidebarProps> = ({
               >
                 Schedule
               </span>
+              {!isCollapsed && isSuperAdmin(userRole) && pendingAbsenceCount > 0 && (
+                <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center bg-amber-500 text-white text-[10px] font-semibold rounded-full px-1">
+                  {pendingAbsenceCount}
+                </span>
+              )}
             </button>
           </div>
 
@@ -182,7 +190,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               )}
               {isCollapsed && <div className="h-px w-4 bg-zinc-200 dark:bg-zinc-800"></div>}
 
-              {!isCollapsed && userRole === 'admin' && (
+              {!isCollapsed && isAdminOrAbove(userRole) && (
                 <button
                   onClick={onManageTeams}
                   className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
@@ -195,7 +203,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <nav className="space-y-0.5">
               {teams
-                .filter((t) => !t.hidden && !t.archived && (!t.adminOnly || userRole === 'admin'))
+                .filter((t) => !t.hidden && !t.archived && (!t.adminOnly || isAdminOrAbove(userRole)))
                 .map((team) => {
                   const isActive = currentView === team.id;
                   return (

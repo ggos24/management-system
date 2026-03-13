@@ -22,11 +22,13 @@ import {
   Send,
   RotateCcw,
   AlertTriangle,
+  Tags as TagsIcon,
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { RichTextEditor } from './RichTextEditor';
 import { MultiSelect } from './MultiSelect';
 import { CustomSelect } from './CustomSelect';
+import { TagSelect } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
 import { Button, Input, Label, Divider } from './ui';
@@ -153,7 +155,13 @@ export const TaskModal: React.FC = () => {
       const mentionedIds = parseMentions(text);
       if (mentionedIds.length > 0) {
         const { notifyMention } = useDataStore.getState();
-        notifyMention(mentionedIds, currentUser.name, taskModalData.title || 'Untitled', taskModalData.id);
+        notifyMention(
+          mentionedIds,
+          currentUser.name,
+          taskModalData.title || 'Untitled',
+          taskModalData.id,
+          taskModalData.teamId,
+        );
       }
     } catch {
       toast.error('Failed to add comment');
@@ -633,6 +641,7 @@ export const TaskModal: React.FC = () => {
                       {[
                         { type: 'text' as const, icon: Type, label: 'Text' },
                         { type: 'select' as const, icon: ListIcon, label: 'Select' },
+                        { type: 'tags' as const, icon: TagsIcon, label: 'Tags' },
                         { type: 'date' as const, icon: Calendar, label: 'Date' },
                         { type: 'person' as const, icon: Users, label: 'Person' },
                       ].map(({ type, icon: Icon, label }) => (
@@ -720,6 +729,36 @@ export const TaskModal: React.FC = () => {
                       placeholder="Select person..."
                     />
                   )}
+                  {prop.type === 'tags' && (
+                    <TagSelect
+                      tags={prop.options || []}
+                      selected={(() => {
+                        const val = taskModalData.customFieldValues?.[prop.id];
+                        return Array.isArray(val) ? val : val ? [val] : [];
+                      })()}
+                      tagColors={prop.optionColors || {}}
+                      onChange={(tags) =>
+                        setTaskModalData({
+                          ...taskModalData,
+                          customFieldValues: { ...taskModalData.customFieldValues, [prop.id]: tags },
+                        })
+                      }
+                      onAddTag={(name, color) => {
+                        updateProperty(taskModalData.teamId || 'default', {
+                          ...prop,
+                          options: [...(prop.options || []), name],
+                          optionColors: { ...(prop.optionColors || {}), [name]: color },
+                        });
+                      }}
+                      onUpdateTagColor={(name, color) => {
+                        updateProperty(taskModalData.teamId || 'default', {
+                          ...prop,
+                          optionColors: { ...(prop.optionColors || {}), [name]: color },
+                        });
+                      }}
+                      placeholder="Select tags..."
+                    />
+                  )}
                 </div>
               ))}
 
@@ -742,6 +781,7 @@ export const TaskModal: React.FC = () => {
                       {[
                         { type: 'text' as const, icon: Type, label: 'Text' },
                         { type: 'select' as const, icon: ListIcon, label: 'Select' },
+                        { type: 'tags' as const, icon: TagsIcon, label: 'Tags' },
                         { type: 'date' as const, icon: Calendar, label: 'Date' },
                         { type: 'person' as const, icon: Users, label: 'Person' },
                       ].map(({ type, icon: Icon, label }) => (
@@ -811,27 +851,30 @@ export const TaskModal: React.FC = () => {
                           <span className="text-xs font-semibold text-zinc-900 dark:text-white">{c.userName}</span>
                           <span className="text-[10px] text-zinc-400">{formatCommentTime(c.createdAt)}</span>
                           {c.updatedAt && <span className="text-[10px] text-zinc-400 italic">(edited)</span>}
-                          {currentUser && (currentUser.id === c.userId || currentUser.role === 'admin') && (
-                            <div className="opacity-0 group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
-                              {currentUser.id === c.userId && (
+                          {currentUser &&
+                            (currentUser.id === c.userId ||
+                              currentUser.role === 'admin' ||
+                              currentUser.role === 'super_admin') && (
+                              <div className="opacity-0 group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
+                                {currentUser.id === c.userId && (
+                                  <button
+                                    onClick={() => {
+                                      setEditingCommentId(c.id);
+                                      setEditingCommentText(c.content);
+                                    }}
+                                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                  >
+                                    <Edit2 size={12} />
+                                  </button>
+                                )}
                                 <button
-                                  onClick={() => {
-                                    setEditingCommentId(c.id);
-                                    setEditingCommentText(c.content);
-                                  }}
-                                  className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                  onClick={() => handleDeleteComment(c.id)}
+                                  className="text-zinc-400 hover:text-red-500"
                                 >
-                                  <Edit2 size={12} />
+                                  <Trash2 size={12} />
                                 </button>
-                              )}
-                              <button
-                                onClick={() => handleDeleteComment(c.id)}
-                                className="text-zinc-400 hover:text-red-500"
-                              >
-                                <Trash2 size={12} />
-                              </button>
-                            </div>
-                          )}
+                              </div>
+                            )}
                         </div>
                         {editingCommentId === c.id ? (
                           <div className="space-y-1.5">

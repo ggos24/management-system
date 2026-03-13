@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
-import { Task, Team, Member, Absence, Shift, LogEntry, CustomProperty, NotificationType } from '../types';
+import { Task, Team, Member, Absence, Shift, LogEntry, CustomProperty, NotificationType, UserRole } from '../types';
+import { isSuperAdmin } from '../constants';
 import * as db from '../lib/database';
 import { useAuthStore } from './authStore';
 import { supabase } from '../lib/supabase';
@@ -97,6 +98,9 @@ interface DataState {
   // Absence/Shift actions
   updateAbsence: (absence: Absence) => void;
   deleteAbsence: (id: string) => void;
+  approveAbsence: (absenceId: string) => void;
+  declineAbsence: (absenceId: string, reason?: string) => void;
+  cancelAbsence: (absenceId: string) => void;
   updateShift: (shift: Shift) => void;
   deleteShift: (id: string) => void;
 
@@ -134,7 +138,7 @@ interface DataState {
   updateMemberName: (memberId: string, newName: string) => void;
   updateMemberJobTitle: (memberId: string, jobTitle: string) => void;
   updateMemberTeam: (memberId: string, teamId: string) => void;
-  updateMemberRole: (memberId: string, role: 'admin' | 'user') => void;
+  updateMemberRole: (memberId: string, role: UserRole) => void;
 
   // Integration actions
   toggleIntegration: (key: string, currentUserId: string) => void;
@@ -146,7 +150,7 @@ interface DataState {
   loadDeletedTasks: () => Promise<void>;
 
   // Notification helpers
-  notifyMention: (recipientIds: string[], actorName: string, taskTitle: string, taskId: string) => void;
+  notifyMention: (recipientIds: string[], actorName: string, taskTitle: string, taskId: string, teamId: string) => void;
 
   // Load all data
   loadAllData: (authUserId: string) => Promise<Member | null>;
@@ -220,6 +224,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   updateTaskStatus: (taskId, newStatus) => {
     const prev = get().tasks;
     const task = prev.find((t) => t.id === taskId);
+    if (task && task.status === newStatus) return; // Same status, no-op
     set({ tasks: prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)) });
     db.updateTaskStatus(taskId, newStatus).catch(() => set({ tasks: prev }));
 
@@ -246,16 +251,46 @@ export const useDataStore = create<DataState>((set, get) => ({
       })
       .catch(() => set({ tasks: prev }));
 
-    // Notify newly added assignees
+    // Notify assignees about changes
     if (oldTask) {
+      const actorName = getCurrentUserName();
+
+      // Notify newly added assignees
       const newAssignees = updatedTask.assigneeIds.filter((id) => !oldTask.assigneeIds.includes(id));
       if (newAssignees.length > 0) {
-        const actorName = getCurrentUserName();
         notifyMany(newAssignees, 'task_assigned', `${actorName} assigned you to "${updatedTask.title}"`, {
           taskId: updatedTask.id,
           teamId: updatedTask.teamId,
           priority: updatedTask.priority,
         });
+      }
+
+      // Notify removed assignees
+      const removedAssignees = oldTask.assigneeIds.filter((id) => !updatedTask.assigneeIds.includes(id));
+      if (removedAssignees.length > 0) {
+        notifyMany(removedAssignees, 'task_unassigned', `${actorName} removed you from "${updatedTask.title}"`, {
+          taskId: updatedTask.id,
+          teamId: updatedTask.teamId,
+        });
+      }
+
+      // Detect meaningful field changes and notify all current assignees
+      const changes: string[] = [];
+      if (oldTask.title !== updatedTask.title) changes.push('title');
+      if (oldTask.priority !== updatedTask.priority) changes.push('priority');
+      if (oldTask.dueDate !== updatedTask.dueDate) changes.push('due date');
+      if (oldTask.description !== updatedTask.description) changes.push('description');
+      if (JSON.stringify(oldTask.placements) !== JSON.stringify(updatedTask.placements)) changes.push('placements');
+      if (JSON.stringify(oldTask.customFieldValues) !== JSON.stringify(updatedTask.customFieldValues))
+        changes.push('fields');
+
+      if (changes.length > 0 && updatedTask.assigneeIds.length > 0) {
+        notifyMany(
+          updatedTask.assigneeIds,
+          'task_updated',
+          `${actorName} updated ${changes.join(', ')} on "${updatedTask.title}"`,
+          { taskId: updatedTask.id, teamId: updatedTask.teamId, priority: updatedTask.priority },
+        );
       }
     }
   },
@@ -281,6 +316,14 @@ export const useDataStore = create<DataState>((set, get) => ({
         deletedTaskCount: get().deletedTaskCount - 1,
       });
     });
+
+    // Notify all task assignees about deletion
+    if (task.assigneeIds.length > 0) {
+      const actorName = getCurrentUserName();
+      notifyMany(task.assigneeIds, 'task_deleted', `${actorName} deleted "${task.title}"`, {
+        teamId: task.teamId,
+      });
+    }
 
     toast('Task moved to bin', {
       action: {
@@ -361,6 +404,16 @@ export const useDataStore = create<DataState>((set, get) => ({
         db.syncTaskPlacements(newTask.id, newTask.placements);
       })
       .catch(() => toast.error('Failed to save task'));
+
+    // Notify assignees when a new task is created with assignees
+    if (isNew && newTask.assigneeIds.length > 0) {
+      const actorName = getCurrentUserName();
+      notifyMany(newTask.assigneeIds, 'task_assigned', `${actorName} assigned you to "${newTask.title}"`, {
+        taskId: newTask.id,
+        teamId: newTask.teamId,
+        priority: newTask.priority,
+      });
+    }
   },
 
   // Absence/Shift actions
@@ -375,23 +428,15 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     const { members } = get();
     const memberName = members.find((m) => m.id === absence.memberId)?.name || 'Someone';
-    const actorName = getCurrentUserName();
 
     if (isNew) {
-      // New absence submitted → notify all admins
-      const adminIds = members.filter((m) => m.role === 'admin').map((m) => m.id);
-      notifyMany(adminIds, 'absence_submitted', `${memberName} submitted a ${absence.type.replace('_', ' ')} request`, {
-        absenceId: absence.id,
-        memberId: absence.memberId,
-      });
-    } else if (existing && existing.approved !== absence.approved) {
-      // Approval status changed → notify the absence owner
-      const decision = absence.approved ? 'approved' : 'rejected';
-      notify(
-        absence.memberId,
-        'absence_decided',
-        `${actorName} ${decision} your ${absence.type.replace('_', ' ')} request`,
-        { absenceId: absence.id },
+      // New absence submitted → notify all super_admins
+      const superAdminIds = members.filter((m) => m.role === 'super_admin').map((m) => m.id);
+      notifyMany(
+        superAdminIds,
+        'absence_submitted',
+        `${memberName} submitted a ${absence.type.replace('_', ' ')} request`,
+        { absenceId: absence.id, memberId: absence.memberId },
       );
     }
   },
@@ -400,6 +445,79 @@ export const useDataStore = create<DataState>((set, get) => ({
     const prev = get().absences;
     set({ absences: prev.filter((a) => a.id !== id) });
     db.deleteAbsence(id).catch(() => set({ absences: prev }));
+  },
+
+  approveAbsence: (absenceId) => {
+    const prev = get().absences;
+    const absence = prev.find((a) => a.id === absenceId);
+    if (!absence) return;
+    const userId = getCurrentUserId();
+    const actorName = getCurrentUserName();
+
+    set({
+      absences: prev.map((a) =>
+        a.id === absenceId
+          ? { ...a, status: 'approved' as const, decidedBy: userId, decidedAt: new Date().toISOString() }
+          : a,
+      ),
+    });
+    db.updateAbsenceDecision(absenceId, 'approved', userId!).catch(() => set({ absences: prev }));
+
+    notify(
+      absence.memberId,
+      'absence_decided',
+      `${actorName} approved your ${absence.type.replace('_', ' ')} request`,
+      { absenceId },
+    );
+  },
+
+  declineAbsence: (absenceId, reason) => {
+    const prev = get().absences;
+    const absence = prev.find((a) => a.id === absenceId);
+    if (!absence) return;
+    const userId = getCurrentUserId();
+    const actorName = getCurrentUserName();
+
+    set({
+      absences: prev.map((a) =>
+        a.id === absenceId
+          ? {
+              ...a,
+              status: 'declined' as const,
+              decidedBy: userId,
+              decidedAt: new Date().toISOString(),
+              declineReason: reason || null,
+            }
+          : a,
+      ),
+    });
+    db.updateAbsenceDecision(absenceId, 'declined', userId!, reason).catch(() => set({ absences: prev }));
+
+    notify(
+      absence.memberId,
+      'absence_decided',
+      `${actorName} declined your ${absence.type.replace('_', ' ')} request`,
+      { absenceId, reason },
+    );
+  },
+
+  cancelAbsence: (absenceId) => {
+    const prev = get().absences;
+    const absence = prev.find((a) => a.id === absenceId);
+    if (!absence) return;
+
+    set({ absences: prev.filter((a) => a.id !== absenceId) });
+    db.deleteAbsence(absenceId).catch(() => set({ absences: prev }));
+
+    const { members } = get();
+    const memberName = getCurrentUserName();
+    const superAdminIds = members.filter((m) => m.role === 'super_admin').map((m) => m.id);
+    notifyMany(
+      superAdminIds,
+      'absence_cancelled',
+      `${memberName} cancelled their ${absence.type.replace('_', ' ')} request`,
+      { absenceId, memberId: absence.memberId },
+    );
   },
 
   updateShift: (shift) => {
@@ -748,9 +866,9 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
   },
 
-  notifyMention: (recipientIds, actorName, taskTitle, taskId) => {
+  notifyMention: (recipientIds, actorName, taskTitle, taskId, teamId) => {
     const msg = `${actorName} mentioned you in a comment on "${taskTitle}"`;
-    notifyMany(recipientIds, 'comment_mention', msg, { taskId });
+    notifyMany(recipientIds, 'comment_mention', msg, { taskId, teamId });
   },
 
   // Load all data with resilient fetching

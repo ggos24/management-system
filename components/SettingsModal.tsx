@@ -17,6 +17,7 @@ import { Label, Badge } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
+import { isAdminOrAbove, isSuperAdmin } from '../constants';
 
 export const SettingsModal: React.FC = () => {
   const { isSettingsModalOpen, setIsSettingsModalOpen, activeSettingsTab, setActiveSettingsTab, setIsInviteModalOpen } =
@@ -353,7 +354,21 @@ export const SettingsModal: React.FC = () => {
             <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
               {members.map((m) => {
                 const isMe = m.id === currentUser.id;
-                const canManage = currentUser.role === 'admin' && !isMe;
+                const canManage = isAdminOrAbove(currentUser.role) && !isMe;
+                // Only super_admins can assign/remove super_admin role
+                const canAssignSuperAdmin = isSuperAdmin(currentUser.role);
+                const roleOptions = canAssignSuperAdmin
+                  ? [
+                      { value: 'super_admin', label: 'Super Admin' },
+                      { value: 'admin', label: 'Admin' },
+                      { value: 'user', label: 'User' },
+                    ]
+                  : [
+                      { value: 'admin', label: 'Admin' },
+                      { value: 'user', label: 'User' },
+                    ];
+                const roleBadgeColor = m.role === 'super_admin' ? 'purple' : m.role === 'admin' ? 'blue' : 'zinc';
+                const roleLabel = m.role === 'super_admin' ? 'Super Admin' : m.role === 'admin' ? 'Admin' : 'User';
                 return (
                   <div
                     key={m.id}
@@ -370,26 +385,23 @@ export const SettingsModal: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {canManage ? (
+                      {canManage && (m.role !== 'super_admin' || canAssignSuperAdmin) ? (
                         <>
                           <CustomSelect
                             compact
                             value={m.role}
                             onChange={(newRole) => {
-                              updateMemberRole(m.id, newRole as 'admin' | 'user');
-                              toast.success(`${m.name} is now ${newRole}`);
+                              updateMemberRole(m.id, newRole as any);
+                              toast.success(`${m.name} is now ${newRole === 'super_admin' ? 'Super Admin' : newRole}`);
                             }}
-                            options={[
-                              { value: 'admin', label: 'Admin' },
-                              { value: 'user', label: 'User' },
-                            ]}
+                            options={roleOptions}
                             renderValue={(v) => (
                               <span className="flex items-center gap-1 text-xs">
-                                {v === 'admin' ? 'Admin' : 'User'}
+                                {v === 'super_admin' ? 'Super Admin' : v === 'admin' ? 'Admin' : 'User'}
                                 <ChevronDown size={12} className="text-zinc-400" />
                               </span>
                             )}
-                            dropdownMinWidth={90}
+                            dropdownMinWidth={110}
                             className="w-auto"
                           />
                           <button
@@ -404,8 +416,8 @@ export const SettingsModal: React.FC = () => {
                           </button>
                         </>
                       ) : (
-                        <Badge color={m.role === 'admin' ? 'blue' : 'zinc'} className="px-2">
-                          {m.role}
+                        <Badge color={roleBadgeColor} className="px-2">
+                          {roleLabel}
                         </Badge>
                       )}
                     </div>
@@ -413,7 +425,7 @@ export const SettingsModal: React.FC = () => {
                 );
               })}
             </div>
-            {currentUser.role === 'admin' && (
+            {isAdminOrAbove(currentUser.role) && (
               <button
                 onClick={() => setIsInviteModalOpen(true)}
                 className="w-full py-2 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors mt-3"
@@ -589,7 +601,7 @@ export const SettingsModal: React.FC = () => {
             'My Profile',
             'Notifications',
             'Team Members',
-            ...(currentUser?.role === 'admin' ? ['Placements'] : []),
+            ...(currentUser && isAdminOrAbove(currentUser.role) ? ['Placements'] : []),
             'Logs History',
           ].map((tab) => (
             <button
