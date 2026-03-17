@@ -10,7 +10,15 @@ export function useAuth() {
   const loadNotifications = useUiStore((s) => s.loadNotifications);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    supabase.auth.getSession().then(({ data: { session }, error }) => {
+      if (error) {
+        // Corrupted or expired session — clear local state and force fresh login
+        supabase.auth.signOut().catch(() => {});
+        setSession(null);
+        setCurrentUser(null);
+        setIsLoading(false);
+        return;
+      }
       setSession(session);
       if (session) {
         initData(session.user.id);
@@ -46,7 +54,10 @@ export function useAuth() {
       setCurrentUser(profile);
       loadNotifications();
     } catch {
-      setProfileError('Failed to load application data. Please try refreshing.');
+      // If data loading fails, sign out to break any retry loops
+      await supabase.auth.signOut().catch(() => {});
+      setSession(null);
+      setCurrentUser(null);
     } finally {
       setIsLoading(false);
     }
