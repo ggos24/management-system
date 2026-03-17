@@ -54,10 +54,7 @@ export function useAuth() {
       setCurrentUser(profile);
       loadNotifications();
     } catch {
-      // If data loading fails, sign out to break any retry loops
-      await supabase.auth.signOut().catch(() => {});
-      setSession(null);
-      setCurrentUser(null);
+      setProfileError('Failed to load application data. Please try refreshing.');
     } finally {
       setIsLoading(false);
     }
