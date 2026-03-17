@@ -406,7 +406,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Derived columns to display: If searching, only show columns with tasks; then apply status sort
   const displayColumns = useMemo(() => {
-    const hasActiveFilter = searchQuery || filterPerson !== 'all' || filterPriority !== 'all' || filterPlacements.length > 0;
+    const hasActiveFilter =
+      searchQuery || filterPerson !== 'all' || filterPriority !== 'all' || filterPlacements.length > 0;
     let cols = hasActiveFilter ? columns.filter((col) => filteredTasks.some((t) => t.status === col.id)) : [...columns];
 
     if (statusSort) {
@@ -427,7 +428,16 @@ const Workspace: React.FC<WorkspaceProps> = ({
     }
 
     return cols;
-  }, [columns, filteredTasks, searchQuery, filterPerson, filterPriority, filterPlacements, statusSort, statusSortDirection]);
+  }, [
+    columns,
+    filteredTasks,
+    searchQuery,
+    filterPerson,
+    filterPriority,
+    filterPlacements,
+    statusSort,
+    statusSortDirection,
+  ]);
 
   const getMembersByIds = (ids: string[]) => members.filter((m) => ids.includes(m.id));
 
@@ -1036,12 +1046,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               >
                                 <MoreHorizontal size={14} />
                               </button>
-                              <button
-                                onClick={() => onAddTask({ status: col.id })}
-                                className="text-zinc-400 hover:text-black dark:hover:text-white transition-colors p-1"
-                              >
-                                <Plus size={14} />
-                              </button>
+                              {teamFilter !== 'my-work' && (
+                                <button
+                                  onClick={() => onAddTask({ status: col.id })}
+                                  className="text-zinc-400 hover:text-black dark:hover:text-white transition-colors p-1"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                              )}
                             </div>
 
                             <ColumnMenu
@@ -1684,7 +1696,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                     selected={tagVals}
                                                     tagColors={prop.optionColors || {}}
                                                     onChange={(tags) =>
-                                                      onUpdateTask({ ...task, customFieldValues: { ...task.customFieldValues, [propId]: tags } })
+                                                      onUpdateTask({
+                                                        ...task,
+                                                        customFieldValues: {
+                                                          ...task.customFieldValues,
+                                                          [propId]: tags,
+                                                        },
+                                                      })
                                                     }
                                                     onAddTag={(name, color) => {
                                                       if (onUpdateProperty) {
@@ -1737,7 +1755,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               </tr>
                             )}
                             {/* Add Task Row */}
-                            {!searchQuery && (
+                            {!searchQuery && teamFilter !== 'my-work' && (
                               <tr
                                 className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
                                 onClick={() => onAddTask({ status: col.id })}
@@ -2049,7 +2067,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     <div
                       key={i}
                       className={`flex flex-col min-h-[100px] relative transition-colors border-b border-r border-zinc-200 dark:border-zinc-800 group/cell last:border-r-0 ${isToday ? 'bg-blue-50/50 dark:bg-blue-900/20' : 'bg-white dark:bg-black hover:bg-zinc-50 dark:hover:bg-zinc-900/20'}`}
-                      onClick={() => onAddTask({ dueDate: dateStr })}
+                      onClick={() => teamFilter !== 'my-work' && onAddTask({ dueDate: dateStr })}
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDropDate(e, dateStr)}
                     >

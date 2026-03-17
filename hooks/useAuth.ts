@@ -23,7 +23,7 @@ export function useAuth() {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
-      if (session && !currentUser) {
+      if (session && !useAuthStore.getState().currentUser) {
         initData(session.user.id);
       } else if (!session) {
         setCurrentUser(null);
