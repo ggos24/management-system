@@ -1,6 +1,17 @@
 import { create } from 'zustand';
 import { toast } from 'sonner';
-import { Task, Team, Member, Absence, Shift, LogEntry, CustomProperty, NotificationType, UserRole } from '../types';
+import {
+  Task,
+  Team,
+  Member,
+  Absence,
+  Shift,
+  LogEntry,
+  CustomProperty,
+  TaskTeamLink,
+  NotificationType,
+  UserRole,
+} from '../types';
 import { isSuperAdmin } from '../constants';
 import * as db from '../lib/database';
 import { useAuthStore } from './authStore';
@@ -62,11 +73,14 @@ interface DataState {
   archivedStatuses: Record<string, string[]>;
   permissions: Record<string, { canEdit: boolean; canDelete: boolean; canCreate: boolean }>;
   allPlacements: string[];
+  teamPlacements: Record<string, string[]>;
   integrations: Record<string, boolean>;
+  taskTeamLinks: TaskTeamLink[];
   deletedTasks: Task[];
   deletedTaskCount: number;
 
   // Setters
+  setTaskTeamLinks: (links: TaskTeamLink[]) => void;
   setTasks: (tasks: Task[]) => void;
   setTeams: (teams: Team[]) => void;
   setMembers: (members: Member[]) => void;
@@ -80,15 +94,26 @@ interface DataState {
   setArchivedStatuses: (statuses: Record<string, string[]>) => void;
   setPermissions: (perms: Record<string, { canEdit: boolean; canDelete: boolean; canCreate: boolean }>) => void;
   setAllPlacements: (placements: string[]) => void;
+  setTeamPlacements: (tp: Record<string, string[]>) => void;
   addPlacement: (name: string) => void;
   renamePlacement: (oldName: string, newName: string) => void;
   deletePlacement: (name: string) => void;
+  addTeamPlacement: (teamId: string, name: string) => void;
+  deleteTeamPlacement: (teamId: string, name: string) => void;
+  renameTeamPlacement: (teamId: string, oldName: string, newName: string) => void;
+  renameType: (teamId: string, oldName: string, newName: string) => void;
   setIntegrations: (integrations: Record<string, boolean>) => void;
   setDeletedTasks: (tasks: Task[]) => void;
   setDeletedTaskCount: (count: number) => void;
 
+  // Task team link actions
+  linkTaskToTeam: (taskId: string, teamId: string) => void;
+  unlinkTaskFromTeam: (taskId: string, teamId: string) => void;
+  updateLinkedTaskStatus: (taskId: string, teamId: string, newStatus: string) => void;
+  updateLinkedTaskFields: (taskId: string, teamId: string, values: Record<string, any>) => void;
+
   // Task actions
-  updateTaskStatus: (taskId: string, newStatus: string) => void;
+  updateTaskStatus: (taskId: string, newStatus: string, teamContext?: string) => void;
   updateTask: (updatedTask: Task) => void;
   deleteTask: (taskId: string) => void;
   addTask: (task: Task) => void;
@@ -170,11 +195,14 @@ export const useDataStore = create<DataState>((set, get) => ({
   archivedStatuses: {},
   permissions: {},
   allPlacements: [],
+  teamPlacements: {},
   integrations: {},
+  taskTeamLinks: [],
   deletedTasks: [],
   deletedTaskCount: 0,
 
   // Setters
+  setTaskTeamLinks: (links) => set({ taskTeamLinks: links }),
   setTasks: (tasks) => set({ tasks }),
   setTeams: (teams) => set({ teams }),
   setMembers: (members) => set({ members }),
@@ -188,6 +216,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   setArchivedStatuses: (statuses) => set({ archivedStatuses: statuses }),
   setPermissions: (perms) => set({ permissions: perms }),
   setAllPlacements: (placements) => set({ allPlacements: placements }),
+  setTeamPlacements: (tp) => set({ teamPlacements: tp }),
   addPlacement: (name) => {
     const { allPlacements } = get();
     if (allPlacements.includes(name)) return;
@@ -216,12 +245,120 @@ export const useDataStore = create<DataState>((set, get) => ({
     });
     db.deletePlacement(name).catch(() => toast.error('Failed to delete placement'));
   },
+  addTeamPlacement: (teamId, name) => {
+    const { teamPlacements } = get();
+    const current = teamPlacements[teamId] || [];
+    if (current.includes(name)) return;
+    set({ teamPlacements: { ...teamPlacements, [teamId]: [...current, name] } });
+    db.syncTeamPlacements(teamId, [...current, name]).catch(() => toast.error('Failed to add placement'));
+  },
+  deleteTeamPlacement: (teamId, name) => {
+    const { teamPlacements } = get();
+    const current = teamPlacements[teamId] || [];
+    const updated = current.filter((p) => p !== name);
+    set({ teamPlacements: { ...teamPlacements, [teamId]: updated } });
+    db.syncTeamPlacements(teamId, updated).catch(() => toast.error('Failed to delete placement'));
+  },
+  renameTeamPlacement: (teamId, oldName, newName) => {
+    const { teamPlacements, tasks } = get();
+    const current = teamPlacements[teamId] || [];
+    const updated = current.map((p) => (p === oldName ? newName : p));
+    set({
+      teamPlacements: { ...teamPlacements, [teamId]: updated },
+      tasks: tasks.map((t) =>
+        t.teamId === teamId ? { ...t, placements: t.placements.map((p) => (p === oldName ? newName : p)) } : t,
+      ),
+    });
+    db.syncTeamPlacements(teamId, updated).catch(() => toast.error('Failed to rename placement'));
+    // Also rename in global placements table for task persistence
+    db.renamePlacement(oldName, newName).catch(console.error);
+  },
+  renameType: (teamId, oldName, newName) => {
+    const { teamTypes, tasks } = get();
+    const current = teamTypes[teamId] || [];
+    const updated = current.map((t) => (t === oldName ? newName : t));
+    set({
+      teamTypes: { ...teamTypes, [teamId]: updated },
+      tasks: tasks.map((t) =>
+        t.teamId === teamId && t.contentInfo?.type === oldName
+          ? { ...t, contentInfo: { ...t.contentInfo, type: newName } }
+          : t,
+      ),
+    });
+    db.syncTeamContentTypes(teamId, updated).catch(() => toast.error('Failed to rename content type'));
+  },
   setIntegrations: (integrations) => set({ integrations }),
   setDeletedTasks: (deletedTasks) => set({ deletedTasks }),
   setDeletedTaskCount: (deletedTaskCount) => set({ deletedTaskCount }),
 
+  // Task team link actions
+  linkTaskToTeam: (taskId, teamId) => {
+    const { taskTeamLinks, teamStatuses } = get();
+    const statuses = teamStatuses[teamId] || [];
+    const defaultStatus = 'Backlog';
+    if (!statuses.includes('Backlog')) {
+      const newStatuses = ['Backlog', ...statuses];
+      set({ teamStatuses: { ...get().teamStatuses, [teamId]: newStatuses } });
+      db.syncTeamStatuses(teamId, newStatuses).catch(console.error);
+    }
+    const addedBy = getCurrentUserId() || undefined;
+    const optimisticLink: TaskTeamLink = {
+      id: crypto.randomUUID(),
+      taskId,
+      teamId,
+      status: defaultStatus,
+      sortOrder: 0,
+      customFieldValues: {},
+      addedBy,
+      createdAt: new Date().toISOString(),
+    };
+    set({ taskTeamLinks: [...taskTeamLinks, optimisticLink] });
+    db.insertTaskTeamLink(taskId, teamId, defaultStatus, addedBy).catch(() => {
+      set({ taskTeamLinks: get().taskTeamLinks.filter((l) => l.id !== optimisticLink.id) });
+      toast.error('Failed to link task');
+    });
+  },
+
+  unlinkTaskFromTeam: (taskId, teamId) => {
+    const prev = get().taskTeamLinks;
+    set({ taskTeamLinks: prev.filter((l) => !(l.taskId === taskId && l.teamId === teamId)) });
+    db.deleteTaskTeamLink(taskId, teamId).catch(() => {
+      set({ taskTeamLinks: prev });
+      toast.error('Failed to unlink task');
+    });
+  },
+
+  updateLinkedTaskStatus: (taskId, teamId, newStatus) => {
+    const prev = get().taskTeamLinks;
+    set({
+      taskTeamLinks: prev.map((l) => (l.taskId === taskId && l.teamId === teamId ? { ...l, status: newStatus } : l)),
+    });
+    db.updateTaskTeamLinkStatus(taskId, teamId, newStatus).catch(() => set({ taskTeamLinks: prev }));
+  },
+
+  updateLinkedTaskFields: (taskId, teamId, values) => {
+    const prev = get().taskTeamLinks;
+    set({
+      taskTeamLinks: prev.map((l) =>
+        l.taskId === taskId && l.teamId === teamId ? { ...l, customFieldValues: values } : l,
+      ),
+    });
+    db.updateTaskTeamLinkFields(taskId, teamId, values).catch(() => set({ taskTeamLinks: prev }));
+  },
+
   // Task actions
-  updateTaskStatus: (taskId, newStatus) => {
+  updateTaskStatus: (taskId, newStatus, teamContext?) => {
+    // If teamContext is provided and differs from the task's home team, update the link instead
+    if (teamContext && teamContext !== 'my-work') {
+      const task = get().tasks.find((t) => t.id === taskId);
+      if (task && task.teamId !== teamContext) {
+        const link = get().taskTeamLinks.find((l) => l.taskId === taskId && l.teamId === teamContext);
+        if (link) {
+          get().updateLinkedTaskStatus(taskId, teamContext, newStatus);
+          return;
+        }
+      }
+    }
     const prev = get().tasks;
     const task = prev.find((t) => t.id === taskId);
     if (task && task.status === newStatus) return; // Same status, no-op
@@ -539,13 +676,13 @@ export const useDataStore = create<DataState>((set, get) => ({
     set({ teams: [...get().teams, team] });
     const { teamStatuses, teamTypes } = get();
     set({
-      teamStatuses: { ...teamStatuses, [team.id]: ['To Do', 'In Progress', 'Done'] },
+      teamStatuses: { ...teamStatuses, [team.id]: ['Backlog', 'To Do', 'In Progress', 'Done'] },
       teamTypes: { ...teamTypes, [team.id]: ['General'] },
     });
 
     db.upsertTeam(team)
       .then(() => {
-        db.syncTeamStatuses(team.id, ['To Do', 'In Progress', 'Done']);
+        db.syncTeamStatuses(team.id, ['Backlog', 'To Do', 'In Progress', 'Done']);
         db.syncTeamContentTypes(team.id, ['General']);
       })
       .catch(() => toast.error('Failed to create team'));
@@ -893,10 +1030,14 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchIntegrations(),
       db.fetchStatusCategories(),
       db.fetchDeletedTaskCount(),
+      db.fetchTaskTeamLinks(),
+      db.fetchTeamPlacements(),
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
       result.status === 'fulfilled' ? result.value : fallback;
+
+    const teamPlacementsData = getValue(results[15], {} as Record<string, string[]>);
 
     set({
       teams: getValue(results[0], []),
@@ -913,6 +1054,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       integrations: getValue(results[11], {}),
       statusCategories: getValue(results[12], {}),
       deletedTaskCount: getValue(results[13], 0),
+      taskTeamLinks: getValue(results[14], []),
+      teamPlacements: teamPlacementsData,
     });
 
     // Auto-purge tasks deleted more than 30 days ago (fire-and-forget)

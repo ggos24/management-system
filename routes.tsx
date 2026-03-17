@@ -12,6 +12,7 @@ import { useAuthStore } from './stores/authStore';
 import { useDataStore } from './stores/dataStore';
 import { useUiStore } from './stores/uiStore';
 import { findTeamByParam } from './lib/utils';
+
 import { Task, DocSection } from './types';
 import { isAdminOrAbove } from './constants';
 
@@ -70,6 +71,7 @@ const MyWorkspaceRoute: React.FC = () => {
   const {
     tasks,
     members,
+    teams,
     updateTaskStatus,
     updateTask,
     teamStatuses,
@@ -86,11 +88,22 @@ const MyWorkspaceRoute: React.FC = () => {
     reorderProperties,
     reorderTaskInStatus,
     allPlacements,
+    teamPlacements,
     teamTypes,
+    taskTeamLinks,
+    linkTaskToTeam,
+    deleteTask,
   } = useDataStore();
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setIsAiChatOpen = useUiStore((s) => s.setIsAiChatOpen);
   const { openTaskModal } = useOutletContext<LayoutContext>();
+
+  // My Workspace: union of all team placements (fallback to global)
+  const myPlacements = React.useMemo(() => {
+    const all = Object.values(teamPlacements).flat();
+    const unique = [...new Set(all)];
+    return unique.length > 0 ? unique : allPlacements;
+  }, [teamPlacements, allPlacements]);
 
   return (
     <Workspace
@@ -99,7 +112,7 @@ const MyWorkspaceRoute: React.FC = () => {
       teamName="My Workspace"
       members={members}
       currentUserId={currentUser.id}
-      onUpdateTaskStatus={updateTaskStatus}
+      onUpdateTaskStatus={(id, status) => updateTaskStatus(id, status)}
       onAddTask={openTaskModal}
       searchQuery={searchQuery}
       onTaskClick={openTaskModal}
@@ -119,8 +132,12 @@ const MyWorkspaceRoute: React.FC = () => {
       onReorderProperties={(ids) => reorderProperties('my-work', ids)}
       userRole={currentUser.role}
       onReorderTask={reorderTaskInStatus}
-      allPlacements={allPlacements}
+      allPlacements={myPlacements}
       teamTypes={teamTypes}
+      taskTeamLinks={taskTeamLinks}
+      allTeams={teams}
+      onLinkTaskToTeam={linkTaskToTeam}
+      onDeleteTask={deleteTask}
     />
   );
 };
@@ -148,7 +165,11 @@ const TeamWorkspaceRoute: React.FC = () => {
     reorderProperties,
     reorderTaskInStatus,
     allPlacements,
+    teamPlacements,
     teamTypes,
+    taskTeamLinks,
+    linkTaskToTeam,
+    deleteTask,
   } = useDataStore();
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setIsAiChatOpen = useUiStore((s) => s.setIsAiChatOpen);
@@ -160,6 +181,9 @@ const TeamWorkspaceRoute: React.FC = () => {
     return <Navigate to="/workspace" replace />;
   }
 
+  // Use per-team placements, fallback to global
+  const teamPlacementList = teamPlacements[team.id] || allPlacements;
+
   return (
     <Workspace
       key={team.id}
@@ -168,10 +192,10 @@ const TeamWorkspaceRoute: React.FC = () => {
       teamName={team.name}
       members={members}
       currentUserId={currentUser.id}
-      onUpdateTaskStatus={updateTaskStatus}
+      onUpdateTaskStatus={(id, status) => updateTaskStatus(id, status, team.id)}
       onAddTask={openTaskModal}
       searchQuery={searchQuery}
-      onTaskClick={openTaskModal}
+      onTaskClick={(task) => openTaskModal({ ...task, viewingTeamId: team.id })}
       onOpenAiChat={() => setIsAiChatOpen(true)}
       onUpdateTask={updateTask}
       teamStatuses={teamStatuses}
@@ -188,8 +212,12 @@ const TeamWorkspaceRoute: React.FC = () => {
       onReorderProperties={(ids) => reorderProperties(team.id, ids)}
       userRole={currentUser.role}
       onReorderTask={reorderTaskInStatus}
-      allPlacements={allPlacements}
+      allPlacements={teamPlacementList}
       teamTypes={teamTypes}
+      taskTeamLinks={taskTeamLinks}
+      allTeams={teams}
+      onLinkTaskToTeam={linkTaskToTeam}
+      onDeleteTask={deleteTask}
     />
   );
 };
@@ -214,12 +242,6 @@ const BinRoute: React.FC = () => {
 const LoginRoute: React.FC = () => {
   const session = useAuthStore((s) => s.session);
   const currentUser = useAuthStore((s) => s.currentUser);
-  const setSession = useAuthStore((s) => s.setSession);
-  const setIsLoading = useAuthStore((s) => s.setIsLoading);
-  const loadAllData = useDataStore((s) => s.loadAllData);
-  const setCurrentUser = useAuthStore((s) => s.setCurrentUser);
-  const setProfileError = useAuthStore((s) => s.setProfileError);
-  const loadNotifications = useUiStore((s) => s.loadNotifications);
 
   // Only redirect if fully authenticated (session + profile loaded)
   if (session && currentUser) {
@@ -229,23 +251,10 @@ const LoginRoute: React.FC = () => {
   return (
     <LoginPage
       onLogin={async (newSession) => {
-        setIsLoading(true);
-        try {
-          const profile = await loadAllData(newSession.user.id);
-          if (!profile) {
-            setIsLoading(false);
-            setProfileError('No profile found for this account. Please contact an administrator.');
-            return;
-          }
-          setCurrentUser(profile);
-          setSession(newSession);
-          loadNotifications();
-        } catch {
-          setIsLoading(false);
-          setProfileError('Failed to load application data. Please try refreshing.');
-        } finally {
-          setIsLoading(false);
-        }
+        const state = useAuthStore.getState();
+        state.setIsLoading(true);
+        state.setSession(newSession);
+        await state.initData(newSession.user.id);
       }}
     />
   );

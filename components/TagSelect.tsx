@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { X, Check, Plus, ChevronDown } from 'lucide-react';
 
 const TAG_COLORS = [
@@ -56,6 +57,11 @@ interface TagSelectProps {
   maxVisible?: number;
 }
 
+interface ColorPickerPos {
+  top: number;
+  left: number;
+}
+
 export const TagSelect: React.FC<TagSelectProps> = ({
   tags,
   selected,
@@ -72,11 +78,18 @@ export const TagSelect: React.FC<TagSelectProps> = ({
   const [newTagColor, setNewTagColor] = useState(TAG_COLORS[4].hex);
   const [isAdding, setIsAdding] = useState(false);
   const [editingTagColor, setEditingTagColor] = useState<string | null>(null);
+  const [colorPickerPos, setColorPickerPos] = useState<ColorPickerPos | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const colorPickerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      const target = event.target as Node;
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target) &&
+        (!colorPickerRef.current || !colorPickerRef.current.contains(target))
+      ) {
         setIsOpen(false);
         setIsAdding(false);
         setEditingTagColor(null);
@@ -86,21 +99,39 @@ export const TagSelect: React.FC<TagSelectProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
+  const openColorPicker = useCallback(
+    (tag: string, buttonEl: HTMLButtonElement) => {
+      if (editingTagColor === tag) {
+        setEditingTagColor(null);
+        setColorPickerPos(null);
+        return;
+      }
+      const rect = buttonEl.getBoundingClientRect();
+      setColorPickerPos({
+        top: rect.top - 4,
+        left: rect.right + 4,
+      });
+      setEditingTagColor(tag);
+    },
+    [editingTagColor],
+  );
+
   const toggleSelection = (tag: string) => {
-    const newSelected = selected.includes(tag) ? selected.filter((s) => s !== tag) : [...selected, tag];
+    // Single-select: clicking the already-selected tag deselects it, otherwise replace
+    const newSelected = selected.includes(tag) ? [] : [tag];
     onChange(newSelected);
+    if (!selected.includes(tag)) setIsOpen(false);
   };
 
   const handleAddTag = () => {
     const trimmed = newTagName.trim();
     if (!trimmed || !onAddTag) return;
     onAddTag(trimmed, newTagColor);
-    if (!selected.includes(trimmed)) {
-      onChange([...selected, trimmed]);
-    }
+    onChange([trimmed]);
     setNewTagName('');
     setNewTagColor(TAG_COLORS[4].hex);
     setIsAdding(false);
+    setIsOpen(false);
   };
 
   const visibleTags = maxVisible != null && !isOpen ? selected.slice(0, maxVisible) : selected;
@@ -169,7 +200,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
-                      setEditingTagColor(editingTagColor === tag ? null : tag);
+                      openColorPicker(tag, e.currentTarget);
                     }}
                     className="p-1 rounded opacity-0 group-hover/tag:opacity-100 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-opacity flex-shrink-0"
                   >
@@ -178,27 +209,6 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                       style={{ backgroundColor: tagColors[tag] || TAG_COLORS[0].hex }}
                     />
                   </button>
-                )}
-                {editingTagColor === tag && (
-                  <div
-                    className="absolute right-0 top-0 translate-x-full ml-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-50 p-2"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="grid grid-cols-5 gap-1">
-                      {TAG_COLORS.map((c) => (
-                        <button
-                          key={c.hex}
-                          onClick={() => {
-                            onUpdateTagColor!(tag, c.hex);
-                            setEditingTagColor(null);
-                          }}
-                          className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${tagColors[tag] === c.hex ? 'border-zinc-900 dark:border-white scale-110' : 'border-transparent'}`}
-                          style={{ backgroundColor: c.hex }}
-                          title={c.name}
-                        />
-                      ))}
-                    </div>
-                  </div>
                 )}
               </div>
             );
@@ -258,6 +268,35 @@ export const TagSelect: React.FC<TagSelectProps> = ({
           )}
         </div>
       )}
+
+      {editingTagColor &&
+        colorPickerPos &&
+        onUpdateTagColor &&
+        createPortal(
+          <div
+            ref={colorPickerRef}
+            className="fixed bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg p-2 animate-in fade-in zoom-in-95 duration-100"
+            style={{ top: colorPickerPos.top, left: colorPickerPos.left, zIndex: 9999, transform: 'translateY(-100%)' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="grid grid-cols-5 gap-1">
+              {TAG_COLORS.map((c) => (
+                <button
+                  key={c.hex}
+                  onClick={() => {
+                    onUpdateTagColor(editingTagColor, c.hex);
+                    setEditingTagColor(null);
+                    setColorPickerPos(null);
+                  }}
+                  className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${tagColors[editingTagColor] === c.hex ? 'border-zinc-900 dark:border-white scale-110' : 'border-transparent'}`}
+                  style={{ backgroundColor: c.hex }}
+                  title={c.name}
+                />
+              ))}
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };

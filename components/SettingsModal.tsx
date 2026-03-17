@@ -39,6 +39,14 @@ export const SettingsModal: React.FC = () => {
     addPlacement,
     renamePlacement,
     deletePlacement,
+    teamTypes,
+    addType,
+    deleteType,
+    renameType,
+    teamPlacements,
+    addTeamPlacement,
+    deleteTeamPlacement,
+    renameTeamPlacement,
   } = useDataStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -50,6 +58,10 @@ export const SettingsModal: React.FC = () => {
   const [editingPlacementId, setEditingPlacementId] = useState<string | null>(null);
   const [placementDraft, setPlacementDraft] = useState('');
   const [newPlacementName, setNewPlacementName] = useState('');
+  const [selectedContentTeamId, setSelectedContentTeamId] = useState<string>('');
+  const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
+  const [typeDraft, setTypeDraft] = useState('');
+  const [newTypeName, setNewTypeName] = useState('');
 
   // Telegram linking state
   const [telegramLink, setTelegramLink] = useState<TelegramLink | null>(null);
@@ -72,6 +84,19 @@ export const SettingsModal: React.FC = () => {
       loadTelegramLink();
     }
   }, [isSettingsModalOpen, activeSettingsTab, loadTelegramLink]);
+
+  // Auto-select first team when Content tab opens
+  const nonArchivedTeams = teams.filter((t) => !t.archived);
+  useEffect(() => {
+    if (
+      isSettingsModalOpen &&
+      activeSettingsTab === 'Content' &&
+      !selectedContentTeamId &&
+      nonArchivedTeams.length > 0
+    ) {
+      setSelectedContentTeamId(nonArchivedTeams[0].id);
+    }
+  }, [isSettingsModalOpen, activeSettingsTab, selectedContentTeamId, nonArchivedTeams]);
 
   const generateTelegramCode = async () => {
     if (!currentUser) return;
@@ -466,128 +491,275 @@ export const SettingsModal: React.FC = () => {
             </div>
           </div>
         );
-      case 'Placements':
+      case 'Content': {
+        const currentTypes = selectedContentTeamId ? teamTypes[selectedContentTeamId] || [] : [];
+        const currentPlacements = selectedContentTeamId ? teamPlacements[selectedContentTeamId] || [] : [];
         return (
-          <div>
-            <div className="flex items-center gap-2 mb-3">
-              <Globe size={16} className="text-zinc-400" />
-              <Label variant="section" className="!mb-0">
-                Placements
-              </Label>
-              <span className="text-xs text-zinc-400">{allPlacements.length}</span>
-            </div>
-            <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
-              {allPlacements.map((p) => (
-                <div
-                  key={p}
-                  className="flex items-center justify-between px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
-                >
-                  {editingPlacementId === p ? (
-                    <form
-                      className="flex items-center gap-1.5 flex-1"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        const trimmed = placementDraft.trim();
-                        if (trimmed && trimmed !== p) {
-                          if (allPlacements.includes(trimmed)) {
-                            toast.error('Placement already exists');
-                            return;
-                          }
-                          renamePlacement(p, trimmed);
-                          toast.success('Placement renamed');
-                        }
-                        setEditingPlacementId(null);
-                      }}
-                    >
-                      <input
-                        autoFocus
-                        value={placementDraft}
-                        onChange={(e) => setPlacementDraft(e.target.value)}
-                        className="flex-1 text-sm bg-zinc-100 dark:bg-zinc-800 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                      <button type="submit" className="text-emerald-500 hover:text-emerald-600">
-                        <Check size={14} />
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setEditingPlacementId(null)}
-                        className="text-zinc-400 hover:text-zinc-600"
-                      >
-                        <X size={14} />
-                      </button>
-                    </form>
-                  ) : (
-                    <>
-                      <span
-                        className="text-sm cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
-                        onClick={() => {
-                          setEditingPlacementId(p);
-                          setPlacementDraft(p);
-                        }}
-                      >
-                        {p}
-                      </span>
-                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={() => {
-                            setEditingPlacementId(p);
-                            setPlacementDraft(p);
-                          }}
-                          className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                        >
-                          <Pencil size={12} />
-                        </button>
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete "${p}"? It will be removed from all tasks.`)) {
-                              deletePlacement(p);
-                              toast.success('Placement deleted');
-                            }
-                          }}
-                          className="p-1 text-zinc-400 hover:text-red-500"
-                        >
-                          <Trash2 size={12} />
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </div>
-              ))}
-              {allPlacements.length === 0 && (
-                <div className="px-3 py-4 text-sm text-zinc-400 text-center">No placements yet</div>
-              )}
-            </div>
-            <form
-              className="flex gap-2 mt-3"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const trimmed = newPlacementName.trim();
-                if (!trimmed) return;
-                if (allPlacements.includes(trimmed)) {
-                  toast.error('Placement already exists');
-                  return;
-                }
-                addPlacement(trimmed);
-                setNewPlacementName('');
-                toast.success('Placement added');
-              }}
-            >
-              <input
-                value={newPlacementName}
-                onChange={(e) => setNewPlacementName(e.target.value)}
-                placeholder="New placement..."
-                className="flex-1 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+          <div className="space-y-5">
+            {/* Workspace selector */}
+            <div>
+              <Label variant="section">Workspace</Label>
+              <CustomSelect
+                value={selectedContentTeamId}
+                onChange={(id) => {
+                  setSelectedContentTeamId(id);
+                  setEditingTypeId(null);
+                  setEditingPlacementId(null);
+                }}
+                placeholder="Select workspace..."
+                options={nonArchivedTeams.map((t) => ({ value: t.id, label: t.name }))}
               />
-              <button
-                type="submit"
-                disabled={!newPlacementName.trim()}
-                className="px-3 py-2 bg-black dark:bg-white text-white dark:text-black text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center gap-1.5"
-              >
-                <Plus size={14} /> Add
-              </button>
-            </form>
+            </div>
+
+            {selectedContentTeamId && (
+              <>
+                {/* Content Types section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Label variant="section" className="!mb-0">
+                      Content Types
+                    </Label>
+                    <span className="text-xs text-zinc-400">{currentTypes.length}</span>
+                  </div>
+                  <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {currentTypes.map((t) => (
+                      <div
+                        key={t}
+                        className="flex items-center justify-between px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
+                      >
+                        {editingTypeId === t ? (
+                          <form
+                            className="flex items-center gap-1.5 flex-1"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const trimmed = typeDraft.trim();
+                              if (trimmed && trimmed !== t) {
+                                if (currentTypes.includes(trimmed)) {
+                                  toast.error('Content type already exists');
+                                  return;
+                                }
+                                renameType(selectedContentTeamId, t, trimmed);
+                                toast.success('Content type renamed');
+                              }
+                              setEditingTypeId(null);
+                            }}
+                          >
+                            <input
+                              autoFocus
+                              value={typeDraft}
+                              onChange={(e) => setTypeDraft(e.target.value)}
+                              className="flex-1 text-sm bg-zinc-100 dark:bg-zinc-800 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <button type="submit" className="text-emerald-500 hover:text-emerald-600">
+                              <Check size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingTypeId(null)}
+                              className="text-zinc-400 hover:text-zinc-600"
+                            >
+                              <X size={14} />
+                            </button>
+                          </form>
+                        ) : (
+                          <>
+                            <span
+                              className="text-sm cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                              onClick={() => {
+                                setEditingTypeId(t);
+                                setTypeDraft(t);
+                              }}
+                            >
+                              {t}
+                            </span>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => {
+                                  setEditingTypeId(t);
+                                  setTypeDraft(t);
+                                }}
+                                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Delete "${t}"?`)) {
+                                    deleteType(selectedContentTeamId, t);
+                                    toast.success('Content type deleted');
+                                  }
+                                }}
+                                className="p-1 text-zinc-400 hover:text-red-500"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    {currentTypes.length === 0 && (
+                      <div className="px-3 py-4 text-sm text-zinc-400 text-center">No content types yet</div>
+                    )}
+                  </div>
+                  <form
+                    className="flex gap-2 mt-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const trimmed = newTypeName.trim();
+                      if (!trimmed) return;
+                      if (currentTypes.includes(trimmed)) {
+                        toast.error('Content type already exists');
+                        return;
+                      }
+                      addType(selectedContentTeamId, trimmed);
+                      setNewTypeName('');
+                      toast.success('Content type added');
+                    }}
+                  >
+                    <input
+                      value={newTypeName}
+                      onChange={(e) => setNewTypeName(e.target.value)}
+                      placeholder="New content type..."
+                      className="flex-1 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!newTypeName.trim()}
+                      className="px-3 py-2 bg-black dark:bg-white text-white dark:text-black text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center gap-1.5"
+                    >
+                      <Plus size={14} /> Add
+                    </button>
+                  </form>
+                </div>
+
+                {/* Placements section */}
+                <div>
+                  <div className="flex items-center gap-2 mb-2">
+                    <Globe size={16} className="text-zinc-400" />
+                    <Label variant="section" className="!mb-0">
+                      Placements
+                    </Label>
+                    <span className="text-xs text-zinc-400">{currentPlacements.length}</span>
+                  </div>
+                  <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
+                    {currentPlacements.map((p) => (
+                      <div
+                        key={p}
+                        className="flex items-center justify-between px-3 py-2 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors group"
+                      >
+                        {editingPlacementId === p ? (
+                          <form
+                            className="flex items-center gap-1.5 flex-1"
+                            onSubmit={(e) => {
+                              e.preventDefault();
+                              const trimmed = placementDraft.trim();
+                              if (trimmed && trimmed !== p) {
+                                if (currentPlacements.includes(trimmed)) {
+                                  toast.error('Placement already exists');
+                                  return;
+                                }
+                                renameTeamPlacement(selectedContentTeamId, p, trimmed);
+                                toast.success('Placement renamed');
+                              }
+                              setEditingPlacementId(null);
+                            }}
+                          >
+                            <input
+                              autoFocus
+                              value={placementDraft}
+                              onChange={(e) => setPlacementDraft(e.target.value)}
+                              className="flex-1 text-sm bg-zinc-100 dark:bg-zinc-800 rounded px-2 py-1 outline-none focus:ring-2 focus:ring-blue-500"
+                            />
+                            <button type="submit" className="text-emerald-500 hover:text-emerald-600">
+                              <Check size={14} />
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setEditingPlacementId(null)}
+                              className="text-zinc-400 hover:text-zinc-600"
+                            >
+                              <X size={14} />
+                            </button>
+                          </form>
+                        ) : (
+                          <>
+                            <span
+                              className="text-sm cursor-pointer hover:text-zinc-900 dark:hover:text-white transition-colors"
+                              onClick={() => {
+                                setEditingPlacementId(p);
+                                setPlacementDraft(p);
+                              }}
+                            >
+                              {p}
+                            </span>
+                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                              <button
+                                onClick={() => {
+                                  setEditingPlacementId(p);
+                                  setPlacementDraft(p);
+                                }}
+                                className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                              >
+                                <Pencil size={12} />
+                              </button>
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Delete "${p}"? It will be removed from this workspace.`)) {
+                                    deleteTeamPlacement(selectedContentTeamId, p);
+                                    toast.success('Placement deleted');
+                                  }
+                                }}
+                                className="p-1 text-zinc-400 hover:text-red-500"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ))}
+                    {currentPlacements.length === 0 && (
+                      <div className="px-3 py-4 text-sm text-zinc-400 text-center">No placements yet</div>
+                    )}
+                  </div>
+                  <form
+                    className="flex gap-2 mt-2"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const trimmed = newPlacementName.trim();
+                      if (!trimmed) return;
+                      if (currentPlacements.includes(trimmed)) {
+                        toast.error('Placement already exists');
+                        return;
+                      }
+                      addTeamPlacement(selectedContentTeamId, trimmed);
+                      // Also add to global placements for task persistence
+                      if (!allPlacements.includes(trimmed)) addPlacement(trimmed);
+                      setNewPlacementName('');
+                      toast.success('Placement added');
+                    }}
+                  >
+                    <input
+                      value={newPlacementName}
+                      onChange={(e) => setNewPlacementName(e.target.value)}
+                      placeholder="New placement..."
+                      className="flex-1 text-sm bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={!newPlacementName.trim()}
+                      className="px-3 py-2 bg-black dark:bg-white text-white dark:text-black text-sm font-medium rounded-lg hover:opacity-90 transition-opacity disabled:opacity-40 flex items-center gap-1.5"
+                    >
+                      <Plus size={14} /> Add
+                    </button>
+                  </form>
+                </div>
+              </>
+            )}
           </div>
         );
+      }
       default:
         return null;
     }
@@ -601,7 +773,7 @@ export const SettingsModal: React.FC = () => {
             'My Profile',
             'Notifications',
             'Team Members',
-            ...(currentUser && isAdminOrAbove(currentUser.role) ? ['Placements'] : []),
+            ...(currentUser && isAdminOrAbove(currentUser.role) ? ['Content'] : []),
             'Logs History',
           ].map((tab) => (
             <button

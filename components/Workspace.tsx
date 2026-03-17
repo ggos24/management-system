@@ -1,7 +1,7 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
-import { Task, TaskStatus, TeamType, Member, Priority, CustomProperty, UserRole } from '../types';
+import { Task, TaskStatus, TeamType, Member, Priority, CustomProperty, TaskTeamLink, UserRole } from '../types';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent, isAdminOrAbove } from '../constants';
 import {
   Plus,
@@ -37,8 +37,10 @@ import {
   Check,
   ArrowRight,
   Tags as TagsIcon,
+  Link2,
 } from 'lucide-react';
 import { generateContentIdeas } from '../services/geminiService';
+import { Modal } from './Modal';
 import { MultiSelect } from './MultiSelect';
 import { CustomSelect } from './CustomSelect';
 import { TagSelect, getTagColorClasses } from './TagSelect';
@@ -176,6 +178,10 @@ interface WorkspaceProps {
   onReorderTask?: (taskId: string, targetTaskId: string, position: 'before' | 'after') => void;
   allPlacements: string[];
   teamTypes?: Record<string, string[]>;
+  taskTeamLinks?: TaskTeamLink[];
+  allTeams?: { id: string; name: string }[];
+  onLinkTaskToTeam?: (taskId: string, teamId: string) => void;
+  onDeleteTask?: (taskId: string) => void;
 }
 
 type ViewMode = 'board' | 'table' | 'calendar';
@@ -208,6 +214,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
   onReorderTask,
   allPlacements = [],
   teamTypes = {},
+  taskTeamLinks = [],
+  allTeams = [],
+  onLinkTaskToTeam,
+  onDeleteTask,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const [showArchivedStatuses, setShowArchivedStatuses] = useState(false);
@@ -233,6 +243,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // Bulk selection state (table view)
   const [selectedTaskIds, setSelectedTaskIds] = useState<Set<string>>(new Set());
   const [bulkStatusMenuOpen, setBulkStatusMenuOpen] = useState(false);
+  const [bulkDeleteConfirmOpen, setBulkDeleteConfirmOpen] = useState(false);
   const lastClickedTaskRef = useRef<string | null>(null);
 
   // --- Data-driven table columns with persistent ordering ---
@@ -375,6 +386,42 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const [filterPriority, setFilterPriority] = useState('all');
   const [filterPlacements, setFilterPlacements] = useState<string[]>([]);
 
+  // Pre-build lookup of linked task IDs for the current team filter
+  const linkedTaskIdsForTeam = useMemo(() => {
+    if (teamFilter === 'my-work' || teamFilter === 'all') return new Set<string>();
+    return new Set(taskTeamLinks.filter((l) => l.teamId === teamFilter).map((l) => l.taskId));
+  }, [taskTeamLinks, teamFilter]);
+
+  // Resolve a task's status within the current team context
+  const getTaskStatusInTeam = useCallback(
+    (task: Task): string => {
+      if (teamFilter === 'my-work' || teamFilter === 'all' || task.teamId === teamFilter) return task.status;
+      const link = taskTeamLinks.find((l) => l.taskId === task.id && l.teamId === teamFilter);
+      return link ? link.status : task.status;
+    },
+    [teamFilter, taskTeamLinks],
+  );
+
+  // Resolve custom field values for the current team context
+  const getTaskFieldsInTeam = useCallback(
+    (task: Task): Record<string, any> => {
+      if (teamFilter === 'my-work' || teamFilter === 'all' || task.teamId === teamFilter)
+        return task.customFieldValues || {};
+      const link = taskTeamLinks.find((l) => l.taskId === task.id && l.teamId === teamFilter);
+      return link ? link.customFieldValues : task.customFieldValues || {};
+    },
+    [teamFilter, taskTeamLinks],
+  );
+
+  // Check if a task is a linked copy (not home) in the current team
+  const isLinkedCopy = useCallback(
+    (task: Task): boolean => {
+      if (teamFilter === 'my-work' || teamFilter === 'all') return false;
+      return task.teamId !== teamFilter && linkedTaskIdsForTeam.has(task.id);
+    },
+    [teamFilter, linkedTaskIdsForTeam],
+  );
+
   // Filtering Logic
   const filteredTasks = useMemo(() => {
     return tasks.filter((t) => {
@@ -385,7 +432,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           (t.contentInfo?.editorIds?.includes(currentUserId) ?? false) ||
           (t.contentInfo?.designerIds?.includes(currentUserId) ?? false);
       } else {
-        matchTeam = teamFilter === 'all' || t.teamId === teamFilter;
+        matchTeam = teamFilter === 'all' || t.teamId === teamFilter || linkedTaskIdsForTeam.has(t.id);
       }
 
       // Apply Person filter only if NOT in 'my-work'
@@ -402,13 +449,24 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
       return matchTeam && matchPerson && matchPriority && matchPlacement && matchSearch;
     });
-  }, [tasks, teamFilter, filterPerson, filterPriority, filterPlacements, searchQuery, currentUserId]);
+  }, [
+    tasks,
+    teamFilter,
+    filterPerson,
+    filterPriority,
+    filterPlacements,
+    searchQuery,
+    currentUserId,
+    linkedTaskIdsForTeam,
+  ]);
 
   // Derived columns to display: If searching, only show columns with tasks; then apply status sort
   const displayColumns = useMemo(() => {
     const hasActiveFilter =
       searchQuery || filterPerson !== 'all' || filterPriority !== 'all' || filterPlacements.length > 0;
-    let cols = hasActiveFilter ? columns.filter((col) => filteredTasks.some((t) => t.status === col.id)) : [...columns];
+    let cols = hasActiveFilter
+      ? columns.filter((col) => filteredTasks.some((t) => getTaskStatusInTeam(t) === col.id))
+      : [...columns];
 
     if (statusSort) {
       const dir = statusSortDirection === 'asc' ? 1 : -1;
@@ -417,8 +475,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
           case 'name':
             return dir * a.label.localeCompare(b.label);
           case 'count': {
-            const countA = filteredTasks.filter((t) => t.status === a.id).length;
-            const countB = filteredTasks.filter((t) => t.status === b.id).length;
+            const countA = filteredTasks.filter((t) => getTaskStatusInTeam(t) === a.id).length;
+            const countB = filteredTasks.filter((t) => getTaskStatusInTeam(t) === b.id).length;
             return dir * (countA - countB);
           }
           default:
@@ -431,6 +489,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   }, [
     columns,
     filteredTasks,
+    getTaskStatusInTeam,
     searchQuery,
     filterPerson,
     filterPriority,
@@ -593,8 +652,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
           // Custom properties — key format: "prop:<id>"
           if (sortColumn.startsWith('prop:')) {
             const propId = sortColumn.slice(5);
-            const valA = String(a.customFieldValues?.[propId] || '');
-            const valB = String(b.customFieldValues?.[propId] || '');
+            const valA = String(getTaskFieldsInTeam(a)[propId] || '');
+            const valB = String(getTaskFieldsInTeam(b)[propId] || '');
             return dir * valA.localeCompare(valB);
           }
           return 0;
@@ -612,7 +671,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       if (shiftKey && lastClickedTaskRef.current) {
         // Range selection: find all visible tasks between last clicked and current
         const allVisibleIds = displayColumns.flatMap((col) =>
-          sortTasks(filteredTasks.filter((t) => t.status === col.id)).map((t) => t.id),
+          sortTasks(filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id)).map((t) => t.id),
         );
         const lastIdx = allVisibleIds.indexOf(lastClickedTaskRef.current);
         const curIdx = allVisibleIds.indexOf(taskId);
@@ -660,7 +719,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleBulkMove = (targetStatus: string) => {
-    const tasksToMove = filteredTasks.filter((t) => selectedTaskIds.has(t.id) && t.status !== targetStatus);
+    const tasksToMove = filteredTasks.filter(
+      (t) => selectedTaskIds.has(t.id) && getTaskStatusInTeam(t) !== targetStatus,
+    );
     if (tasksToMove.length > 0) {
       tasksToMove.forEach((t) => onUpdateTaskStatus(t.id, targetStatus as TaskStatus));
       toast.success(`Moved ${tasksToMove.length} task${tasksToMove.length > 1 ? 's' : ''} to ${targetStatus}`);
@@ -959,7 +1020,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         <span
                           className={`text-[10px] font-semibold px-1.5 rounded ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
                         >
-                          {filteredTasks.filter((t) => t.status === col.id).length}
+                          {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
                         </span>
                         <div
                           className={`writing-mode-vertical text-xs font-semibold tracking-wider whitespace-nowrap rotate-180 ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-500'}`}
@@ -1010,7 +1071,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               <span
                                 className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
                               >
-                                {filteredTasks.filter((t) => t.status === col.id).length}
+                                {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
                               </span>
                               <span
                                 onClick={() => handleStartRename(col.id, col.label)}
@@ -1098,7 +1159,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       className={`flex-1 flex flex-col min-h-0 rounded-lg p-1 ${isArchived ? 'bg-yellow-50/30 dark:bg-yellow-900/10 border border-dashed border-yellow-200 dark:border-yellow-900/30' : 'bg-zinc-50/50 dark:bg-zinc-900/30'}`}
                     >
                       <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                        {sortTasks(filteredTasks.filter((t) => t.status === col.id)).map((task) => {
+                        {sortTasks(filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id)).map((task) => {
                           const assignees = getMembersByIds(task.assigneeIds);
                           return (
                             <div
@@ -1124,8 +1185,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   <GripVertical size={14} />
                                 </div>
                               </div>
-                              <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden">
-                                {task.title}
+                              <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden flex items-center gap-1.5">
+                                {isLinkedCopy(task) && <Link2 size={12} className="text-blue-500 flex-shrink-0" />}
+                                <span>{task.title}</span>
                               </h3>
 
                               <div className="flex flex-wrap gap-1 mb-3">
@@ -1214,7 +1276,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               </div>
             )}
             {displayColumns.map((col) => {
-              const colTasks = filteredTasks.filter((t) => t.status === col.id);
+              const colTasks = filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id);
               const isCollapsed = collapsedSections[col.id];
               const isArchived = archivedStatuses[teamFilter]?.includes(col.id);
 
@@ -1485,6 +1547,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                     className="text-zinc-300 opacity-0 group-hover:opacity-100 flex-shrink-0"
                                                   />
                                                 )}
+                                                {isLinkedCopy(task) && (
+                                                  <Link2 size={12} className="text-blue-500 flex-shrink-0" />
+                                                )}
                                                 <span className="truncate">{task.title}</span>
                                               </div>
                                             </td>
@@ -1659,7 +1724,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                           if (tc.key.startsWith('prop:')) {
                                             const propId = tc.key.slice(5);
                                             const prop = customProperties.find((p) => p.id === propId);
-                                            const val = task.customFieldValues?.[propId];
+                                            const fieldValues = getTaskFieldsInTeam(task);
+                                            const val = fieldValues[propId];
                                             if (prop?.type === 'person' && val) {
                                               const personIds = Array.isArray(val) ? val : [val];
                                               const people = members.filter((m) => personIds.includes(m.id));
@@ -1977,6 +2043,18 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   </div>
                 )}
               </div>
+              {onDeleteTask && (
+                <>
+                  <div className="w-px h-4 bg-zinc-700 dark:bg-zinc-300" />
+                  <button
+                    onClick={() => setBulkDeleteConfirmOpen(true)}
+                    className="flex items-center gap-1.5 px-2 py-1 rounded-md hover:bg-red-600 dark:hover:bg-red-500 transition-colors text-red-400 dark:text-red-400 hover:text-white dark:hover:text-white"
+                  >
+                    <Trash2 size={14} />
+                    Delete
+                  </button>
+                </>
+              )}
               <div className="w-px h-4 bg-zinc-700 dark:bg-zinc-300" />
               <button
                 onClick={clearSelection}
@@ -2085,11 +2163,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               onTaskClick(t);
                             }}
                             draggable
-                            onDragStart={(e) => handleDragStart(e, t.id, t.status)}
+                            onDragStart={(e) => handleDragStart(e, t.id, getTaskStatusInTeam(t))}
                             className="group cursor-grab active:cursor-grabbing"
                           >
                             <div
-                              className={`text-[10px] px-1.5 py-1 rounded border border-zinc-200 dark:border-zinc-700 border-l-[3px] shadow-sm bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 flex items-center gap-1 ${getStatusAccent(t.status)}`}
+                              className={`text-[10px] px-1.5 py-1 rounded border border-zinc-200 dark:border-zinc-700 border-l-[3px] shadow-sm bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 flex items-center gap-1 ${getStatusAccent(getTaskStatusInTeam(t))}`}
                             >
                               <span
                                 className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[t.priority] || 'bg-zinc-400'}`}
@@ -2114,6 +2192,36 @@ const Workspace: React.FC<WorkspaceProps> = ({
           </div>
         )}
       </div>
+      {/* Bulk Delete Confirmation Modal */}
+      <Modal
+        isOpen={bulkDeleteConfirmOpen}
+        onClose={() => setBulkDeleteConfirmOpen(false)}
+        title="Move to Bin"
+        size="sm"
+        actions={
+          <>
+            <Button variant="ghost" onClick={() => setBulkDeleteConfirmOpen(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="danger"
+              onClick={() => {
+                if (onDeleteTask) selectedTaskIds.forEach((id) => onDeleteTask(id));
+                setBulkDeleteConfirmOpen(false);
+                clearSelection();
+              }}
+            >
+              Move to Bin
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          {selectedTaskIds.size === 1
+            ? 'This task will be moved to the bin and can be restored within 30 days.'
+            : `${selectedTaskIds.size} tasks will be moved to the bin and can be restored within 30 days.`}
+        </p>
+      </Modal>
     </div>
   );
 };

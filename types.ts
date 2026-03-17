@@ -141,6 +141,17 @@ export interface Doc {
   updatedAt: string;
 }
 
+export interface TaskTeamLink {
+  id: string;
+  taskId: string;
+  teamId: string;
+  status: string;
+  sortOrder: number;
+  customFieldValues: Record<string, any>;
+  addedBy?: string;
+  createdAt: string;
+}
+
 export type NotificationType =
   | 'task_assigned'
   | 'task_status_changed'

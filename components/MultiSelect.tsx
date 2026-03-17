@@ -1,12 +1,21 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ChevronDown, X, Check, Plus } from 'lucide-react';
 
+export interface MultiSelectOptionGroup {
+  label: string;
+  teamId: string;
+  options: { value: string; label: string }[];
+  highlighted?: boolean;
+}
+
 interface MultiSelectProps {
   icon: React.ElementType;
   label: string;
-  options: { value: string; label: string }[];
+  options?: { value: string; label: string }[];
+  groups?: MultiSelectOptionGroup[];
   selected: string[];
   onChange: (selected: string[]) => void;
+  onToggleWithGroup?: (value: string, selected: boolean, group: MultiSelectOptionGroup) => void;
   onAdd?: (newValue: string) => void;
   placeholder?: string;
   className?: string;
@@ -18,9 +27,11 @@ interface MultiSelectProps {
 export const MultiSelect: React.FC<MultiSelectProps> = ({
   icon: Icon,
   label,
-  options,
+  options = [],
+  groups,
   selected,
   onChange,
+  onToggleWithGroup,
   onAdd,
   placeholder = 'Select...',
   className,
@@ -42,10 +53,29 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const toggleSelection = (value: string) => {
-    const newSelected = selected.includes(value) ? selected.filter((s) => s !== value) : [...selected, value];
-    onChange(newSelected);
+  // Flat options list for chip label lookup (from groups or options)
+  const allOptions = groups ? groups.flatMap((g) => g.options) : options;
+
+  const toggleSelection = (value: string, group?: MultiSelectOptionGroup) => {
+    const isSelected = !selected.includes(value);
+    if (onToggleWithGroup && group) {
+      onToggleWithGroup(value, isSelected, group);
+    } else {
+      const newSelected = isSelected ? [...selected, value] : selected.filter((s) => s !== value);
+      onChange(newSelected);
+    }
   };
+
+  const renderOption = (opt: { value: string; label: string }, group?: MultiSelectOptionGroup) => (
+    <div
+      key={`${group?.teamId || 'flat'}-${opt.value}`}
+      onClick={() => toggleSelection(opt.value, group)}
+      className={`px-2 py-1.5 rounded text-sm cursor-pointer flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-800 ${selected.includes(opt.value) ? 'bg-zinc-50 dark:bg-zinc-800/50 font-semibold' : ''}`}
+    >
+      <span>{opt.label}</span>
+      {selected.includes(opt.value) && <Check size={12} className="text-black dark:text-white" />}
+    </div>
+  );
 
   return (
     <div className={`relative space-y-1 ${className}`} ref={dropdownRef}>
@@ -72,7 +102,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
             return (
               <>
                 {visible.map((val) => {
-                  const optionLabel = options.find((o) => o.value === val)?.label || val;
+                  const optionLabel = allOptions.find((o) => o.value === val)?.label || val;
                   return (
                     <span
                       key={val}
@@ -108,16 +138,19 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
       )}
       {isOpen && (
         <div className="absolute top-full left-0 w-full min-w-[150px] mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto p-1 animate-in fade-in zoom-in-95 duration-100">
-          {options.map((opt) => (
-            <div
-              key={opt.value}
-              onClick={() => toggleSelection(opt.value)}
-              className={`px-2 py-1.5 rounded text-sm cursor-pointer flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-800 ${selected.includes(opt.value) ? 'bg-zinc-50 dark:bg-zinc-800/50 font-semibold' : ''}`}
-            >
-              <span>{opt.label}</span>
-              {selected.includes(opt.value) && <Check size={12} className="text-black dark:text-white" />}
-            </div>
-          ))}
+          {groups
+            ? groups.map((group, gi) => (
+                <div key={group.teamId}>
+                  {gi > 0 && <div className="border-t border-zinc-100 dark:border-zinc-700 my-1" />}
+                  <div
+                    className={`text-[10px] uppercase tracking-wider font-semibold px-2 pt-2 pb-1 ${group.highlighted ? 'text-blue-500 dark:text-blue-400' : 'text-zinc-400'}`}
+                  >
+                    {group.label}
+                  </div>
+                  {group.options.map((opt) => renderOption(opt, group))}
+                </div>
+              ))
+            : options.map((opt) => renderOption(opt))}
           {onAdd && (
             <div className="border-t border-zinc-100 dark:border-zinc-800 mt-1 pt-1 p-1 flex gap-1">
               <input

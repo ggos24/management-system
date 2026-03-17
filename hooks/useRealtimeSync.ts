@@ -5,7 +5,8 @@ import { useUiStore } from '../stores/uiStore';
 import * as db from '../lib/database';
 
 export function useRealtimeSync() {
-  const { setTasks, setMembers, setAbsences, setShifts, setDeletedTaskCount } = useDataStore();
+  const { setTasks, setMembers, setAbsences, setShifts, setDeletedTaskCount, setTaskTeamLinks, setTeamPlacements } =
+    useDataStore();
   const loadNotifications = useUiStore((s) => s.loadNotifications);
 
   useEffect(() => {
@@ -26,6 +27,12 @@ export function useRealtimeSync() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'shifts' }, () => {
         db.fetchShifts().then(setShifts).catch(console.error);
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_team_links' }, () => {
+        db.fetchTaskTeamLinks().then(setTaskTeamLinks).catch(console.error);
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'team_placements' }, () => {
+        db.fetchTeamPlacements().then(setTeamPlacements).catch(console.error);
+      })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
         loadNotifications();
       })
@@ -34,5 +41,14 @@ export function useRealtimeSync() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [setTasks, setMembers, setAbsences, setShifts, setDeletedTaskCount, loadNotifications]);
+  }, [
+    setTasks,
+    setMembers,
+    setAbsences,
+    setShifts,
+    setDeletedTaskCount,
+    setTaskTeamLinks,
+    setTeamPlacements,
+    loadNotifications,
+  ]);
 }

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Check, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AlertBanner } from './AlertBanner';
 import { Button, Input, FormField, Card } from './ui';
@@ -17,7 +17,6 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -169,27 +168,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
           )}
 
           {currentMode === 'login' && (
-            <div className="flex items-center justify-between py-2">
-              <label className="flex items-center gap-2 cursor-pointer group">
-                <div
-                  className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${rememberMe ? 'bg-black dark:bg-white border-black dark:border-white' : 'border-zinc-300 dark:border-zinc-700 bg-white dark:bg-zinc-800'}`}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setRememberMe(!rememberMe);
-                  }}
-                >
-                  {rememberMe && <Check size={10} className="text-white dark:text-black" />}
-                </div>
-                <span
-                  className="text-xs text-zinc-500 group-hover:text-zinc-700 dark:group-hover:text-zinc-300 select-none"
-                  onClick={(e) => {
-                    e.preventDefault();
-                    setRememberMe(!rememberMe);
-                  }}
-                >
-                  Remember me
-                </span>
-              </label>
+            <div className="flex items-center justify-end py-2">
               <button
                 type="button"
                 onClick={() => {

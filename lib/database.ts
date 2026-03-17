@@ -9,6 +9,7 @@ import {
   CustomProperty,
   Notification,
   TaskComment,
+  TaskTeamLink,
   Doc,
   DocSection,
 } from '../types';
@@ -254,6 +255,30 @@ export async function fetchCustomProperties(): Promise<Record<string, CustomProp
     });
   }
   return result;
+}
+
+export async function fetchTeamPlacements(): Promise<Record<string, string[]>> {
+  const { data, error } = await supabase.from('team_placements').select('team_id, name').order('sort_order');
+  if (error) throw error;
+
+  const result: Record<string, string[]> = {};
+  for (const row of data || []) {
+    const key = row.team_id;
+    if (!result[key]) result[key] = [];
+    result[key].push(row.name);
+  }
+  return result;
+}
+
+export async function syncTeamPlacements(teamId: string, names: string[]) {
+  await supabase.from('team_placements').delete().eq('team_id', teamId);
+
+  if (names.length > 0) {
+    const rows = names.map((name, index) => ({ team_id: teamId, name, sort_order: index }));
+    const { error } = await supabase.from('team_placements').insert(rows);
+    return { error };
+  }
+  return { error: null };
 }
 
 export async function fetchPlacements(): Promise<string[]> {
@@ -904,6 +929,76 @@ export async function updateTaskComment(commentId: string, content: string): Pro
 
 export async function deleteTaskComment(commentId: string) {
   const { error } = await supabase.from('task_comments').delete().eq('id', commentId);
+  return { error };
+}
+
+// === Task Team Links ===
+
+function mapTaskTeamLink(row: any): TaskTeamLink {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    teamId: row.team_id,
+    status: row.status,
+    sortOrder: row.sort_order ?? 0,
+    customFieldValues: row.custom_field_values || {},
+    addedBy: row.added_by || undefined,
+    createdAt: row.created_at,
+  };
+}
+
+export async function fetchTaskTeamLinks(): Promise<TaskTeamLink[]> {
+  const { data, error } = await supabase.from('task_team_links').select('*');
+  if (error) throw error;
+  return (data || []).map(mapTaskTeamLink);
+}
+
+export async function insertTaskTeamLink(
+  taskId: string,
+  teamId: string,
+  status: string,
+  addedBy?: string,
+): Promise<TaskTeamLink> {
+  const row: Record<string, unknown> = {
+    task_id: taskId,
+    team_id: teamId,
+    status,
+  };
+  if (addedBy) row.added_by = addedBy;
+  const { data, error } = await supabase.from('task_team_links').insert(row).select().single();
+  if (error) throw error;
+  return mapTaskTeamLink(data);
+}
+
+export async function deleteTaskTeamLink(taskId: string, teamId: string) {
+  const { error } = await supabase.from('task_team_links').delete().eq('task_id', taskId).eq('team_id', teamId);
+  return { error };
+}
+
+export async function updateTaskTeamLinkStatus(taskId: string, teamId: string, status: string) {
+  const { error } = await supabase
+    .from('task_team_links')
+    .update({ status })
+    .eq('task_id', taskId)
+    .eq('team_id', teamId);
+  return { error };
+}
+
+export async function updateTaskTeamLinkFields(taskId: string, teamId: string, values: Record<string, any>) {
+  const { error } = await supabase
+    .from('task_team_links')
+    .update({ custom_field_values: values })
+    .eq('task_id', taskId)
+    .eq('team_id', teamId);
+  return { error };
+}
+
+export async function updateTaskTeamLinkSortOrder(taskId: string, teamId: string, sortOrder: number) {
+  const { error } = await supabase
+    .from('task_team_links')
+    .update({ sort_order: sortOrder })
+    .eq('task_id', taskId)
+    .eq('team_id', teamId);
   return { error };
 }
 

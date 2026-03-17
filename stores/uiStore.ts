@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 import { Task, Notification } from '../types';
+
+export type TaskModalData = Partial<Task> & { viewingTeamId?: string };
 import * as db from '../lib/database';
 
 interface UiState {
@@ -13,7 +15,7 @@ interface UiState {
 
   // Modal states
   isTaskModalOpen: boolean;
-  taskModalData: Partial<Task>;
+  taskModalData: TaskModalData;
   isSettingsModalOpen: boolean;
   isLogoutModalOpen: boolean;
   isManageTeamsModalOpen: boolean;
@@ -51,7 +53,7 @@ interface UiState {
   markAllNotificationsRead: () => void;
 
   setIsTaskModalOpen: (open: boolean) => void;
-  setTaskModalData: (data: Partial<Task> | ((prev: Partial<Task>) => Partial<Task>)) => void;
+  setTaskModalData: (data: TaskModalData | ((prev: TaskModalData) => TaskModalData)) => void;
   setIsSettingsModalOpen: (open: boolean) => void;
   setIsLogoutModalOpen: (open: boolean) => void;
   setIsManageTeamsModalOpen: (open: boolean) => void;

@@ -3,6 +3,11 @@ import type { Session } from '@supabase/supabase-js';
 import { Member } from '../types';
 import { supabase } from '../lib/supabase';
 import * as db from '../lib/database';
+import { useDataStore } from './dataStore';
+import { useUiStore } from './uiStore';
+
+// Concurrency guard — prevents parallel initData calls
+let initPromise: Promise<void> | null = null;
 
 interface AuthState {
   session: Session | null;
@@ -16,10 +21,11 @@ interface AuthState {
   setIsLoading: (loading: boolean) => void;
   setProfileError: (error: string | null) => void;
   setNeedsPasswordSetup: (needs: boolean) => void;
+  initData: (authUserId: string) => Promise<void>;
   logout: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   currentUser: null,
   isLoading: true,
@@ -37,9 +43,34 @@ export const useAuthStore = create<AuthState>((set) => ({
   setProfileError: (error) => set({ profileError: error }),
   setNeedsPasswordSetup: (needs) => set({ needsPasswordSetup: needs }),
 
+  initData: (authUserId: string) => {
+    // If already running, return existing promise (dedup)
+    if (initPromise) return initPromise;
+
+    initPromise = (async () => {
+      try {
+        set({ profileError: null });
+        const profile = await useDataStore.getState().loadAllData(authUserId);
+        if (!profile) {
+          set({ profileError: 'No profile found for this account. Please contact an administrator.' });
+          return;
+        }
+        set({ currentUser: profile });
+        useUiStore.getState().loadNotifications();
+      } catch {
+        set({ profileError: 'Failed to load application data. Please try refreshing.' });
+      } finally {
+        set({ isLoading: false });
+        initPromise = null;
+      }
+    })();
+
+    return initPromise;
+  },
+
   logout: async () => {
     await supabase.auth.signOut();
-    set({ session: null, currentUser: null });
+    set({ session: null, currentUser: null, profileError: null });
   },
 }));
 

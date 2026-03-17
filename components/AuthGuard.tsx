@@ -7,7 +7,7 @@ import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useAuthStore } from '../stores/authStore';
 
 export const AuthGuard: React.FC = () => {
-  const { session, initData } = useAuth();
+  const { session } = useAuth();
   useRealtimeSync();
 
   const {
@@ -49,7 +49,7 @@ export const AuthGuard: React.FC = () => {
           setSession(newSession);
           if (!currentUser) {
             setIsLoading(true);
-            initData(newSession.user.id);
+            useAuthStore.getState().initData(newSession.user.id);
           }
         }}
       />

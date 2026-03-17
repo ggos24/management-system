@@ -1,64 +1,50 @@
 import { useEffect } from 'react';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
-import { useDataStore } from '../stores/dataStore';
-import { useUiStore } from '../stores/uiStore';
 
 export function useAuth() {
-  const { session, setSession, setCurrentUser, setIsLoading, setProfileError, currentUser } = useAuthStore();
-  const loadAllData = useDataStore((s) => s.loadAllData);
-  const loadNotifications = useUiStore((s) => s.loadNotifications);
+  const session = useAuthStore((s) => s.session);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session }, error }) => {
+      const state = useAuthStore.getState();
       if (error) {
         // Corrupted or expired session — clear local state and force fresh login
         supabase.auth.signOut().catch(() => {});
-        setSession(null);
-        setCurrentUser(null);
-        setIsLoading(false);
+        state.setSession(null);
+        state.setCurrentUser(null);
+        state.setIsLoading(false);
         return;
       }
-      setSession(session);
+      state.setSession(session);
       if (session) {
-        initData(session.user.id);
+        state.initData(session.user.id);
       } else {
-        setIsLoading(false);
+        state.setIsLoading(false);
       }
     });
 
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      if (session && !useAuthStore.getState().currentUser) {
-        initData(session.user.id);
-      } else if (!session) {
-        setCurrentUser(null);
-        setIsLoading(false);
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      const state = useAuthStore.getState();
+
+      if (event === 'PASSWORD_RECOVERY') {
+        state.setNeedsPasswordSetup(true);
+        return;
+      }
+
+      state.setSession(session);
+      if (session) {
+        state.initData(session.user.id);
+      } else {
+        state.setCurrentUser(null);
+        state.setIsLoading(false);
       }
     });
 
     return () => subscription.unsubscribe();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  async function initData(authUserId: string) {
-    try {
-      const profile = await loadAllData(authUserId);
-      if (!profile) {
-        setProfileError('No profile found for this account. Please contact an administrator.');
-        setIsLoading(false);
-        return;
-      }
-      setCurrentUser(profile);
-      loadNotifications();
-    } catch {
-      setProfileError('Failed to load application data. Please try refreshing.');
-    } finally {
-      setIsLoading(false);
-    }
-  }
-
-  return { session, initData };
+  return { session };
 }
