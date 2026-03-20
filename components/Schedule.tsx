@@ -71,6 +71,7 @@ const Schedule: React.FC<ScheduleProps> = ({
   // Shift Times
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
+  const [isAllDay, setIsAllDay] = useState(false);
 
   // Collapsed Teams State
   const [collapsedTeams, setCollapsedTeams] = useState<Record<string, boolean>>({});
@@ -155,9 +156,12 @@ const Schedule: React.FC<ScheduleProps> = ({
 
     // Always pre-populate shift state
     if (existingShift) {
-      setStartTime(existingShift.startTime);
-      setEndTime(existingShift.endTime);
+      const allDay = existingShift.startTime === '00:00' && existingShift.endTime === '23:59';
+      setIsAllDay(allDay);
+      setStartTime(allDay ? '09:00' : existingShift.startTime);
+      setEndTime(allDay ? '17:00' : existingShift.endTime);
     } else {
+      setIsAllDay(false);
       setStartTime('09:00');
       setEndTime('17:00');
     }
@@ -200,8 +204,8 @@ const Schedule: React.FC<ScheduleProps> = ({
           id: existingShift?.id || crypto.randomUUID(),
           memberId: selectedCell.member.id,
           date: dateStr,
-          startTime,
-          endTime,
+          startTime: isAllDay ? '00:00' : startTime,
+          endTime: isAllDay ? '23:59' : endTime,
         };
         onUpdateShift(newShift);
       }
@@ -514,10 +518,17 @@ const Schedule: React.FC<ScheduleProps> = ({
                           );
                           cellClass = '';
                         } else if (shift) {
+                          const shiftAllDay = shift.startTime === '00:00' && shift.endTime === '23:59';
                           content = (
                             <div
                               className={`flex flex-col items-center justify-center h-full w-full select-none ${isToday ? 'bg-red-50/20 dark:bg-red-900/10' : 'bg-zinc-50 dark:bg-zinc-900'}`}
                             >
+                              {shiftAllDay ? (
+                                <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
+                                  All day
+                                </span>
+                              ) : (
+                              <>
                               <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
                                 {shift.startTime.slice(0, 5)}
                               </span>
@@ -525,6 +536,8 @@ const Schedule: React.FC<ScheduleProps> = ({
                               <span className="text-[10px] text-zinc-500 leading-none">
                                 {shift.endTime.slice(0, 5)}
                               </span>
+                              </>
+                              )}
                             </div>
                           );
                         }
@@ -816,20 +829,38 @@ const Schedule: React.FC<ScheduleProps> = ({
                     />
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3">
-                    <div>
-                      <Label className="mb-1 block">Start Time</Label>
-                      <Input
-                        type="time"
-                        value={startTime}
-                        onChange={(e) => setStartTime(e.target.value)}
-                        className="p-2"
-                      />
-                    </div>
-                    <div>
-                      <Label className="mb-1 block">End Time</Label>
-                      <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="p-2" />
-                    </div>
+                  <div className="space-y-3">
+                    <label className="flex items-center gap-2 cursor-pointer select-none">
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={isAllDay}
+                        onClick={() => setIsAllDay(!isAllDay)}
+                        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${isAllDay ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-600'}`}
+                      >
+                        <span
+                          className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${isAllDay ? 'translate-x-4' : 'translate-x-0'}`}
+                        />
+                      </button>
+                      <span className="text-sm text-zinc-700 dark:text-zinc-300">All day</span>
+                    </label>
+                    {!isAllDay && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <Label className="mb-1 block">Start Time</Label>
+                          <Input
+                            type="time"
+                            value={startTime}
+                            onChange={(e) => setStartTime(e.target.value)}
+                            className="p-2"
+                          />
+                        </div>
+                        <div>
+                          <Label className="mb-1 block">End Time</Label>
+                          <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="p-2" />
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

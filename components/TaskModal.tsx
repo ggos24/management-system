@@ -74,6 +74,29 @@ export const TaskModal: React.FC = () => {
 
   const currentUser = useAuthStore((s) => s.currentUser);
 
+  // Track initial state to detect unsaved changes
+  const initialDataRef = useRef<string>('');
+
+  useEffect(() => {
+    if (isTaskModalOpen) {
+      initialDataRef.current = JSON.stringify(taskModalData);
+    }
+  }, [isTaskModalOpen]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const hasUnsavedChanges = useCallback(() => {
+    return initialDataRef.current !== '' && JSON.stringify(taskModalData) !== initialDataRef.current;
+  }, [taskModalData]);
+
+  const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
+
+  const handleClose = useCallback(() => {
+    if (hasUnsavedChanges()) {
+      setIsUnsavedConfirmOpen(true);
+      return;
+    }
+    setIsTaskModalOpen(false);
+  }, [hasUnsavedChanges, setIsTaskModalOpen]);
+
   // --- Grouped placement options with composite values (teamId:name) ---
   const placementGroups = useMemo(() => {
     const homeTeamId = taskModalData.teamId || '';
@@ -464,7 +487,7 @@ export const TaskModal: React.FC = () => {
   return (
     <Modal
       isOpen={isTaskModalOpen}
-      onClose={() => setIsTaskModalOpen(false)}
+      onClose={handleClose}
       title=""
       headerActions={
         <div className="flex gap-2 mr-2 relative">
@@ -510,7 +533,7 @@ export const TaskModal: React.FC = () => {
           </>
         ) : (
           <>
-            <Button variant="ghost" onClick={() => setIsTaskModalOpen(false)}>
+            <Button variant="ghost" onClick={handleClose}>
               Cancel
             </Button>
             <Button onClick={handleSaveTask}>{taskModalData.id ? 'Save Changes' : 'Create Task'}</Button>
@@ -578,7 +601,8 @@ export const TaskModal: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
               <CustomSelect
                 icon={CheckCircle}
-                label="Status"
+                label="Section"
+                hint="Current workflow stage of this task"
                 options={teamStatuses[taskModalData.teamId || 'default'] || teamStatuses['default'] || ['To Do']}
                 value={taskModalData.status || ''}
                 onChange={(val) => setTaskModalData({ ...taskModalData, status: val })}
@@ -590,6 +614,7 @@ export const TaskModal: React.FC = () => {
               <CustomSelect
                 icon={Layout}
                 label="Content Type"
+                hint="Format or medium of the content"
                 options={teamTypes[taskModalData.teamId || 'default'] || teamTypes['default'] || ['General']}
                 value={taskModalData.contentInfo?.type || ''}
                 onChange={(val) =>
@@ -603,6 +628,7 @@ export const TaskModal: React.FC = () => {
               <MultiSelect
                 icon={UserIcon}
                 label={getAuthorLabel()}
+                hint={isManagement ? 'Person responsible for execution' : 'Person who creates the content'}
                 options={members.map((m) => ({ value: m.id, label: m.name }))}
                 selected={taskModalData.assigneeIds || []}
                 onChange={(ids) => setTaskModalData({ ...taskModalData, assigneeIds: ids })}
@@ -611,6 +637,7 @@ export const TaskModal: React.FC = () => {
               <MultiSelect
                 icon={Eye}
                 label={getEditorLabel()}
+                hint={isManagement ? 'Person who oversees the task' : 'Person who reviews and approves'}
                 options={members.map((m) => ({ value: m.id, label: m.name }))}
                 selected={taskModalData.contentInfo?.editorIds || []}
                 onChange={(ids) =>
@@ -622,6 +649,7 @@ export const TaskModal: React.FC = () => {
               <CustomSelect
                 icon={Zap}
                 label="Priority"
+                hint="Urgency level for scheduling"
                 options={['low', 'medium', 'high']}
                 value={taskModalData.priority || 'medium'}
                 onChange={(val) => setTaskModalData({ ...taskModalData, priority: val as Task['priority'] })}
@@ -633,9 +661,12 @@ export const TaskModal: React.FC = () => {
                 )}
               />
               <div className="space-y-1">
-                <label className="text-xs font-medium text-zinc-500 flex items-center gap-1.5">
-                  <Calendar size={12} /> Due Date
-                </label>
+                <div>
+                  <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                    <Calendar size={12} /> Due Date
+                  </label>
+                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Target completion deadline</p>
+                </div>
                 <SimpleDatePicker
                   value={taskModalData.dueDate ? taskModalData.dueDate.split('T')[0] : ''}
                   onChange={(date) => setTaskModalData({ ...taskModalData, dueDate: new Date(date).toISOString() })}
@@ -643,19 +674,23 @@ export const TaskModal: React.FC = () => {
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-xs font-medium text-zinc-500 flex items-center gap-1.5">
-                  <CheckCircle size={12} /> Pub Date
-                </label>
+                <div>
+                  <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                    <CheckCircle size={12} /> Pub Date
+                  </label>
+                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Actual date of publication</p>
+                </div>
                 <SimpleDatePicker
                   value={taskModalData.doneDate ? taskModalData.doneDate.split('T')[0] : ''}
                   onChange={(date) => setTaskModalData({ ...taskModalData, doneDate: new Date(date).toISOString() })}
                   placeholder="Set publish date"
                 />
               </div>
-              <div className="md:col-span-2">
+              <div>
                 <MultiSelect
                   icon={Globe}
                   label="Placements"
+                  hint="Channels where this content will be published"
                   groups={placementGroups}
                   selected={selectedCompositeKeys}
                   onChange={(compositeKeys) => {
@@ -712,7 +747,7 @@ export const TaskModal: React.FC = () => {
               {taskModalData.id && taskTeamLinks.filter((l) => l.taskId === taskModalData.id).length > 0 && (
                 <div className="md:col-span-2">
                   <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 mb-2">
-                    <Link2 size={12} /> Status per Workspace
+                    <Link2 size={12} /> Section per Workspace
                   </label>
                   <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
                     {/* Home workspace */}
@@ -809,7 +844,7 @@ export const TaskModal: React.FC = () => {
                           }}
                         />
                       ) : (
-                        <label className="text-xs font-medium text-zinc-500 flex items-center gap-1.5 capitalize">
+                        <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 capitalize">
                           {prop.name}
                         </label>
                       )}
@@ -1300,6 +1335,39 @@ export const TaskModal: React.FC = () => {
       >
         <p className="text-sm text-zinc-600 dark:text-zinc-400">
           This task will be moved to the bin and can be restored within 30 days.
+        </p>
+      </Modal>
+
+      {/* Unsaved Changes Confirmation Modal */}
+      <Modal
+        isOpen={isUnsavedConfirmOpen}
+        onClose={() => setIsUnsavedConfirmOpen(false)}
+        title="Unsaved Changes"
+        size="sm"
+        actions={
+          <>
+            <Button
+              variant="ghost"
+              onClick={() => {
+                setIsUnsavedConfirmOpen(false);
+                setIsTaskModalOpen(false);
+              }}
+            >
+              Discard
+            </Button>
+            <Button
+              onClick={() => {
+                setIsUnsavedConfirmOpen(false);
+                handleSaveTask();
+              }}
+            >
+              Save
+            </Button>
+          </>
+        }
+      >
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">
+          You have unsaved changes. Would you like to save them before closing?
         </p>
       </Modal>
     </Modal>

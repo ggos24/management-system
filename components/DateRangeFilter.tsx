@@ -73,8 +73,7 @@ function buildPresets(): Preset[] {
       getRange: () => {
         const now = new Date();
         const start = new Date(now.getFullYear(), now.getMonth(), 1);
-        const end = new Date(now.getFullYear(), now.getMonth() + 1, 0);
-        return [fmt(start), fmt(end)];
+        return [fmt(start), fmt(now)];
       },
     },
     {
@@ -184,19 +183,29 @@ const MiniCalendar: React.FC<{
         {Array.from({ length: firstDay === 0 ? 6 : firstDay - 1 }).map((_, i) => (
           <div key={`e-${i}`} />
         ))}
-        {Array.from({ length: daysInMonth }).map((_, i) => (
-          <button
-            key={i}
-            onClick={() => handleClick(i + 1)}
-            className={`text-xs w-7 h-7 flex items-center justify-center rounded transition-colors ${
-              isSelected(i + 1)
-                ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 font-bold'
-                : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
-            }`}
-          >
-            {i + 1}
-          </button>
-        ))}
+        {Array.from({ length: daysInMonth }).map((_, i) => {
+          const day = i + 1;
+          const today = new Date();
+          const isToday =
+            day === today.getDate() &&
+            currentMonth.getMonth() === today.getMonth() &&
+            currentMonth.getFullYear() === today.getFullYear();
+          return (
+            <button
+              key={i}
+              onClick={() => handleClick(day)}
+              className={`text-xs w-7 h-7 flex items-center justify-center rounded transition-colors ${
+                isSelected(day)
+                  ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-900 font-bold'
+                  : isToday
+                    ? 'ring-1 ring-blue-500 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-50 dark:hover:bg-blue-900/30'
+                    : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
+              }`}
+            >
+              {day}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

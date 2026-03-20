@@ -13,7 +13,7 @@ import {
   deleteTelegramLink,
   TelegramLink,
 } from '../lib/database';
-import { Label, Badge } from './ui';
+import { Label } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
@@ -241,7 +241,9 @@ export const SettingsModal: React.FC = () => {
                       />
                     </h3>
                   )}
-                  <Badge className="px-2">{currentUser.role}</Badge>
+                  <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium capitalize">
+                    {currentUser.role === 'super_admin' ? 'Super Admin' : currentUser.role}
+                  </span>
                 </div>
                 {editingJobTitle ? (
                   <form
@@ -392,7 +394,6 @@ export const SettingsModal: React.FC = () => {
                       { value: 'admin', label: 'Admin' },
                       { value: 'user', label: 'User' },
                     ];
-                const roleBadgeColor = m.role === 'super_admin' ? 'purple' : m.role === 'admin' ? 'blue' : 'zinc';
                 const roleLabel = m.role === 'super_admin' ? 'Super Admin' : m.role === 'admin' ? 'Admin' : 'User';
                 return (
                   <div
@@ -441,9 +442,9 @@ export const SettingsModal: React.FC = () => {
                           </button>
                         </>
                       ) : (
-                        <Badge color={roleBadgeColor} className="px-2">
+                        <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">
                           {roleLabel}
-                        </Badge>
+                        </span>
                       )}
                     </div>
                   </div>

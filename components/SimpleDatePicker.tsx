@@ -98,15 +98,23 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
               {Array.from({ length: firstDay }).map((_, i) => (
                 <div key={`empty-${i}`} />
               ))}
-              {Array.from({ length: daysInMonth }).map((_, i) => (
-                <button
-                  key={i}
-                  onClick={() => handleDateClick(i + 1)}
-                  className={`text-xs w-7 h-7 flex items-center justify-center rounded transition-colors ${isSelected(i + 1) ? 'bg-black text-white dark:bg-white dark:text-black font-bold' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300'}`}
-                >
-                  {i + 1}
-                </button>
-              ))}
+              {Array.from({ length: daysInMonth }).map((_, i) => {
+                const day = i + 1;
+                const today = new Date();
+                const isToday =
+                  day === today.getDate() &&
+                  currentMonth.getMonth() === today.getMonth() &&
+                  currentMonth.getFullYear() === today.getFullYear();
+                return (
+                  <button
+                    key={i}
+                    onClick={() => handleDateClick(day)}
+                    className={`text-xs w-7 h-7 flex items-center justify-center rounded transition-colors ${isSelected(day) ? 'bg-black text-white dark:bg-white dark:text-black font-bold' : isToday ? 'ring-1 ring-blue-500 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-50 dark:hover:bg-blue-900/30' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300'}`}
+                  >
+                    {day}
+                  </button>
+                );
+              })}
             </div>
           </div>
         </>

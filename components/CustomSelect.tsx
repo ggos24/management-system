@@ -10,6 +10,7 @@ export interface SelectOption {
 interface CustomSelectProps {
   icon?: React.ElementType;
   label?: string;
+  hint?: string;
   options: (string | SelectOption)[];
   value: string;
   onChange: (value: string) => void;
@@ -24,6 +25,7 @@ interface CustomSelectProps {
 export const CustomSelect: React.FC<CustomSelectProps> = ({
   icon: Icon,
   label,
+  hint,
   options,
   value,
   onChange,
@@ -77,9 +79,12 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   return (
     <div className={`relative space-y-1 ${className || ''}`} ref={triggerRef}>
       {label && (
-        <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-          {Icon && <Icon size={12} />} {label}
-        </label>
+        <div>
+          <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+            {Icon && <Icon size={12} />} {label}
+          </label>
+          {hint && <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">{hint}</p>}
+        </div>
       )}
       <div
         onClick={() => {

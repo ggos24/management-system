@@ -11,6 +11,7 @@ export interface MultiSelectOptionGroup {
 interface MultiSelectProps {
   icon: React.ElementType;
   label: string;
+  hint?: string;
   options?: { value: string; label: string }[];
   groups?: MultiSelectOptionGroup[];
   selected: string[];
@@ -27,6 +28,7 @@ interface MultiSelectProps {
 export const MultiSelect: React.FC<MultiSelectProps> = ({
   icon: Icon,
   label,
+  hint,
   options = [],
   groups,
   selected,
@@ -80,9 +82,12 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   return (
     <div className={`relative space-y-1 ${className}`} ref={dropdownRef}>
       {label && (
-        <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-          <Icon size={12} /> {label}
-        </label>
+        <div>
+          <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+            <Icon size={12} /> {label}
+          </label>
+          {hint && <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">{hint}</p>}
+        </div>
       )}
       {renderTrigger ? (
         renderTrigger(() => setIsOpen(!isOpen), selected)
@@ -92,7 +97,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
           className={
             compact
               ? 'w-full min-h-[24px] px-1.5 py-0.5 rounded text-xs cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 relative'
-              : 'w-full min-h-[32px] pl-2 pr-6 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 relative'
+              : 'w-full min-h-[32px] pl-2 pr-8 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 relative'
           }
         >
           {selected.length === 0 && <span className="text-zinc-400">{placeholder}</span>}

@@ -71,8 +71,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
   const [teamFilter, setTeamFilter] = useState<string>(ALL_TEAMS);
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
-    d.setDate(d.getDate() - 6);
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-01`;
   });
   const [endDate, setEndDate] = useState<string>(() => {
     const d = new Date();
@@ -344,7 +343,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
           <DateRangeFilter
             startDate={startDate}
             endDate={endDate}
-            defaultPreset="last_7"
+            defaultPreset="this_month"
             onChange={(s, e) => {
               setStartDate(s);
               setEndDate(e);

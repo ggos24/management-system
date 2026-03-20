@@ -185,3 +185,26 @@ export const PRIORITY_DOT: Record<string, string> = {
   medium: 'bg-yellow-500',
   high: 'bg-red-500',
 };
+
+/** Returns a dot color class and text color class based on how close a deadline is to today */
+export function getDeadlineUrgency(dueDate: string | undefined | null): {
+  dot: string;
+  text: string;
+} {
+  if (!dueDate) return { dot: '', text: 'text-zinc-400' };
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const due = new Date(dueDate);
+  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
+  const diffDays = Math.round((dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+  if (diffDays < 0)
+    return { dot: 'bg-red-500', text: 'text-red-600 dark:text-red-400' };
+  if (diffDays === 0)
+    return { dot: 'bg-orange-500', text: 'text-orange-600 dark:text-orange-400' };
+  if (diffDays <= 2)
+    return { dot: 'bg-amber-400', text: 'text-amber-600 dark:text-amber-400' };
+  if (diffDays <= 7)
+    return { dot: 'bg-blue-400', text: 'text-blue-500 dark:text-blue-400' };
+  return { dot: '', text: 'text-zinc-400' };
+}

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { Task, TaskStatus, TeamType, Member, Priority, CustomProperty, TaskTeamLink, UserRole } from '../types';
-import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent, isAdminOrAbove } from '../constants';
+import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent, getDeadlineUrgency, isAdminOrAbove } from '../constants';
 import {
   Plus,
   MoreHorizontal,
@@ -48,6 +48,28 @@ import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
 import { Button, Badge, Divider } from './ui';
 
+// Known service favicon URLs (Google's favicon API returns generic icons for subdomains)
+const KNOWN_FAVICONS: { match: (hostname: string, pathname: string) => boolean; icon: string }[] = [
+  { match: (h, p) => h === 'docs.google.com' && p.startsWith('/document'), icon: 'https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico' },
+  { match: (h, p) => h === 'docs.google.com' && p.startsWith('/spreadsheets'), icon: 'https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico' },
+  { match: (h, p) => h === 'docs.google.com' && p.startsWith('/presentation'), icon: 'https://ssl.gstatic.com/docs/presentations/images/favicon5.ico' },
+  { match: (h, p) => h === 'docs.google.com' && p.startsWith('/forms'), icon: 'https://ssl.gstatic.com/docs/spreadsheets/forms/favicon_qp2.png' },
+  { match: (h) => h === 'drive.google.com', icon: 'https://ssl.gstatic.com/images/branding/product/1x/drive_2020q4_32dp.png' },
+  { match: (h) => h === 'calendar.google.com', icon: 'https://calendar.google.com/googlecalendar/images/favicons_2020q4/calendar_31.ico' },
+  { match: (h) => h === 'meet.google.com', icon: 'https://fonts.gstatic.com/s/i/productlogos/meet_2020q4/v1/web-16dp/logo_meet_2020q4_color_1x_web_16dp.png' },
+  { match: (h) => h === 'sheets.google.com', icon: 'https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico' },
+  { match: (h) => h === 'slides.google.com', icon: 'https://ssl.gstatic.com/docs/presentations/images/favicon5.ico' },
+];
+
+const getFaviconUrl = (url: string, hostname: string): string => {
+  try {
+    const parsed = new URL(url);
+    const match = KNOWN_FAVICONS.find((f) => f.match(parsed.hostname, parsed.pathname));
+    if (match) return match.icon;
+  } catch { /* ignore */ }
+  return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
+};
+
 // Shared column context menu used in both board and table views
 const ColumnMenu: React.FC<{
   isOpen: boolean;
@@ -58,8 +80,10 @@ const ColumnMenu: React.FC<{
   onArchive: () => void;
   onDelete: () => void;
   onToggleDone: () => void;
+  onToggleArchiveCategory: () => void;
   isArchived: boolean;
   isDone: boolean;
+  isArchiveCategory: boolean;
   triggerKey: string;
   triggerRefs: React.RefObject<Record<string, HTMLButtonElement | null>>;
 }> = ({
@@ -71,8 +95,10 @@ const ColumnMenu: React.FC<{
   onArchive,
   onDelete,
   onToggleDone,
+  onToggleArchiveCategory,
   isArchived,
   isDone,
+  isArchiveCategory,
   triggerKey,
   triggerRefs,
 }) => {
@@ -132,6 +158,12 @@ const ColumnMenu: React.FC<{
         className={`text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 ${isDone ? 'text-emerald-600 dark:text-emerald-400' : ''}`}
       >
         <CheckCircle size={12} /> {isDone ? 'Unmark as Done' : 'Mark as Done'}
+      </button>
+      <button
+        onClick={onToggleArchiveCategory}
+        className={`text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 ${isArchiveCategory ? 'text-zinc-500 dark:text-zinc-400' : ''}`}
+      >
+        <Archive size={12} /> {isArchiveCategory ? 'Unmark as Archive' : 'Mark as Archive'}
       </button>
       <button
         onClick={onArchive}
@@ -267,7 +299,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
       label: p.name,
       className: 'w-32',
     }));
-    return [...base, ...propCols, { key: 'placements', label: 'Placements', className: 'w-32' }];
+    return [
+      ...base,
+      ...propCols,
+      { key: 'links', label: 'Links', className: 'w-32' },
+      { key: 'placements', label: 'Placements', className: 'w-32' },
+    ];
   }, [teamFilter, customProperties]);
 
   const columnOrderKey = `table-col-order-${teamFilter}`;
@@ -339,16 +376,39 @@ const Workspace: React.FC<WorkspaceProps> = ({
     });
   };
 
+  // IDs of all Person-type custom properties
+  const personPropIds = useMemo(
+    () => customProperties.filter((p) => p.type === 'person').map((p) => p.id),
+    [customProperties],
+  );
+
+  // Check if a userId appears in any Person custom property of a task
+  const taskHasPersonInCustomFields = useCallback(
+    (task: Task, userId: string): boolean => {
+      const vals = task.customFieldValues;
+      if (!vals || personPropIds.length === 0) return false;
+      return personPropIds.some((propId) => {
+        const v = vals[propId];
+        if (!v) return false;
+        return Array.isArray(v) ? v.includes(userId) : v === userId;
+      });
+    },
+    [personPropIds],
+  );
+
   // Determine current column list
   const currentStatusList = useMemo(() => {
     if (teamFilter === 'my-work') {
-      // Dynamic columns for My Work based on user's tasks
-      const myTasks = tasks.filter(
-        (t) =>
+      // Dynamic columns for My Work — exclude statuses marked as Done or Archive
+      const myTasks = tasks.filter((t) => {
+        const isInvolved =
           t.assigneeIds.includes(currentUserId) ||
           t.contentInfo?.editorIds?.includes(currentUserId) ||
-          t.contentInfo?.designerIds?.includes(currentUserId),
-      );
+          t.contentInfo?.designerIds?.includes(currentUserId) ||
+          taskHasPersonInCustomFields(t, currentUserId);
+        const cat = statusCategories[t.teamId]?.[t.status] || 'active';
+        return isInvolved && cat === 'active';
+      });
       const uniqueStatuses = Array.from(new Set(myTasks.map((t) => t.status)));
 
       // Apply saved order if available
@@ -360,7 +420,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       return uniqueStatuses;
     }
     return teamStatuses[teamFilter] || teamStatuses['default'] || [];
-  }, [teamStatuses, teamFilter, tasks, currentUserId]);
+  }, [teamStatuses, teamFilter, tasks, currentUserId, taskHasPersonInCustomFields, statusCategories]);
 
   const columns = useMemo(() => {
     // Filter out archived unless showArchivedStatuses is true
@@ -427,16 +487,25 @@ const Workspace: React.FC<WorkspaceProps> = ({
     return tasks.filter((t) => {
       let matchTeam = false;
       if (teamFilter === 'my-work') {
-        matchTeam =
+        // Check if user is involved
+        const isInvolved =
           t.assigneeIds.includes(currentUserId) ||
           (t.contentInfo?.editorIds?.includes(currentUserId) ?? false) ||
-          (t.contentInfo?.designerIds?.includes(currentUserId) ?? false);
+          (t.contentInfo?.designerIds?.includes(currentUserId) ?? false) ||
+          taskHasPersonInCustomFields(t, currentUserId);
+        // Exclude tasks whose status is marked as Done or Archive in their home team
+        const taskCategory = statusCategories[t.teamId]?.[t.status] || 'active';
+        matchTeam = isInvolved && taskCategory === 'active';
       } else {
         matchTeam = teamFilter === 'all' || t.teamId === teamFilter || linkedTaskIdsForTeam.has(t.id);
       }
 
       // Apply Person filter only if NOT in 'my-work'
-      const matchPerson = teamFilter === 'my-work' || filterPerson === 'all' || t.assigneeIds.includes(filterPerson);
+      const matchPerson =
+        teamFilter === 'my-work' ||
+        filterPerson === 'all' ||
+        t.assigneeIds.includes(filterPerson) ||
+        taskHasPersonInCustomFields(t, filterPerson);
       const matchPriority = filterPriority === 'all' || t.priority === filterPriority;
       const matchPlacement =
         filterPlacements.length === 0 || t.placements.some((tag) => filterPlacements.includes(tag));
@@ -458,6 +527,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
     searchQuery,
     currentUserId,
     linkedTaskIdsForTeam,
+    taskHasPersonInCustomFields,
+    statusCategories,
   ]);
 
   // Derived columns to display: If searching, only show columns with tasks; then apply status sort
@@ -646,6 +717,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
           return dir * edA.localeCompare(edB);
         }
 
+        case 'links':
+          return dir * ((a.links?.length || 0) - (b.links?.length || 0));
         case 'placements':
           return dir * (a.placements || []).join(', ').localeCompare((b.placements || []).join(', '));
         default: {
@@ -1003,7 +1076,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
             {displayColumns.map((col) => {
               const isCollapsed = collapsedSections[col.id];
               const isArchived = archivedStatuses[teamFilter]?.includes(col.id);
-              const isDoneStatus = statusCategories[teamFilter]?.[col.id] === 'completed';
+              const statusCategory = statusCategories[teamFilter]?.[col.id] || 'active';
+              const isDoneStatus = statusCategory === 'completed';
+              const isIgnoredStatus = statusCategory === 'ignored';
               return (
                 <div
                   key={col.id}
@@ -1018,12 +1093,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         onClick={() => toggleSection(col.id)}
                       >
                         <span
-                          className={`text-[10px] font-semibold px-1.5 rounded ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
+                          className={`text-[10px] font-semibold px-1.5 rounded ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
                         >
                           {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
                         </span>
                         <div
-                          className={`writing-mode-vertical text-xs font-semibold tracking-wider whitespace-nowrap rotate-180 ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-500'}`}
+                          className={`writing-mode-vertical text-xs font-semibold tracking-wider whitespace-nowrap rotate-180 ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-500'}`}
                           style={{ writingMode: 'vertical-rl' }}
                         >
                           {col.label}
@@ -1069,16 +1144,28 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 </>
                               )}
                               <span
-                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
                               >
                                 {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
                               </span>
                               <span
                                 onClick={() => handleStartRename(col.id, col.label)}
-                                className={`font-semibold text-xs ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
+                                className={`font-semibold text-xs ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
                               >
                                 {col.label} {isArchived && '(Archived)'}
                               </span>
+                              {(teamFilter === 'my-work' || teamFilter === 'all') && (() => {
+                                const sectionTasks = filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id);
+                                const teamIds = [...new Set(sectionTasks.map((t) => t.teamId))];
+                                const teamNames = teamIds
+                                  .map((id) => allTeams.find((t) => t.id === id)?.name)
+                                  .filter(Boolean);
+                                return teamNames.length > 0 ? (
+                                  <span className="text-[10px] font-normal text-zinc-400 dark:text-zinc-500">
+                                    {teamNames.join(', ')}
+                                  </span>
+                                ) : null;
+                              })()}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1147,6 +1234,16 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               onDelete={() => handleDeleteColumn(col.id)}
                               isArchived={!!isArchived}
                               isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
+                              isArchiveCategory={statusCategories[teamFilter]?.[col.id] === 'ignored'}
+                              onToggleArchiveCategory={() => {
+                                const current = statusCategories[teamFilter]?.[col.id] || 'active';
+                                onSetStatusCategory(
+                                  teamFilter,
+                                  col.id,
+                                  current === 'ignored' ? 'active' : 'ignored',
+                                );
+                                setActiveColumnMenu(null);
+                              }}
                             />
                           </div>
                         )}
@@ -1194,9 +1291,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 {task.placements.slice(0, 3).map((placement) => (
                                   <span
                                     key={placement}
-                                    className="text-[10px] bg-zinc-50 dark:bg-zinc-800 text-zinc-500 border border-zinc-100 dark:border-zinc-700 px-1 rounded"
+                                    className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
                                   >
-                                    #{placement}
+                                    {placement}
                                   </span>
                                 ))}
                                 {task.placements.length > 3 && (
@@ -1207,15 +1304,24 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               </div>
 
                               <div className="flex items-center justify-between pt-2">
-                                <div className="flex items-center gap-1.5 text-[10px] text-zinc-400">
-                                  <CalendarIcon size={12} />
-                                  <span>
-                                    {new Date(task.dueDate).toLocaleDateString('en-US', {
-                                      month: 'short',
-                                      day: 'numeric',
-                                    })}
-                                  </span>
-                                </div>
+                                {(() => {
+                                  const urgency = getDeadlineUrgency(task.dueDate);
+                                  return (
+                                    <div className={`flex items-center gap-1.5 text-[10px] ${urgency.text}`}>
+                                      {urgency.dot ? (
+                                        <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
+                                      ) : (
+                                        <CalendarIcon size={12} />
+                                      )}
+                                      <span>
+                                        {new Date(task.dueDate).toLocaleDateString('en-US', {
+                                          month: 'short',
+                                          day: 'numeric',
+                                        })}
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
                                 <div className="flex -space-x-1.5">
                                   {assignees.length > 0 ? (
                                     assignees
@@ -1281,6 +1387,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               const isArchived = archivedStatuses[teamFilter]?.includes(col.id);
 
               const isDoneTable = statusCategories[teamFilter]?.[col.id] === 'completed';
+              const isIgnoredTable = statusCategories[teamFilter]?.[col.id] === 'ignored';
 
               return (
                 <div
@@ -1309,7 +1416,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       </div>
                     )}
                     <span
-                      className={`text-xs px-2 py-0.5 rounded font-medium ${isDoneTable ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
+                      className={`text-xs px-2 py-0.5 rounded font-medium ${isDoneTable ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredTable ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
                     >
                       {colTasks.length}
                     </span>
@@ -1324,12 +1431,25 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
                       />
                     ) : (
-                      <h3
-                        onClick={() => handleStartRename(col.id, col.label)}
-                        className={`text-sm font-semibold ${isDoneTable ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'cursor-pointer hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
-                      >
-                        {col.label} {isArchived && '(Archived)'}
-                      </h3>
+                      <>
+                        <h3
+                          onClick={() => handleStartRename(col.id, col.label)}
+                          className={`text-sm font-semibold ${isDoneTable ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredTable ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'cursor-pointer hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
+                        >
+                          {col.label} {isArchived && '(Archived)'}
+                        </h3>
+                        {(teamFilter === 'my-work' || teamFilter === 'all') && (() => {
+                          const teamIds = [...new Set(colTasks.map((t) => t.teamId))];
+                          const teamNames = teamIds
+                            .map((id) => allTeams.find((t) => t.id === id)?.name)
+                            .filter(Boolean);
+                          return teamNames.length > 0 ? (
+                            <span className="text-[11px] font-normal text-zinc-400 dark:text-zinc-500">
+                              {teamNames.join(', ')}
+                            </span>
+                          ) : null;
+                        })()}
+                      </>
                     )}
                     <button
                       onClick={() => toggleSection(col.id)}
@@ -1380,6 +1500,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           onDelete={() => handleDeleteColumn(col.id)}
                           isArchived={!!isArchived}
                           isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
+                          isArchiveCategory={statusCategories[teamFilter]?.[col.id] === 'ignored'}
+                          onToggleArchiveCategory={() => {
+                            const current = statusCategories[teamFilter]?.[col.id] || 'active';
+                            onSetStatusCategory(teamFilter, col.id, current === 'ignored' ? 'active' : 'ignored');
+                            setActiveColumnMenu(null);
+                          }}
                         />
                       </div>
                     )}
@@ -1393,7 +1519,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         {/* Added table-fixed and specific widths for alignment */}
                         <table className="w-full text-left text-sm border-collapse min-w-[1100px] table-fixed">
                           <thead
-                            className={`border-b ${isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
+                            className={`border-b ${isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : isIgnoredTable ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
                           >
                             <tr>
                               <th className="p-3 w-10">
@@ -1666,16 +1792,22 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                   })
                                                 }
                                                 placeholder="Set date"
-                                                renderTrigger={(onClick, value) => (
-                                                  <span
-                                                    onClick={onClick}
-                                                    className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
-                                                  >
-                                                    {value
-                                                      ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
-                                                      : 'Set date'}
-                                                  </span>
-                                                )}
+                                                renderTrigger={(onClick, value) => {
+                                                  const urgency = getDeadlineUrgency(value || undefined);
+                                                  return (
+                                                    <span
+                                                      onClick={onClick}
+                                                      className={`text-xs flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors ${value ? urgency.text : 'text-zinc-500'}`}
+                                                    >
+                                                      {value && urgency.dot && (
+                                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${urgency.dot}`} />
+                                                      )}
+                                                      {value
+                                                        ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
+                                                        : 'Set date'}
+                                                    </span>
+                                                  );
+                                                }}
                                               />
                                             </td>
                                           );
@@ -1704,19 +1836,75 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               />
                                             </td>
                                           );
+                                        case 'links':
+                                          return (
+                                            <td key={tc.key} className="p-3">
+                                              {task.links && task.links.length > 0 ? (
+                                                <div className="flex items-center gap-1">
+                                                  {task.links.slice(0, 3).map((link, i) => {
+                                                    let hostname = '';
+                                                    try {
+                                                      hostname = new URL(link.url).hostname;
+                                                    } catch {
+                                                      /* ignore */
+                                                    }
+                                                    return (
+                                                      <a
+                                                        key={i}
+                                                        href={link.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        title={link.title || link.url}
+                                                        className="flex-shrink-0 w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center justify-center transition-colors"
+                                                      >
+                                                        <img
+                                                          src={hostname ? getFaviconUrl(link.url, hostname) : undefined}
+                                                          alt=""
+                                                          className="w-3.5 h-3.5"
+                                                          onError={(e) => {
+                                                            const img = e.target as HTMLImageElement;
+                                                            img.style.display = 'none';
+                                                            img.parentElement!.innerHTML =
+                                                              '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+                                                          }}
+                                                        />
+                                                      </a>
+                                                    );
+                                                  })}
+                                                  {task.links.length > 3 && (
+                                                    <span className="text-[11px] text-zinc-400 flex-shrink-0">
+                                                      +{task.links.length - 3}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
+                                              )}
+                                            </td>
+                                          );
                                         case 'placements':
                                           return (
-                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                              <MultiSelect
-                                                icon={MapPin}
-                                                label=""
-                                                options={allPlacements.map((p) => ({ value: p, label: p }))}
-                                                selected={task.placements}
-                                                onChange={(tags) => onUpdateTask({ ...task, placements: tags })}
-                                                placeholder="—"
-                                                compact
-                                                maxVisible={3}
-                                              />
+                                            <td key={tc.key} className="p-3">
+                                              {task.placements.length > 0 ? (
+                                                <div className="flex flex-col gap-1">
+                                                  {task.placements.slice(0, 3).map((p, i) => (
+                                                    <span
+                                                      key={`${p}-${i}`}
+                                                      className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded w-fit"
+                                                    >
+                                                      {p}
+                                                    </span>
+                                                  ))}
+                                                  {task.placements.length > 3 && (
+                                                    <span className="text-[11px] text-zinc-400">
+                                                      +{task.placements.length - 3}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
+                                              )}
                                             </td>
                                           );
                                         default: {
