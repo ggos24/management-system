@@ -204,7 +204,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                       e.stopPropagation();
                       openColorPicker(tag, e.currentTarget);
                     }}
-                    className="p-1 rounded opacity-0 group-hover/tag:opacity-100 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-opacity flex-shrink-0"
+                    className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-700 flex-shrink-0"
                   >
                     <div
                       className="w-3 h-3 rounded-full border border-zinc-300 dark:border-zinc-600"
@@ -218,7 +218,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                       e.stopPropagation();
                       onDeleteTag(tag);
                     }}
-                    className="p-1 rounded opacity-0 group-hover/tag:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-all flex-shrink-0"
+                    className="p-1 rounded hover:bg-red-50 dark:hover:bg-red-900/30 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 flex-shrink-0"
                     title="Delete tag"
                   >
                     <Trash2 size={12} />
