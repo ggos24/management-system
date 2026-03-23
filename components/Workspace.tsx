@@ -50,13 +50,34 @@ import { Button, Badge, Divider } from './ui';
 
 // Known service favicon URLs (Google's favicon API returns generic icons for subdomains)
 const KNOWN_FAVICONS: { match: (hostname: string, pathname: string) => boolean; icon: string }[] = [
-  { match: (h, p) => h === 'docs.google.com' && p.startsWith('/document'), icon: 'https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico' },
-  { match: (h, p) => h === 'docs.google.com' && p.startsWith('/spreadsheets'), icon: 'https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico' },
-  { match: (h, p) => h === 'docs.google.com' && p.startsWith('/presentation'), icon: 'https://ssl.gstatic.com/docs/presentations/images/favicon5.ico' },
-  { match: (h, p) => h === 'docs.google.com' && p.startsWith('/forms'), icon: 'https://ssl.gstatic.com/docs/spreadsheets/forms/favicon_qp2.png' },
-  { match: (h) => h === 'drive.google.com', icon: 'https://ssl.gstatic.com/images/branding/product/1x/drive_2020q4_32dp.png' },
-  { match: (h) => h === 'calendar.google.com', icon: 'https://calendar.google.com/googlecalendar/images/favicons_2020q4/calendar_31.ico' },
-  { match: (h) => h === 'meet.google.com', icon: 'https://fonts.gstatic.com/s/i/productlogos/meet_2020q4/v1/web-16dp/logo_meet_2020q4_color_1x_web_16dp.png' },
+  {
+    match: (h, p) => h === 'docs.google.com' && p.startsWith('/document'),
+    icon: 'https://ssl.gstatic.com/docs/documents/images/kix-favicon7.ico',
+  },
+  {
+    match: (h, p) => h === 'docs.google.com' && p.startsWith('/spreadsheets'),
+    icon: 'https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico',
+  },
+  {
+    match: (h, p) => h === 'docs.google.com' && p.startsWith('/presentation'),
+    icon: 'https://ssl.gstatic.com/docs/presentations/images/favicon5.ico',
+  },
+  {
+    match: (h, p) => h === 'docs.google.com' && p.startsWith('/forms'),
+    icon: 'https://ssl.gstatic.com/docs/spreadsheets/forms/favicon_qp2.png',
+  },
+  {
+    match: (h) => h === 'drive.google.com',
+    icon: 'https://ssl.gstatic.com/images/branding/product/1x/drive_2020q4_32dp.png',
+  },
+  {
+    match: (h) => h === 'calendar.google.com',
+    icon: 'https://calendar.google.com/googlecalendar/images/favicons_2020q4/calendar_31.ico',
+  },
+  {
+    match: (h) => h === 'meet.google.com',
+    icon: 'https://fonts.gstatic.com/s/i/productlogos/meet_2020q4/v1/web-16dp/logo_meet_2020q4_color_1x_web_16dp.png',
+  },
   { match: (h) => h === 'sheets.google.com', icon: 'https://ssl.gstatic.com/docs/spreadsheets/favicon3.ico' },
   { match: (h) => h === 'slides.google.com', icon: 'https://ssl.gstatic.com/docs/presentations/images/favicon5.ico' },
 ];
@@ -66,7 +87,9 @@ const getFaviconUrl = (url: string, hostname: string): string => {
     const parsed = new URL(url);
     const match = KNOWN_FAVICONS.find((f) => f.match(parsed.hostname, parsed.pathname));
     if (match) return match.icon;
-  } catch { /* ignore */ }
+  } catch {
+    /* ignore */
+  }
   return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
 };
 
@@ -1154,18 +1177,19 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               >
                                 {col.label} {isArchived && '(Archived)'}
                               </span>
-                              {(teamFilter === 'my-work' || teamFilter === 'all') && (() => {
-                                const sectionTasks = filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id);
-                                const teamIds = [...new Set(sectionTasks.map((t) => t.teamId))];
-                                const teamNames = teamIds
-                                  .map((id) => allTeams.find((t) => t.id === id)?.name)
-                                  .filter(Boolean);
-                                return teamNames.length > 0 ? (
-                                  <span className="text-[10px] font-normal text-zinc-400 dark:text-zinc-500">
-                                    {teamNames.join(', ')}
-                                  </span>
-                                ) : null;
-                              })()}
+                              {(teamFilter === 'my-work' || teamFilter === 'all') &&
+                                (() => {
+                                  const sectionTasks = filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id);
+                                  const teamIds = [...new Set(sectionTasks.map((t) => t.teamId))];
+                                  const teamNames = teamIds
+                                    .map((id) => allTeams.find((t) => t.id === id)?.name)
+                                    .filter(Boolean);
+                                  return teamNames.length > 0 ? (
+                                    <span className="text-[10px] font-normal text-zinc-400 dark:text-zinc-500">
+                                      {teamNames.join(', ')}
+                                    </span>
+                                  ) : null;
+                                })()}
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
@@ -1237,11 +1261,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               isArchiveCategory={statusCategories[teamFilter]?.[col.id] === 'ignored'}
                               onToggleArchiveCategory={() => {
                                 const current = statusCategories[teamFilter]?.[col.id] || 'active';
-                                onSetStatusCategory(
-                                  teamFilter,
-                                  col.id,
-                                  current === 'ignored' ? 'active' : 'ignored',
-                                );
+                                onSetStatusCategory(teamFilter, col.id, current === 'ignored' ? 'active' : 'ignored');
                                 setActiveColumnMenu(null);
                               }}
                             />
@@ -1438,17 +1458,18 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         >
                           {col.label} {isArchived && '(Archived)'}
                         </h3>
-                        {(teamFilter === 'my-work' || teamFilter === 'all') && (() => {
-                          const teamIds = [...new Set(colTasks.map((t) => t.teamId))];
-                          const teamNames = teamIds
-                            .map((id) => allTeams.find((t) => t.id === id)?.name)
-                            .filter(Boolean);
-                          return teamNames.length > 0 ? (
-                            <span className="text-[11px] font-normal text-zinc-400 dark:text-zinc-500">
-                              {teamNames.join(', ')}
-                            </span>
-                          ) : null;
-                        })()}
+                        {(teamFilter === 'my-work' || teamFilter === 'all') &&
+                          (() => {
+                            const teamIds = [...new Set(colTasks.map((t) => t.teamId))];
+                            const teamNames = teamIds
+                              .map((id) => allTeams.find((t) => t.id === id)?.name)
+                              .filter(Boolean);
+                            return teamNames.length > 0 ? (
+                              <span className="text-[11px] font-normal text-zinc-400 dark:text-zinc-500">
+                                {teamNames.join(', ')}
+                              </span>
+                            ) : null;
+                          })()}
                       </>
                     )}
                     <button
@@ -1800,7 +1821,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                       className={`text-xs flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors ${value ? urgency.text : 'text-zinc-500'}`}
                                                     >
                                                       {value && urgency.dot && (
-                                                        <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${urgency.dot}`} />
+                                                        <span
+                                                          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${urgency.dot}`}
+                                                        />
                                                       )}
                                                       {value
                                                         ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
@@ -1973,6 +1996,26 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                           ...prop,
                                                           optionColors: { ...(prop.optionColors || {}), [name]: color },
                                                         });
+                                                      }
+                                                    }}
+                                                    onDeleteTag={(name) => {
+                                                      if (onUpdateProperty) {
+                                                        const newColors = { ...(prop.optionColors || {}) };
+                                                        delete newColors[name];
+                                                        onUpdateProperty({
+                                                          ...prop,
+                                                          options: (prop.options || []).filter((o) => o !== name),
+                                                          optionColors: newColors,
+                                                        });
+                                                        if (Array.isArray(val) && val.includes(name)) {
+                                                          onUpdateTask({
+                                                            ...task,
+                                                            customFieldValues: {
+                                                              ...task.customFieldValues,
+                                                              [propId]: val.filter((t: string) => t !== name),
+                                                            },
+                                                          });
+                                                        }
                                                       }
                                                     }}
                                                     compact

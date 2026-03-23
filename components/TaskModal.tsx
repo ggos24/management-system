@@ -964,6 +964,23 @@ export const TaskModal: React.FC = () => {
                             optionColors: { ...(prop.optionColors || {}), [name]: color },
                           });
                         }}
+                        onDeleteTag={(name) => {
+                          const newColors = { ...(prop.optionColors || {}) };
+                          delete newColors[name];
+                          updateProperty(propsTeamId, {
+                            ...prop,
+                            options: (prop.options || []).filter((o) => o !== name),
+                            optionColors: newColors,
+                          });
+                          const val = fieldValues[prop.id];
+                          const currentTags = Array.isArray(val) ? val : val ? [val] : [];
+                          if (currentTags.includes(name)) {
+                            handleFieldChange(
+                              prop.id,
+                              currentTags.filter((t: string) => t !== name),
+                            );
+                          }
+                        }}
                         placeholder="Select tags..."
                       />
                     )}

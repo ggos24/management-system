@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, Plus, ChevronDown } from 'lucide-react';
+import { X, Check, Plus, ChevronDown, Trash2 } from 'lucide-react';
 
 const TAG_COLORS = [
   { name: 'Gray', bg: 'bg-zinc-100 dark:bg-zinc-700', text: 'text-zinc-700 dark:text-zinc-200', hex: '#71717a' },
@@ -52,6 +52,7 @@ interface TagSelectProps {
   onChange: (selected: string[]) => void;
   onAddTag?: (name: string, color: string) => void;
   onUpdateTagColor?: (name: string, color: string) => void;
+  onDeleteTag?: (name: string) => void;
   placeholder?: string;
   compact?: boolean;
   maxVisible?: number;
@@ -69,6 +70,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
   onChange,
   onAddTag,
   onUpdateTagColor,
+  onDeleteTag,
   placeholder = 'Select tags...',
   compact,
   maxVisible,
@@ -208,6 +210,18 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                       className="w-3 h-3 rounded-full border border-zinc-300 dark:border-zinc-600"
                       style={{ backgroundColor: tagColors[tag] || TAG_COLORS[0].hex }}
                     />
+                  </button>
+                )}
+                {onDeleteTag && (
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onDeleteTag(tag);
+                    }}
+                    className="p-1 rounded opacity-0 group-hover/tag:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-all flex-shrink-0"
+                    title="Delete tag"
+                  >
+                    <Trash2 size={12} />
                   </button>
                 )}
               </div>
