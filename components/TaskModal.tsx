@@ -624,6 +624,13 @@ export const TaskModal: React.FC = () => {
                   addType(taskModalData.teamId || 'default', val);
                   setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } });
                 }}
+                renderValue={(val) =>
+                  val ? (
+                    <span className="text-xs font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-2 py-0.5 rounded">
+                      {val}
+                    </span>
+                  ) : null
+                }
               />
               <MultiSelect
                 icon={UserIcon}

@@ -1,6 +1,19 @@
 import React, { useState, useMemo } from 'react';
 import { Member, Absence, Team, Shift, UserRole } from '../types';
-import { ChevronLeft, ChevronRight, Calendar, Trash2, ChevronDown, User, Filter, Clock, XCircle, Check, X, AlertCircle } from 'lucide-react';
+import {
+  ChevronLeft,
+  ChevronRight,
+  Calendar,
+  Trash2,
+  ChevronDown,
+  User,
+  Filter,
+  Clock,
+  XCircle,
+  Check,
+  X,
+  AlertCircle,
+} from 'lucide-react';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
 import { SimpleDatePicker } from './SimpleDatePicker';
@@ -156,7 +169,7 @@ const Schedule: React.FC<ScheduleProps> = ({
 
     // Always pre-populate shift state
     if (existingShift) {
-      const allDay = existingShift.startTime === '00:00' && existingShift.endTime === '23:59';
+      const allDay = existingShift.startTime.startsWith('00:00') && existingShift.endTime.startsWith('23:59');
       setIsAllDay(allDay);
       setStartTime(allDay ? '09:00' : existingShift.startTime);
       setEndTime(allDay ? '17:00' : existingShift.endTime);
@@ -288,10 +301,7 @@ const Schedule: React.FC<ScheduleProps> = ({
     return groups;
   }, [teams, members, filterPerson, filterAbsenceType, absences, currentDate]);
 
-  const pendingAbsences = useMemo(
-    () => absences.filter((a) => a.status === 'pending'),
-    [absences],
-  );
+  const pendingAbsences = useMemo(() => absences.filter((a) => a.status === 'pending'), [absences]);
 
   const decidedAbsences = useMemo(
     () => absences.filter((a) => a.status === 'approved' || a.status === 'declined'),
@@ -389,178 +399,180 @@ const Schedule: React.FC<ScheduleProps> = ({
           />
         </div>
       ) : (
-      <div className="bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 flex-1 flex flex-col overflow-hidden shadow-sm relative">
-        <div className="flex-1 overflow-auto custom-scrollbar relative">
-          <div style={{ width: 'max-content', minWidth: '100%' }}>
-            <div className="flex sticky top-0 z-30 bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 h-14">
-              <div className="sticky left-0 z-40 w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 p-3 text-[10px] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
-                Team Member
-              </div>
-              {days.map((day) => {
-                const isToday =
-                  day === new Date().getDate() &&
-                  currentDate.getMonth() === new Date().getMonth() &&
-                  currentDate.getFullYear() === new Date().getFullYear();
-                return (
-                  <div
-                    key={day}
-                    className={`w-10 flex-shrink-0 text-center flex flex-col items-center justify-center border-r border-zinc-100 dark:border-zinc-800 text-[10px] text-zinc-400 font-medium last:border-r-0 select-none ${isToday ? 'bg-red-50/50 dark:bg-red-900/20' : ''}`}
-                  >
-                    <span
-                      className={`text-zinc-900 dark:text-white font-bold ${isToday ? 'text-red-600 dark:text-red-400' : ''}`}
-                    >
-                      {day}
-                    </span>
-                    <span className={`text-[10px] uppercase ${isToday ? 'text-red-500 dark:text-red-400' : ''}`}>
-                      {getDayShortName(day)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-
-            {membersByTeam.map((group) => (
-              <div key={group.team.id}>
-                <div className="flex border-b border-zinc-200 dark:border-zinc-800">
-                  <div
-                    className="sticky left-0 z-20 w-64 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur-sm border-r border-zinc-200 dark:border-zinc-800 px-3 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-zinc-200/95 dark:hover:bg-zinc-700/95 transition-colors shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]"
-                    onClick={() => toggleTeamCollapse(group.team.id)}
-                  >
-                    <ChevronDown
-                      size={14}
-                      className={`text-zinc-500 transition-transform duration-200 ${collapsedTeams[group.team.id] ? '-rotate-90' : ''}`}
-                    />
-                    <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider">
-                      {group.team.name}
-                    </span>
-                  </div>
-                  <div className="flex-1 min-w-0 bg-zinc-50/50 dark:bg-zinc-900/50"></div>
+        <div className="bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 flex-1 flex flex-col overflow-hidden shadow-sm relative">
+          <div className="flex-1 overflow-auto custom-scrollbar relative">
+            <div style={{ width: 'max-content', minWidth: '100%' }}>
+              <div className="flex sticky top-0 z-30 bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 h-14">
+                <div className="sticky left-0 z-40 w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 p-3 text-[10px] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
+                  Team Member
                 </div>
-
-                {!collapsedTeams[group.team.id] &&
-                  group.members.map((member) => (
+                {days.map((day) => {
+                  const isToday =
+                    day === new Date().getDate() &&
+                    currentDate.getMonth() === new Date().getMonth() &&
+                    currentDate.getFullYear() === new Date().getFullYear();
+                  return (
                     <div
-                      key={member.id}
-                      className="flex border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors h-14"
+                      key={day}
+                      className={`w-10 flex-shrink-0 text-center flex flex-col items-center justify-center border-r border-zinc-100 dark:border-zinc-800 text-[10px] text-zinc-400 font-medium last:border-r-0 select-none ${isToday ? 'bg-red-50/50 dark:bg-red-900/20' : ''}`}
                     >
-                      <div
-                        className="sticky left-0 z-10 w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 p-2 flex items-center gap-3 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                        onClick={() => setSelectedMemberStats(member)}
+                      <span
+                        className={`text-zinc-900 dark:text-white font-bold ${isToday ? 'text-red-600 dark:text-red-400' : ''}`}
                       >
-                        <Avatar src={member.avatar} size="md" />
-                        <div className="min-w-0">
-                          <p className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate group-hover:underline">
-                            {member.name}
-                          </p>
-                          <p className="text-[11px] text-zinc-400 truncate">{member.jobTitle}</p>
-                        </div>
-                      </div>
-                      {days.map((day) => {
-                        const absence = getAbsenceForDay(member.id, day);
-                        const shift = getShiftForDay(member.id, day);
-                        const isToday =
-                          day === new Date().getDate() &&
-                          currentDate.getMonth() === new Date().getMonth() &&
-                          currentDate.getFullYear() === new Date().getFullYear();
-
-                        let content = null;
-                        let cellClass = 'hover:bg-zinc-100 dark:hover:bg-zinc-800';
-
-                        const inSelection =
-                          dragStart &&
-                          dragStart.memberId === member.id &&
-                          day >= Math.min(dragStart.day, dragEnd?.day || day) &&
-                          day <= Math.max(dragStart.day, dragEnd?.day || day);
-
-                        if (absence) {
-                          let bgClass = '';
-                          let text = '';
-                          switch (absence.type) {
-                            case 'holiday':
-                              bgClass = 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300';
-                              text = 'HOLS';
-                              break;
-                            case 'sick':
-                              bgClass = 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400';
-                              text = 'SICK';
-                              break;
-                            case 'business_trip':
-                              bgClass = 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400';
-                              text = 'TRIP';
-                              break;
-                            case 'day_off':
-                              bgClass = 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300';
-                              text = 'OFF';
-                              break;
-                            default:
-                              bgClass = 'bg-zinc-100';
-                              text = 'OUT';
-                          }
-
-                          // Visual status indicators
-                          let statusClass = '';
-                          let statusIcon: React.ReactNode = null;
-                          if (absence.status === 'pending') {
-                            statusClass = 'opacity-60 border-dashed border-2 border-current';
-                            statusIcon = <Clock size={8} className="absolute top-0.5 right-0.5" />;
-                          } else if (absence.status === 'declined') {
-                            statusClass = 'opacity-30 line-through';
-                            statusIcon = <XCircle size={8} className="absolute top-0.5 right-0.5" />;
-                          }
-
-                          content = (
-                            <div
-                              className={`w-full h-full flex items-center justify-center ${bgClass} ${statusClass} text-[10px] font-semibold tracking-tight select-none relative`}
-                            >
-                              {text}
-                              {statusIcon}
-                            </div>
-                          );
-                          cellClass = '';
-                        } else if (shift) {
-                          const shiftAllDay = shift.startTime === '00:00' && shift.endTime === '23:59';
-                          content = (
-                            <div
-                              className={`flex flex-col items-center justify-center h-full w-full select-none ${isToday ? 'bg-red-50/20 dark:bg-red-900/10' : 'bg-zinc-50 dark:bg-zinc-900'}`}
-                            >
-                              {shiftAllDay ? (
-                                <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
-                                  All day
-                                </span>
-                              ) : (
-                              <>
-                              <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
-                                {shift.startTime.slice(0, 5)}
-                              </span>
-                              <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-0.5"></div>
-                              <span className="text-[10px] text-zinc-500 leading-none">
-                                {shift.endTime.slice(0, 5)}
-                              </span>
-                              </>
-                              )}
-                            </div>
-                          );
-                        }
-
-                        return (
-                          <div
-                            key={day}
-                            onMouseDown={() => handleMouseDown(member, day)}
-                            onMouseEnter={() => handleMouseEnter(member, day)}
-                            onMouseUp={() => handleMouseUp(member, day)}
-                            className={`w-10 flex-shrink-0 border-r border-zinc-100 dark:border-zinc-800 relative cursor-pointer last:border-r-0 transition-colors ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : ''}`}
-                          >
-                            {content}
-                          </div>
-                        );
-                      })}
+                        {day}
+                      </span>
+                      <span className={`text-[10px] uppercase ${isToday ? 'text-red-500 dark:text-red-400' : ''}`}>
+                        {getDayShortName(day)}
+                      </span>
                     </div>
-                  ))}
+                  );
+                })}
               </div>
-            ))}
+
+              {membersByTeam.map((group) => (
+                <div key={group.team.id}>
+                  <div className="flex border-b border-zinc-200 dark:border-zinc-800">
+                    <div
+                      className="sticky left-0 z-20 w-64 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur-sm border-r border-zinc-200 dark:border-zinc-800 px-3 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-zinc-200/95 dark:hover:bg-zinc-700/95 transition-colors shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]"
+                      onClick={() => toggleTeamCollapse(group.team.id)}
+                    >
+                      <ChevronDown
+                        size={14}
+                        className={`text-zinc-500 transition-transform duration-200 ${collapsedTeams[group.team.id] ? '-rotate-90' : ''}`}
+                      />
+                      <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider">
+                        {group.team.name}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0 bg-zinc-50/50 dark:bg-zinc-900/50"></div>
+                  </div>
+
+                  {!collapsedTeams[group.team.id] &&
+                    group.members.map((member) => (
+                      <div
+                        key={member.id}
+                        className="flex border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors h-14"
+                      >
+                        <div
+                          className="sticky left-0 z-10 w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 p-2 flex items-center gap-3 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800"
+                          onClick={() => setSelectedMemberStats(member)}
+                        >
+                          <Avatar src={member.avatar} size="md" />
+                          <div className="min-w-0">
+                            <p className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate group-hover:underline">
+                              {member.name}
+                            </p>
+                            <p className="text-[11px] text-zinc-400 truncate">{member.jobTitle}</p>
+                          </div>
+                        </div>
+                        {days.map((day) => {
+                          const absence = getAbsenceForDay(member.id, day);
+                          const shift = getShiftForDay(member.id, day);
+                          const isToday =
+                            day === new Date().getDate() &&
+                            currentDate.getMonth() === new Date().getMonth() &&
+                            currentDate.getFullYear() === new Date().getFullYear();
+
+                          let content = null;
+                          let cellClass = 'hover:bg-zinc-100 dark:hover:bg-zinc-800';
+
+                          const inSelection =
+                            dragStart &&
+                            dragStart.memberId === member.id &&
+                            day >= Math.min(dragStart.day, dragEnd?.day || day) &&
+                            day <= Math.max(dragStart.day, dragEnd?.day || day);
+
+                          if (absence) {
+                            let bgClass = '';
+                            let text = '';
+                            switch (absence.type) {
+                              case 'holiday':
+                                bgClass =
+                                  'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300';
+                                text = 'HOLS';
+                                break;
+                              case 'sick':
+                                bgClass = 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400';
+                                text = 'SICK';
+                                break;
+                              case 'business_trip':
+                                bgClass = 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400';
+                                text = 'TRIP';
+                                break;
+                              case 'day_off':
+                                bgClass = 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300';
+                                text = 'OFF';
+                                break;
+                              default:
+                                bgClass = 'bg-zinc-100';
+                                text = 'OUT';
+                            }
+
+                            // Visual status indicators
+                            let statusClass = '';
+                            let statusIcon: React.ReactNode = null;
+                            if (absence.status === 'pending') {
+                              statusClass = 'opacity-60 border-dashed border-2 border-current';
+                              statusIcon = <Clock size={8} className="absolute top-0.5 right-0.5" />;
+                            } else if (absence.status === 'declined') {
+                              statusClass = 'opacity-30 line-through';
+                              statusIcon = <XCircle size={8} className="absolute top-0.5 right-0.5" />;
+                            }
+
+                            content = (
+                              <div
+                                className={`w-full h-full flex items-center justify-center ${bgClass} ${statusClass} text-[10px] font-semibold tracking-tight select-none relative`}
+                              >
+                                {text}
+                                {statusIcon}
+                              </div>
+                            );
+                            cellClass = '';
+                          } else if (shift) {
+                            const shiftAllDay =
+                              shift.startTime.startsWith('00:00') && shift.endTime.startsWith('23:59');
+                            content = (
+                              <div
+                                className={`flex flex-col items-center justify-center h-full w-full select-none ${isToday ? 'bg-red-50/20 dark:bg-red-900/10' : 'bg-zinc-100 dark:bg-zinc-800'}`}
+                              >
+                                {shiftAllDay ? (
+                                  <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
+                                    All day
+                                  </span>
+                                ) : (
+                                  <>
+                                    <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
+                                      {shift.startTime.slice(0, 5)}
+                                    </span>
+                                    <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-0.5"></div>
+                                    <span className="text-[10px] text-zinc-500 leading-none">
+                                      {shift.endTime.slice(0, 5)}
+                                    </span>
+                                  </>
+                                )}
+                              </div>
+                            );
+                          }
+
+                          return (
+                            <div
+                              key={day}
+                              onMouseDown={() => handleMouseDown(member, day)}
+                              onMouseEnter={() => handleMouseEnter(member, day)}
+                              onMouseUp={() => handleMouseUp(member, day)}
+                              className={`w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : ''}`}
+                            >
+                              {content}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ))}
+                </div>
+              ))}
+            </div>
           </div>
         </div>
-      </div>
       )}
 
       <Modal isOpen={!!selectedMemberStats} onClose={() => setSelectedMemberStats(null)} title="" size="md">
@@ -627,7 +639,8 @@ const Schedule: React.FC<ScheduleProps> = ({
           <div className="flex items-center gap-3 w-full">
             {(() => {
               const existingAbsence = selectedCell ? getAbsenceForDay(selectedCell.member.id, selectedCell.day) : null;
-              const isOwnPending = existingAbsence && existingAbsence.memberId === currentUserId && existingAbsence.status === 'pending';
+              const isOwnPending =
+                existingAbsence && existingAbsence.memberId === currentUserId && existingAbsence.status === 'pending';
               const isReadOnly = existingAbsence && existingAbsence.status !== 'pending' && !isSuperAdmin(userRole);
               return (
                 <>
@@ -667,206 +680,222 @@ const Schedule: React.FC<ScheduleProps> = ({
           </div>
         }
       >
-        {selectedCell && (() => {
-          const existingAbsence = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
-          const isSA = isSuperAdmin(userRole);
-          const decider = existingAbsence?.decidedBy ? members.find((m) => m.id === existingAbsence.decidedBy) : null;
-          const holidayStats = existingAbsence?.type === 'holiday'
-            ? calculateAbsenceStats(selectedCell.member.id, absences)
-            : null;
+        {selectedCell &&
+          (() => {
+            const existingAbsence = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
+            const isSA = isSuperAdmin(userRole);
+            const decider = existingAbsence?.decidedBy ? members.find((m) => m.id === existingAbsence.decidedBy) : null;
+            const holidayStats =
+              existingAbsence?.type === 'holiday' ? calculateAbsenceStats(selectedCell.member.id, absences) : null;
 
-          return (
-            <div>
-              <p className="text-xs text-zinc-500 mb-4 font-medium">{selectedCell.member.name}</p>
+            return (
+              <div>
+                <p className="text-xs text-zinc-500 mb-4 font-medium">{selectedCell.member.name}</p>
 
-              {/* Status banner for existing absences */}
-              {existingAbsence && existingAbsence.status === 'pending' && (
-                <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Clock size={14} className="text-amber-500" />
-                      <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">Pending Approval</span>
+                {/* Status banner for existing absences */}
+                {existingAbsence && existingAbsence.status === 'pending' && (
+                  <div className="mb-4 p-3 rounded-lg bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800/40">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Clock size={14} className="text-amber-500" />
+                        <span className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                          Pending Approval
+                        </span>
+                      </div>
+                      {holidayStats && (
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                          {24 - holidayStats.holidayDays} / 24 holiday days left
+                        </span>
+                      )}
                     </div>
-                    {holidayStats && (
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
-                        {24 - holidayStats.holidayDays} / 24 holiday days left
-                      </span>
-                    )}
-                  </div>
-                  {isSA && !modalDeclineMode && (
-                    <div className="flex gap-2 mt-2.5">
-                      <button
-                        onClick={() => {
-                          onApproveAbsence(existingAbsence.id);
-                          setSelectedCell(null);
-                        }}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 rounded-md transition-colors"
-                      >
-                        <Check size={14} /> Approve
-                      </button>
-                      <button
-                        onClick={() => setModalDeclineMode(true)}
-                        className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 rounded-md transition-colors"
-                      >
-                        <X size={14} /> Decline
-                      </button>
-                    </div>
-                  )}
-                  {isSA && modalDeclineMode && (
-                    <div className="mt-2.5 space-y-2">
-                      <Input
-                        placeholder="Reason for declining (optional)..."
-                        value={modalDeclineReason}
-                        onChange={(e) => setModalDeclineReason(e.target.value)}
-                        autoFocus
-                        className="!py-1.5 !text-xs"
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
-                            onDeclineAbsence(existingAbsence.id, modalDeclineReason || undefined);
-                            setSelectedCell(null);
-                          }
-                          if (e.key === 'Escape') setModalDeclineMode(false);
-                        }}
-                      />
-                      <div className="flex gap-2">
+                    {isSA && !modalDeclineMode && (
+                      <div className="flex gap-2 mt-2.5">
                         <button
                           onClick={() => {
-                            onDeclineAbsence(existingAbsence.id, modalDeclineReason || undefined);
+                            onApproveAbsence(existingAbsence.id);
                             setSelectedCell(null);
                           }}
-                          className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 rounded-md transition-colors"
                         >
-                          Confirm Decline
+                          <Check size={14} /> Approve
                         </button>
                         <button
-                          onClick={() => { setModalDeclineMode(false); setModalDeclineReason(''); }}
-                          className="px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 transition-colors"
+                          onClick={() => setModalDeclineMode(true)}
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 rounded-md transition-colors"
                         >
-                          Back
+                          <X size={14} /> Decline
                         </button>
                       </div>
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {existingAbsence && existingAbsence.status === 'approved' && (
-                <div className="mb-4 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Check size={14} className="text-emerald-500" />
-                      <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Approved</span>
-                    </div>
-                    {decider && (
-                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
-                        by {decider.name}{existingAbsence.decidedAt ? ` on ${new Date(existingAbsence.decidedAt).toLocaleDateString()}` : ''}
-                      </span>
                     )}
-                  </div>
-                </div>
-              )}
-
-              {existingAbsence && existingAbsence.status === 'declined' && (
-                <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <AlertCircle size={14} className="text-red-500" />
-                      <span className="text-xs font-semibold text-red-700 dark:text-red-300">Declined</span>
-                    </div>
-                    {decider && (
-                      <span className="text-[10px] text-red-600 dark:text-red-400">
-                        by {decider.name}{existingAbsence.decidedAt ? ` on ${new Date(existingAbsence.decidedAt).toLocaleDateString()}` : ''}
-                      </span>
-                    )}
-                  </div>
-                  {existingAbsence.declineReason && (
-                    <p className="text-xs text-red-600 dark:text-red-400 mt-1.5 italic">
-                      &ldquo;{existingAbsence.declineReason}&rdquo;
-                    </p>
-                  )}
-                </div>
-              )}
-
-              <div className="space-y-4">
-                <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded mb-4">
-                  <button
-                    onClick={() => setEditType('shift')}
-                    className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'shift' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
-                  >
-                    Shift
-                  </button>
-                  <button
-                    onClick={() => setEditType('absence')}
-                    className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'absence' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
-                  >
-                    Absence
-                  </button>
-                </div>
-
-                <div className="grid grid-cols-2 gap-3">
-                  <div>
-                    <Label className="mb-1 block">From</Label>
-                    <SimpleDatePicker value={rangeStartDate} onChange={setRangeStartDate} placeholder="Select Date" />
-                  </div>
-                  <div>
-                    <Label className="mb-1 block">To</Label>
-                    <SimpleDatePicker value={rangeEndDate} onChange={setRangeEndDate} placeholder="Select Date" />
-                  </div>
-                </div>
-
-                {editType === 'absence' ? (
-                  <div>
-                    <CustomSelect
-                      label="Absence Type"
-                      options={[
-                        { value: 'holiday', label: 'Holiday' },
-                        { value: 'sick', label: 'Sick Leave' },
-                        { value: 'business_trip', label: 'Business Trip' },
-                        { value: 'day_off', label: 'Day Off' },
-                      ]}
-                      value={absenceType}
-                      onChange={(v) => setAbsenceType(v as any)}
-                    />
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <button
-                        type="button"
-                        role="switch"
-                        aria-checked={isAllDay}
-                        onClick={() => setIsAllDay(!isAllDay)}
-                        className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${isAllDay ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-600'}`}
-                      >
-                        <span
-                          className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${isAllDay ? 'translate-x-4' : 'translate-x-0'}`}
+                    {isSA && modalDeclineMode && (
+                      <div className="mt-2.5 space-y-2">
+                        <Input
+                          placeholder="Reason for declining (optional)..."
+                          value={modalDeclineReason}
+                          onChange={(e) => setModalDeclineReason(e.target.value)}
+                          autoFocus
+                          className="!py-1.5 !text-xs"
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              onDeclineAbsence(existingAbsence.id, modalDeclineReason || undefined);
+                              setSelectedCell(null);
+                            }
+                            if (e.key === 'Escape') setModalDeclineMode(false);
+                          }}
                         />
-                      </button>
-                      <span className="text-sm text-zinc-700 dark:text-zinc-300">All day</span>
-                    </label>
-                    {!isAllDay && (
-                      <div className="grid grid-cols-2 gap-3">
-                        <div>
-                          <Label className="mb-1 block">Start Time</Label>
-                          <Input
-                            type="time"
-                            value={startTime}
-                            onChange={(e) => setStartTime(e.target.value)}
-                            className="p-2"
-                          />
-                        </div>
-                        <div>
-                          <Label className="mb-1 block">End Time</Label>
-                          <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} className="p-2" />
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => {
+                              onDeclineAbsence(existingAbsence.id, modalDeclineReason || undefined);
+                              setSelectedCell(null);
+                            }}
+                            className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+                          >
+                            Confirm Decline
+                          </button>
+                          <button
+                            onClick={() => {
+                              setModalDeclineMode(false);
+                              setModalDeclineReason('');
+                            }}
+                            className="px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 transition-colors"
+                          >
+                            Back
+                          </button>
                         </div>
                       </div>
                     )}
                   </div>
                 )}
+
+                {existingAbsence && existingAbsence.status === 'approved' && (
+                  <div className="mb-4 p-3 rounded-lg bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800/40">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Check size={14} className="text-emerald-500" />
+                        <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Approved</span>
+                      </div>
+                      {decider && (
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                          by {decider.name}
+                          {existingAbsence.decidedAt
+                            ? ` on ${new Date(existingAbsence.decidedAt).toLocaleDateString()}`
+                            : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {existingAbsence && existingAbsence.status === 'declined' && (
+                  <div className="mb-4 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/40">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle size={14} className="text-red-500" />
+                        <span className="text-xs font-semibold text-red-700 dark:text-red-300">Declined</span>
+                      </div>
+                      {decider && (
+                        <span className="text-[10px] text-red-600 dark:text-red-400">
+                          by {decider.name}
+                          {existingAbsence.decidedAt
+                            ? ` on ${new Date(existingAbsence.decidedAt).toLocaleDateString()}`
+                            : ''}
+                        </span>
+                      )}
+                    </div>
+                    {existingAbsence.declineReason && (
+                      <p className="text-xs text-red-600 dark:text-red-400 mt-1.5 italic">
+                        &ldquo;{existingAbsence.declineReason}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                <div className="space-y-4">
+                  <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded mb-4">
+                    <button
+                      onClick={() => setEditType('shift')}
+                      className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'shift' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+                    >
+                      Shift
+                    </button>
+                    <button
+                      onClick={() => setEditType('absence')}
+                      className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'absence' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+                    >
+                      Absence
+                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <Label className="mb-1 block">From</Label>
+                      <SimpleDatePicker value={rangeStartDate} onChange={setRangeStartDate} placeholder="Select Date" />
+                    </div>
+                    <div>
+                      <Label className="mb-1 block">To</Label>
+                      <SimpleDatePicker value={rangeEndDate} onChange={setRangeEndDate} placeholder="Select Date" />
+                    </div>
+                  </div>
+
+                  {editType === 'absence' ? (
+                    <div>
+                      <CustomSelect
+                        label="Absence Type"
+                        options={[
+                          { value: 'holiday', label: 'Holiday' },
+                          { value: 'sick', label: 'Sick Leave' },
+                          { value: 'business_trip', label: 'Business Trip' },
+                          { value: 'day_off', label: 'Day Off' },
+                        ]}
+                        value={absenceType}
+                        onChange={(v) => setAbsenceType(v as any)}
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <label className="flex items-center gap-2 cursor-pointer select-none">
+                        <button
+                          type="button"
+                          role="switch"
+                          aria-checked={isAllDay}
+                          onClick={() => setIsAllDay(!isAllDay)}
+                          className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${isAllDay ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-600'}`}
+                        >
+                          <span
+                            className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${isAllDay ? 'translate-x-4' : 'translate-x-0'}`}
+                          />
+                        </button>
+                        <span className="text-sm text-zinc-700 dark:text-zinc-300">All day</span>
+                      </label>
+                      {!isAllDay && (
+                        <div className="grid grid-cols-2 gap-3">
+                          <div>
+                            <Label className="mb-1 block">Start Time</Label>
+                            <Input
+                              type="time"
+                              value={startTime}
+                              onChange={(e) => setStartTime(e.target.value)}
+                              className="p-2"
+                            />
+                          </div>
+                          <div>
+                            <Label className="mb-1 block">End Time</Label>
+                            <Input
+                              type="time"
+                              value={endTime}
+                              onChange={(e) => setEndTime(e.target.value)}
+                              className="p-2"
+                            />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          );
-        })()}
+            );
+          })()}
       </Modal>
     </div>
   );
