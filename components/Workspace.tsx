@@ -1133,7 +1133,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         size={16}
                         className={`text-zinc-400 transition-transform ${isTeamCollapsed ? '' : 'rotate-90'}`}
                       />
-                      <span className="text-sm font-semibold text-zinc-900 dark:text-white">{group.teamName}</span>
+                      <span className="text-base font-bold text-zinc-900 dark:text-white">{group.teamName}</span>
                       <span className="text-xs px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
                         {group.tasks.length}
                       </span>
@@ -1610,7 +1610,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         size={16}
                         className={`text-zinc-400 transition-transform ${isTeamCollapsed ? '' : 'rotate-90'}`}
                       />
-                      <span className="text-sm font-semibold text-zinc-900 dark:text-white">{group.teamName}</span>
+                      <span className="text-base font-bold text-zinc-900 dark:text-white">{group.teamName}</span>
                       <span className="text-xs px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
                         {group.tasks.length}
                       </span>
@@ -1823,12 +1823,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                             {task.links.slice(0, 3).map((link, i) => {
                                                               let hostname = '';
                                                               try {
-                                                                hostname = new URL(link.url).hostname.replace(
-                                                                  'www.',
-                                                                  '',
-                                                                );
+                                                                hostname = new URL(link.url).hostname;
                                                               } catch {
-                                                                hostname = link.url;
+                                                                /* ignore */
                                                               }
                                                               return (
                                                                 <a
@@ -1837,15 +1834,29 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                                   target="_blank"
                                                                   rel="noopener noreferrer"
                                                                   onClick={(e) => e.stopPropagation()}
-                                                                  className="text-[10px] font-medium text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 px-1.5 py-0.5 rounded hover:bg-blue-100 dark:hover:bg-blue-800/40 truncate max-w-[80px]"
-                                                                  title={link.url}
+                                                                  title={link.title || link.url}
+                                                                  className="flex-shrink-0 w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center justify-center transition-colors"
                                                                 >
-                                                                  {hostname}
+                                                                  <img
+                                                                    src={
+                                                                      hostname
+                                                                        ? getFaviconUrl(link.url, hostname)
+                                                                        : undefined
+                                                                    }
+                                                                    alt=""
+                                                                    className="w-3.5 h-3.5"
+                                                                    onError={(e) => {
+                                                                      const img = e.target as HTMLImageElement;
+                                                                      img.style.display = 'none';
+                                                                      img.parentElement!.innerHTML =
+                                                                        '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+                                                                    }}
+                                                                  />
                                                                 </a>
                                                               );
                                                             })}
                                                             {task.links.length > 3 && (
-                                                              <span className="text-[10px] text-zinc-400">
+                                                              <span className="text-[11px] text-zinc-400 flex-shrink-0">
                                                                 +{task.links.length - 3}
                                                               </span>
                                                             )}
