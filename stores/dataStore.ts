@@ -824,27 +824,39 @@ export const useDataStore = create<DataState>((set, get) => ({
   // Property actions
   addProperty: (teamId, property) => {
     const { teamProperties } = get();
+    const prev = teamProperties;
     set({ teamProperties: { ...teamProperties, [teamId]: [...(teamProperties[teamId] || []), property] } });
-    db.upsertCustomProperty(teamId, property).catch(() => toast.error('Failed to save property'));
+    db.upsertCustomProperty(teamId, property).catch(() => {
+      set({ teamProperties: prev });
+      toast.error('Failed to save property');
+    });
   },
 
   updateProperty: (teamId, property) => {
     const { teamProperties } = get();
+    const prev = teamProperties;
     set({
       teamProperties: {
         ...teamProperties,
         [teamId]: teamProperties[teamId].map((p) => (p.id === property.id ? property : p)),
       },
     });
-    db.upsertCustomProperty(teamId, property).catch(() => toast.error('Failed to update property'));
+    db.upsertCustomProperty(teamId, property).catch(() => {
+      set({ teamProperties: prev });
+      toast.error('Failed to update property');
+    });
   },
 
   deleteProperty: (teamId, propertyId) => {
     const { teamProperties } = get();
+    const prev = teamProperties;
     set({
       teamProperties: { ...teamProperties, [teamId]: teamProperties[teamId].filter((p) => p.id !== propertyId) },
     });
-    db.deleteCustomProperty(propertyId).catch(() => toast.error('Failed to delete property'));
+    db.deleteCustomProperty(propertyId).catch(() => {
+      set({ teamProperties: prev });
+      toast.error('Failed to delete property');
+    });
   },
 
   reorderProperties: (teamId, orderedIds) => {

@@ -688,7 +688,8 @@ export async function upsertCustomProperty(teamId: string, prop: CustomProperty)
     sort_order: prop.sortOrder ?? 0,
   };
   const { data, error } = await supabase.from('custom_properties').upsert(row, { onConflict: 'id' }).select().single();
-  return { data, error };
+  if (error) throw error;
+  return data;
 }
 
 export async function updateCustomPropertySortOrders(updates: { id: string; sort_order: number }[]) {
@@ -700,7 +701,7 @@ export async function updateCustomPropertySortOrders(updates: { id: string; sort
 
 export async function deleteCustomProperty(id: string) {
   const { error } = await supabase.from('custom_properties').delete().eq('id', id);
-  return { error };
+  if (error) throw error;
 }
 
 // === Avatar upload ===
