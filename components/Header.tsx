@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import {
   Sun,
@@ -63,22 +63,40 @@ export const Header: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
 
-  const {
-    isDarkMode,
-    toggleTheme,
-    searchQuery,
-    setSearchQuery,
-    isNotificationsOpen,
-    setIsNotificationsOpen,
-    notifications,
-    unreadCount,
-    markNotificationRead,
-    markAllNotificationsRead,
-    setMobileSidebarOpen,
-    setIsSettingsModalOpen,
-    setIsTaskModalOpen,
-    setTaskModalData,
-  } = useUiStore();
+  const isDarkMode = useUiStore((s) => s.isDarkMode);
+  const toggleTheme = useUiStore((s) => s.toggleTheme);
+  const searchQuery = useUiStore((s) => s.searchQuery);
+  const setSearchQuery = useUiStore((s) => s.setSearchQuery);
+  const isNotificationsOpen = useUiStore((s) => s.isNotificationsOpen);
+  const setIsNotificationsOpen = useUiStore((s) => s.setIsNotificationsOpen);
+  const notifications = useUiStore((s) => s.notifications);
+  const unreadCount = useUiStore((s) => s.unreadCount);
+  const markNotificationRead = useUiStore((s) => s.markNotificationRead);
+  const markAllNotificationsRead = useUiStore((s) => s.markAllNotificationsRead);
+  const setMobileSidebarOpen = useUiStore((s) => s.setMobileSidebarOpen);
+  const setIsSettingsModalOpen = useUiStore((s) => s.setIsSettingsModalOpen);
+  const setIsTaskModalOpen = useUiStore((s) => s.setIsTaskModalOpen);
+  const setTaskModalData = useUiStore((s) => s.setTaskModalData);
+
+  // Debounced search: local state for instant input, store write delayed 300ms
+  const [localSearch, setLocalSearch] = useState(searchQuery);
+  const [isTyping, setIsTyping] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const displaySearch = isTyping ? localSearch : searchQuery;
+  const handleSearchChange = useCallback(
+    (e: React.ChangeEvent<HTMLInputElement>) => {
+      const val = e.target.value;
+      setLocalSearch(val);
+      setIsTyping(true);
+      clearTimeout(debounceRef.current);
+      debounceRef.current = setTimeout(() => {
+        setSearchQuery(val);
+        setIsTyping(false);
+      }, 300);
+    },
+    [setSearchQuery],
+  );
+  useEffect(() => () => clearTimeout(debounceRef.current), []);
 
   const currentUser = useAuthStore((s) => s.currentUser);
   const teams = useDataStore((s) => s.teams);
@@ -139,8 +157,8 @@ export const Header: React.FC = () => {
             <input
               type="text"
               placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              value={displaySearch}
+              onChange={handleSearchChange}
               className="pl-9 pr-4 py-1.5 bg-zinc-100 dark:bg-zinc-800/50 border-none rounded-md text-sm w-64 focus:ring-1 focus:ring-zinc-300 dark:focus:ring-zinc-600 outline-none transition-all"
             />
           </div>
