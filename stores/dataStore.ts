@@ -293,13 +293,13 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   // Task team link actions
   linkTaskToTeam: (taskId, teamId) => {
-    const { taskTeamLinks, teamStatuses } = get();
+    const { taskTeamLinks, teamStatuses, statusCategories } = get();
     const statuses = teamStatuses[teamId] || [];
     const defaultStatus = 'Backlog';
     if (!statuses.includes('Backlog')) {
       const newStatuses = ['Backlog', ...statuses];
       set({ teamStatuses: { ...get().teamStatuses, [teamId]: newStatuses } });
-      db.syncTeamStatuses(teamId, newStatuses).catch(console.error);
+      db.syncTeamStatuses(teamId, newStatuses, statusCategories[teamId]).catch(console.error);
     }
     const addedBy = getCurrentUserId() || undefined;
     const optimisticLink: TaskTeamLink = {
@@ -433,24 +433,24 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   deleteTask: (taskId) => {
-    const prev = get().tasks;
-    const task = prev.find((t) => t.id === taskId);
+    const snapshot = get();
+    const task = snapshot.tasks.find((t) => t.id === taskId);
     if (!task) return;
     const userId = getCurrentUserId();
 
     // Optimistically move to deleted
     const deletedTask = { ...task, deletedAt: new Date().toISOString(), deletedBy: userId };
     set({
-      tasks: prev.filter((t) => t.id !== taskId),
-      deletedTasks: [deletedTask, ...get().deletedTasks],
-      deletedTaskCount: get().deletedTaskCount + 1,
+      tasks: snapshot.tasks.filter((t) => t.id !== taskId),
+      deletedTasks: [deletedTask, ...snapshot.deletedTasks],
+      deletedTaskCount: snapshot.deletedTaskCount + 1,
     });
 
     db.softDeleteTask(taskId, userId!).catch(() => {
       set({
-        tasks: prev,
-        deletedTasks: get().deletedTasks.filter((t) => t.id !== taskId),
-        deletedTaskCount: get().deletedTaskCount - 1,
+        tasks: snapshot.tasks,
+        deletedTasks: snapshot.deletedTasks,
+        deletedTaskCount: snapshot.deletedTaskCount,
       });
     });
 
@@ -495,10 +495,11 @@ export const useDataStore = create<DataState>((set, get) => ({
     without.splice(insertIdx, 0, task);
 
     // Reassign sort orders
+    const withoutMap = new Map(without.map((w, i) => [w.id, i]));
     const updates: { id: string; sort_order: number }[] = [];
     const updatedTasks = tasks.map((t) => {
-      const idx = without.findIndex((w) => w.id === t.id);
-      if (idx !== -1) {
+      const idx = withoutMap.get(t.id);
+      if (idx !== undefined) {
         updates.push({ id: t.id, sort_order: idx });
         return { ...t, sortOrder: idx };
       }
@@ -512,7 +513,8 @@ export const useDataStore = create<DataState>((set, get) => ({
   saveTask: (taskData, teams) => {
     if (!taskData.title) return;
 
-    const isNew = !taskData.id;
+    const existingTask = taskData.id ? get().tasks.find((t) => t.id === taskData.id) : null;
+    const isNew = !existingTask;
     const newTask: Task = {
       id: taskData.id || crypto.randomUUID(),
       title: taskData.title!,
@@ -738,22 +740,28 @@ export const useDataStore = create<DataState>((set, get) => ({
   // Status/Type actions
   addStatus: (teamId, status) => {
     if (!status) return;
-    const { teamStatuses } = get();
+    const { teamStatuses, statusCategories } = get();
     const newStatuses = [...(teamStatuses[teamId] || []), status];
     set({ teamStatuses: { ...teamStatuses, [teamId]: newStatuses } });
-    db.syncTeamStatuses(teamId, newStatuses).catch(() => toast.error('Failed to save status'));
+    db.syncTeamStatuses(teamId, newStatuses, statusCategories[teamId]).catch(() =>
+      toast.error('Failed to save status'),
+    );
   },
 
   deleteStatus: (teamId, status) => {
-    const { teamStatuses } = get();
+    const { teamStatuses, statusCategories } = get();
     const newStatuses = (teamStatuses[teamId] || []).filter((s) => s !== status);
     set({ teamStatuses: { ...teamStatuses, [teamId]: newStatuses } });
-    db.syncTeamStatuses(teamId, newStatuses).catch(() => toast.error('Failed to delete status'));
+    db.syncTeamStatuses(teamId, newStatuses, statusCategories[teamId]).catch(() =>
+      toast.error('Failed to delete status'),
+    );
   },
 
   reorderStatuses: (teamId, newStatuses) => {
     set({ teamStatuses: { ...get().teamStatuses, [teamId]: newStatuses } });
-    db.syncTeamStatuses(teamId, newStatuses).catch(() => toast.error('Failed to reorder statuses'));
+    db.syncTeamStatuses(teamId, newStatuses, get().statusCategories[teamId]).catch(() =>
+      toast.error('Failed to reorder statuses'),
+    );
   },
 
   archiveStatus: (teamId, status) => {
@@ -777,7 +785,9 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     const newStatuses = [...currentStatuses, uniqueName];
     set({ teamStatuses: { ...teamStatuses, [teamId]: newStatuses } });
-    db.syncTeamStatuses(teamId, newStatuses).catch(() => toast.error('Failed to duplicate status'));
+    db.syncTeamStatuses(teamId, newStatuses, get().statusCategories[teamId]).catch(() =>
+      toast.error('Failed to duplicate status'),
+    );
 
     if (withData) {
       const tasksToClone = tasks.filter((t) => t.teamId === teamId && t.status === status);
@@ -963,35 +973,35 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   // Bin actions
   restoreTask: (taskId) => {
-    const { deletedTasks, tasks } = get();
-    const task = deletedTasks.find((t) => t.id === taskId);
+    const snapshot = get();
+    const task = snapshot.deletedTasks.find((t) => t.id === taskId);
     if (!task) return;
 
     const restored = { ...task, deletedAt: null, deletedBy: null };
     set({
-      deletedTasks: deletedTasks.filter((t) => t.id !== taskId),
-      tasks: [...tasks, restored],
-      deletedTaskCount: Math.max(0, get().deletedTaskCount - 1),
+      deletedTasks: snapshot.deletedTasks.filter((t) => t.id !== taskId),
+      tasks: [...snapshot.tasks, restored],
+      deletedTaskCount: Math.max(0, snapshot.deletedTaskCount - 1),
     });
 
     db.restoreTask(taskId).catch(() => {
       set({
-        deletedTasks: [task, ...get().deletedTasks.filter((t) => t.id !== taskId)],
-        tasks: get().tasks.filter((t) => t.id !== taskId),
-        deletedTaskCount: get().deletedTaskCount + 1,
+        deletedTasks: snapshot.deletedTasks,
+        tasks: snapshot.tasks,
+        deletedTaskCount: snapshot.deletedTaskCount,
       });
       toast.error('Failed to restore task');
     });
   },
 
   permanentlyDeleteTask: (taskId) => {
-    const prev = get().deletedTasks;
+    const snapshot = get();
     set({
-      deletedTasks: prev.filter((t) => t.id !== taskId),
-      deletedTaskCount: Math.max(0, get().deletedTaskCount - 1),
+      deletedTasks: snapshot.deletedTasks.filter((t) => t.id !== taskId),
+      deletedTaskCount: Math.max(0, snapshot.deletedTaskCount - 1),
     });
     db.permanentlyDeleteTask(taskId).catch(() => {
-      set({ deletedTasks: prev, deletedTaskCount: get().deletedTaskCount + 1 });
+      set({ deletedTasks: snapshot.deletedTasks, deletedTaskCount: snapshot.deletedTaskCount });
       toast.error('Failed to permanently delete task');
     });
   },
@@ -1000,7 +1010,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     const prev = get().deletedTasks;
     const ids = prev.map((t) => t.id);
     set({ deletedTasks: [], deletedTaskCount: 0 });
-    Promise.all(ids.map((id) => db.permanentlyDeleteTask(id))).catch(() => {
+    db.permanentlyDeleteTasks(ids).catch(() => {
       set({ deletedTasks: prev, deletedTaskCount: prev.length });
       toast.error('Failed to empty bin');
     });
@@ -1028,28 +1038,27 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     // Use Promise.allSettled for remaining data - partial failure is OK
     const results = await Promise.allSettled([
-      db.fetchTeams(),
-      db.fetchTasks(),
-      db.fetchMembers(),
-      db.fetchAbsences(),
-      db.fetchShifts(),
-      db.fetchLogs(),
-      db.fetchTeamStatuses(),
-      db.fetchTeamContentTypes(),
-      db.fetchPermissions(),
-      db.fetchCustomProperties(),
-      db.fetchPlacements(),
-      db.fetchIntegrations(),
-      db.fetchStatusCategories(),
-      db.fetchDeletedTaskCount(),
-      db.fetchTaskTeamLinks(),
-      db.fetchTeamPlacements(),
+      db.fetchTeams(), // 0
+      db.fetchTasks(), // 1
+      db.fetchMembers(), // 2
+      db.fetchAbsences(), // 3
+      db.fetchShifts(), // 4
+      db.fetchLogs(), // 5
+      db.fetchTeamStatusData(), // 6 - combined statuses + categories
+      db.fetchTeamContentTypes(), // 7
+      db.fetchPermissions(), // 8
+      db.fetchCustomProperties(), // 9
+      db.fetchPlacements(), // 10
+      db.fetchIntegrations(), // 11
+      db.fetchDeletedTaskCount(), // 12
+      db.fetchTaskTeamLinks(), // 13
+      db.fetchTeamPlacements(), // 14
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
       result.status === 'fulfilled' ? result.value : fallback;
 
-    const teamPlacementsData = getValue(results[15], {} as Record<string, string[]>);
+    const teamStatusData = getValue(results[6], { statuses: {}, categories: {} });
 
     set({
       teams: getValue(results[0], []),
@@ -1058,16 +1067,16 @@ export const useDataStore = create<DataState>((set, get) => ({
       absences: getValue(results[3], []),
       shifts: getValue(results[4], []),
       logs: getValue(results[5], []),
-      teamStatuses: getValue(results[6], {}),
+      teamStatuses: teamStatusData.statuses,
       teamTypes: getValue(results[7], {}),
       permissions: getValue(results[8], {}),
       teamProperties: getValue(results[9], {}),
       allPlacements: getValue(results[10], []),
       integrations: getValue(results[11], {}),
-      statusCategories: getValue(results[12], {}),
-      deletedTaskCount: getValue(results[13], 0),
-      taskTeamLinks: getValue(results[14], []),
-      teamPlacements: teamPlacementsData,
+      statusCategories: teamStatusData.categories,
+      deletedTaskCount: getValue(results[12], 0),
+      taskTeamLinks: getValue(results[13], []),
+      teamPlacements: getValue(results[14], {} as Record<string, string[]>),
     });
 
     // Auto-purge tasks deleted more than 30 days ago (fire-and-forget)
