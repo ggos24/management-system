@@ -105,7 +105,7 @@ function mapLog(row: any): LogEntry {
 // === Fetch Functions ===
 
 export async function fetchMembers(): Promise<Member[]> {
-  const { data, error } = await supabase.from('profiles').select('*');
+  const { data, error } = await supabase.from('profiles').select('id, name, role, job_title, avatar, team_id, status');
   if (error) throw error;
   return (data || []).map(mapProfile);
 }
@@ -117,25 +117,16 @@ export async function fetchTeams(): Promise<Team[]> {
 }
 
 export async function fetchTasks(): Promise<Task[]> {
-  // Fetch active tasks (not soft-deleted) ordered by sort_order
-  const { data: taskRows, error: taskError } = await supabase
-    .from('tasks')
-    .select('*')
-    .is('deleted_at', null)
-    .order('sort_order');
+  const [taskResult, assigneeResult, placementResult] = await Promise.all([
+    supabase.from('tasks').select('*').is('deleted_at', null).order('sort_order'),
+    supabase.from('task_assignees').select('task_id, member_id, sort_order').order('sort_order'),
+    supabase.from('task_placements').select('task_id, placements(name)'),
+  ]);
+  const { data: taskRows, error: taskError } = taskResult;
   if (taskError) throw taskError;
-
-  // Fetch all task_assignees
-  const { data: assigneeRows, error: assigneeError } = await supabase
-    .from('task_assignees')
-    .select('task_id, member_id, sort_order')
-    .order('sort_order');
+  const { data: assigneeRows, error: assigneeError } = assigneeResult;
   if (assigneeError) throw assigneeError;
-
-  // Fetch all task_placements with placement names
-  const { data: placementRows, error: placementError } = await supabase
-    .from('task_placements')
-    .select('task_id, placements(name)');
+  const { data: placementRows, error: placementError } = placementResult;
   if (placementError) throw placementError;
 
   // Group assignees and placements by task_id
@@ -168,7 +159,11 @@ export async function fetchShifts(): Promise<Shift[]> {
 }
 
 export async function fetchLogs(): Promise<LogEntry[]> {
-  const { data, error } = await supabase.from('activity_log').select('*').order('timestamp', { ascending: false });
+  const { data, error } = await supabase
+    .from('activity_log')
+    .select('*')
+    .order('timestamp', { ascending: false })
+    .limit(200);
   if (error) throw error;
   return (data || []).map(mapLog);
 }
@@ -196,6 +191,26 @@ export async function fetchStatusCategories(): Promise<Record<string, Record<str
     result[row.team_id][row.name] = row.category || 'active';
   }
   return result;
+}
+
+export async function fetchTeamStatusData(): Promise<{
+  statuses: Record<string, string[]>;
+  categories: Record<string, Record<string, string>>;
+}> {
+  const { data, error } = await supabase
+    .from('team_statuses')
+    .select('team_id, name, category, sort_order')
+    .order('sort_order');
+  if (error) throw error;
+  const statuses: Record<string, string[]> = {};
+  const categories: Record<string, Record<string, string>> = {};
+  for (const row of data || []) {
+    if (!statuses[row.team_id]) statuses[row.team_id] = [];
+    statuses[row.team_id].push(row.name);
+    if (!categories[row.team_id]) categories[row.team_id] = {};
+    categories[row.team_id][row.name] = row.category || 'active';
+  }
+  return { statuses, categories };
 }
 
 export async function updateStatusCategory(teamId: string, statusName: string, category: string) {
@@ -364,6 +379,12 @@ export async function permanentlyDeleteTask(taskId: string) {
   return { error };
 }
 
+export async function permanentlyDeleteTasks(taskIds: string[]) {
+  if (taskIds.length === 0) return { error: null };
+  const { error } = await supabase.from('tasks').delete().in('id', taskIds);
+  return { error };
+}
+
 export async function fetchDeletedTasks(): Promise<Task[]> {
   const { data: taskRows, error: taskError } = await supabase
     .from('tasks')
@@ -419,8 +440,12 @@ export async function purgeOldDeletedTasks() {
 }
 
 export async function updateTaskSortOrders(updates: { id: string; sort_order: number }[]) {
-  const promises = updates.map((u) => supabase.from('tasks').update({ sort_order: u.sort_order }).eq('id', u.id));
-  await Promise.all(promises);
+  if (updates.length === 0) return;
+  const { error } = await supabase.from('tasks').upsert(
+    updates.map((u) => ({ id: u.id, sort_order: u.sort_order })),
+    { onConflict: 'id', ignoreDuplicates: false },
+  );
+  if (error) throw error;
 }
 
 export async function updateTaskStatus(taskId: string, newStatus: string) {
@@ -578,8 +603,12 @@ export async function deleteTeam(id: string) {
 }
 
 export async function updateTeamSortOrders(teams: Team[]) {
-  const updates = teams.map((t, i) => supabase.from('teams').update({ sort_order: i }).eq('id', t.id));
-  await Promise.all(updates);
+  if (teams.length === 0) return;
+  const { error } = await supabase.from('teams').upsert(
+    teams.map((t, i) => ({ id: t.id, sort_order: i })),
+    { onConflict: 'id', ignoreDuplicates: false },
+  );
+  if (error) throw error;
 }
 
 // === Member mutations ===
@@ -693,10 +722,12 @@ export async function upsertCustomProperty(teamId: string, prop: CustomProperty)
 }
 
 export async function updateCustomPropertySortOrders(updates: { id: string; sort_order: number }[]) {
-  const promises = updates.map((u) =>
-    supabase.from('custom_properties').update({ sort_order: u.sort_order }).eq('id', u.id),
+  if (updates.length === 0) return;
+  const { error } = await supabase.from('custom_properties').upsert(
+    updates.map((u) => ({ id: u.id, sort_order: u.sort_order })),
+    { onConflict: 'id', ignoreDuplicates: false },
   );
-  await Promise.all(promises);
+  if (error) throw error;
 }
 
 export async function deleteCustomProperty(id: string) {
