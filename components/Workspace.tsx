@@ -594,28 +594,6 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   const getMembersByIds = (ids: string[]) => members.filter((m) => ids.includes(m.id));
 
-  // Team-grouped data for my-work view
-  const myWorkTeamGroups = useMemo(() => {
-    if (teamFilter !== 'my-work') return [];
-    const grouped: Record<string, Task[]> = {};
-    for (const t of filteredTasks) {
-      if (!grouped[t.teamId]) grouped[t.teamId] = [];
-      grouped[t.teamId].push(t);
-    }
-    return Object.entries(grouped)
-      .map(([teamId, teamTasks]) => {
-        const team = allTeams.find((t) => t.id === teamId);
-        const uniqueStatuses = Array.from(new Set(teamTasks.map((t) => t.status)));
-        return {
-          teamId,
-          teamName: team?.name || 'Unknown Team',
-          statuses: uniqueStatuses.map((s) => ({ id: s, label: s })),
-          tasks: teamTasks,
-        };
-      })
-      .sort((a, b) => a.teamName.localeCompare(b.teamName));
-  }, [teamFilter, filteredTasks, allTeams]);
-
   // Column Management
   const updateParentStatuses = (newStatuses: string[]) => {
     const keyToUpdate = teamFilter === 'my-work' ? 'my-work' : teamStatuses[teamFilter] ? teamFilter : 'default';
@@ -1116,474 +1094,301 @@ const Workspace: React.FC<WorkspaceProps> = ({
             <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Tasks assigned to you will appear here</p>
           </div>
         )}
-        {viewMode === 'board' &&
-          filteredTasks.length > 0 &&
-          displayColumns.length > 0 &&
-          (teamFilter === 'my-work' ? (
-            <div className="flex flex-col gap-6 overflow-auto pb-4 h-full">
-              {myWorkTeamGroups.map((group) => {
-                const isTeamCollapsed = collapsedSections[`team::${group.teamId}`];
-                return (
-                  <div key={group.teamId}>
+        {viewMode === 'board' && filteredTasks.length > 0 && displayColumns.length > 0 && (
+          <div className="flex gap-6 overflow-x-auto pb-4 h-full">
+            {displayColumns.map((col) => {
+              const isCollapsed = collapsedSections[col.id];
+              const isArchived = archivedStatuses[teamFilter]?.includes(col.id);
+              const statusCategory = statusCategories[teamFilter]?.[col.id] || 'active';
+              const isDoneStatus = statusCategory === 'completed';
+              const isIgnoredStatus = statusCategory === 'ignored';
+              return (
+                <div
+                  key={col.id}
+                  onDrop={(e) => handleDropStatus(e, col.id)}
+                  onDragOver={handleDragOver}
+                  className={`flex flex-col h-full transition-all ${isCollapsed ? 'w-12' : 'min-w-[300px] max-w-[300px]'}`}
+                >
+                  <div className="flex items-center justify-between px-1 mb-3 pb-2 group/header">
+                    {isCollapsed ? (
+                      <div
+                        className="flex flex-col items-center gap-4 h-full py-4 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
+                        onClick={() => toggleSection(col.id)}
+                      >
+                        <span
+                          className={`text-[10px] font-semibold px-1.5 rounded ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
+                        >
+                          {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
+                        </span>
+                        <div
+                          className={`writing-mode-vertical text-xs font-semibold tracking-wider whitespace-nowrap rotate-180 ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-500'}`}
+                          style={{ writingMode: 'vertical-rl' }}
+                        >
+                          {col.label}
+                        </div>
+                        <ChevronDown size={14} className="text-zinc-400" />
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1">
+                          {editingColumnId === col.id ? (
+                            <input
+                              autoFocus
+                              className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-xs font-semibold w-full outline-none"
+                              value={tempColumnName}
+                              onChange={(e) => setTempColumnName(e.target.value)}
+                              onBlur={handleSaveRename}
+                              onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
+                            />
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              {teamFilter !== 'my-work' && (
+                                <>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMoveStatus(col.id, 'up');
+                                    }}
+                                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                    title="Move left"
+                                  >
+                                    <ChevronLeft size={14} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleMoveStatus(col.id, 'down');
+                                    }}
+                                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                    title="Move right"
+                                  >
+                                    <ChevronRight size={14} />
+                                  </button>
+                                </>
+                              )}
+                              <span
+                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
+                              >
+                                {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
+                              </span>
+                              <span
+                                onClick={() => handleStartRename(col.id, col.label)}
+                                className={`font-semibold text-xs ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
+                              >
+                                {col.label} {isArchived && '(Archived)'}
+                              </span>
+                              {(teamFilter === 'my-work' || teamFilter === 'all') &&
+                                (() => {
+                                  const sectionTasks = filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id);
+                                  const teamIds = [...new Set(sectionTasks.map((t) => t.teamId))];
+                                  const teamNames = teamIds
+                                    .map((id) => allTeams.find((t) => t.id === id)?.name)
+                                    .filter(Boolean);
+                                  return teamNames.length > 0 ? (
+                                    <span className="text-[10px] font-normal text-zinc-400 dark:text-zinc-500">
+                                      {teamNames.join(', ')}
+                                    </span>
+                                  ) : null;
+                                })()}
+                              <button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  toggleSection(col.id);
+                                }}
+                                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                              >
+                                {collapsedSections[col.id] ? <EyeOff size={14} /> : <Eye size={14} />}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {teamFilter !== 'my-work' && (
+                          <div className="relative">
+                            <div className="opacity-0 group-hover/header:opacity-100 flex items-center transition-opacity">
+                              <button
+                                ref={(el) => {
+                                  columnMenuTriggerRefs.current[`board-${col.id}`] = el;
+                                }}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveColumnMenu(activeColumnMenu === col.id ? null : col.id);
+                                }}
+                                className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-1"
+                              >
+                                <MoreHorizontal size={14} />
+                              </button>
+                              {teamFilter !== 'my-work' && (
+                                <button
+                                  onClick={() => onAddTask({ status: col.id })}
+                                  className="text-zinc-400 hover:text-black dark:hover:text-white transition-colors p-1"
+                                >
+                                  <Plus size={14} />
+                                </button>
+                              )}
+                            </div>
+
+                            <ColumnMenu
+                              isOpen={activeColumnMenu === col.id}
+                              onClose={() => setActiveColumnMenu(null)}
+                              triggerKey={`board-${col.id}`}
+                              triggerRefs={columnMenuTriggerRefs}
+                              onRename={() => handleStartRename(col.id, col.label)}
+                              onDuplicateEmpty={() => {
+                                onDuplicateStatus(teamFilter, col.id, false);
+                                setActiveColumnMenu(null);
+                              }}
+                              onDuplicateWithData={() => {
+                                onDuplicateStatus(teamFilter, col.id, true);
+                                setActiveColumnMenu(null);
+                              }}
+                              onToggleDone={() => {
+                                const current = statusCategories[teamFilter]?.[col.id] || 'active';
+                                onSetStatusCategory(
+                                  teamFilter,
+                                  col.id,
+                                  current === 'completed' ? 'active' : 'completed',
+                                );
+                                setActiveColumnMenu(null);
+                              }}
+                              onArchive={() => {
+                                onArchiveStatus(teamFilter, col.id);
+                                setActiveColumnMenu(null);
+                              }}
+                              onDelete={() => handleDeleteColumn(col.id)}
+                              isArchived={!!isArchived}
+                              isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
+                              isArchiveCategory={statusCategories[teamFilter]?.[col.id] === 'ignored'}
+                              onToggleArchiveCategory={() => {
+                                const current = statusCategories[teamFilter]?.[col.id] || 'active';
+                                onSetStatusCategory(teamFilter, col.id, current === 'ignored' ? 'active' : 'ignored');
+                                setActiveColumnMenu(null);
+                              }}
+                            />
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+
+                  {!isCollapsed && (
                     <div
-                      className="flex items-center gap-2 py-2 px-1 cursor-pointer select-none border-b border-zinc-200 dark:border-zinc-800 mb-3"
-                      onClick={() => toggleSection(`team::${group.teamId}`)}
+                      className={`flex-1 flex flex-col min-h-0 rounded-lg p-1 ${isArchived ? 'bg-yellow-50/30 dark:bg-yellow-900/10 border border-dashed border-yellow-200 dark:border-yellow-900/30' : 'bg-zinc-50/50 dark:bg-zinc-900/30'}`}
                     >
-                      <ChevronRight
-                        size={16}
-                        className={`text-zinc-400 transition-transform ${isTeamCollapsed ? '' : 'rotate-90'}`}
-                      />
-                      <span className="text-base font-bold text-zinc-900 dark:text-white">{group.teamName}</span>
-                      <span className="text-xs px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
-                        {group.tasks.length}
-                      </span>
-                    </div>
-                    {!isTeamCollapsed && (
-                      <div className="flex gap-6 overflow-x-auto pb-4">
-                        {group.statuses.map((status) => {
-                          const col = status;
-                          const statusCollapseKey = `${col.id}::${group.teamId}`;
-                          const isCollapsed = collapsedSections[statusCollapseKey];
-                          const isArchived = archivedStatuses[group.teamId]?.includes(col.id);
-                          const statusCategory = statusCategories[group.teamId]?.[col.id] || 'active';
-                          const isDoneStatus = statusCategory === 'completed';
-                          const isIgnoredStatus = statusCategory === 'ignored';
-                          const colTasks = group.tasks.filter((t) => t.status === col.id);
+                      <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                        {sortTasks(filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id)).map((task) => {
+                          const assignees = getMembersByIds(task.assigneeIds);
                           return (
                             <div
-                              key={statusCollapseKey}
-                              className={`flex flex-col h-full transition-all ${isCollapsed ? 'w-12' : 'min-w-[300px] max-w-[300px]'}`}
+                              key={task.id}
+                              onClick={() => onTaskClick(task)}
+                              draggable
+                              onDragStart={(e) => handleDragStart(e, task.id, col.id)}
+                              className="bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group cursor-grab active:cursor-grabbing relative"
                             >
-                              <div className="flex items-center justify-between px-1 mb-3 pb-2 group/header">
-                                {isCollapsed ? (
-                                  <div
-                                    className="flex flex-col items-center gap-4 h-full py-4 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
-                                    onClick={() => toggleSection(statusCollapseKey)}
+                              <div className="flex justify-between items-start mb-2">
+                                <div className="flex gap-1 flex-wrap">
+                                  {task.contentInfo?.type && <Badge>{task.contentInfo.type}</Badge>}
+                                  <span
+                                    className={`inline-flex items-center gap-1 text-[10px] font-medium capitalize px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority] || ''}`}
                                   >
                                     <span
-                                      className={`text-[10px] font-semibold px-1.5 rounded ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
-                                    >
-                                      {colTasks.length}
-                                    </span>
-                                    <div
-                                      className={`writing-mode-vertical text-xs font-semibold tracking-wider whitespace-nowrap rotate-180 ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-500'}`}
-                                      style={{ writingMode: 'vertical-rl' }}
-                                    >
-                                      {col.label}
-                                    </div>
-                                    <ChevronDown size={14} className="text-zinc-400" />
-                                  </div>
-                                ) : (
-                                  <>
-                                    <div className="flex-1">
-                                      <div className="flex items-center gap-2">
-                                        <span
-                                          className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isArchived ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
-                                        >
-                                          {colTasks.length}
-                                        </span>
-                                        <span
-                                          className={`font-semibold text-xs flex items-center gap-1 ${isArchived ? 'text-amber-600 dark:text-amber-400' : isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-900 dark:text-white'}`}
-                                        >
-                                          {isArchived && <Archive size={12} />}
-                                          {isDoneStatus && <CheckCircle size={12} />}
-                                          {col.label}
-                                        </span>
-                                        <button
-                                          onClick={(e) => {
-                                            e.stopPropagation();
-                                            toggleSection(statusCollapseKey);
-                                          }}
-                                          className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                        >
-                                          {collapsedSections[statusCollapseKey] ? (
-                                            <EyeOff size={14} />
-                                          ) : (
-                                            <Eye size={14} />
-                                          )}
-                                        </button>
-                                      </div>
-                                    </div>
-                                  </>
+                                      className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
+                                    />
+                                    {task.priority}
+                                  </span>
+                                </div>
+                                <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
+                                  <GripVertical size={14} />
+                                </div>
+                              </div>
+                              <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden flex items-center gap-1.5">
+                                {isLinkedCopy(task) && <Link2 size={12} className="text-blue-500 flex-shrink-0" />}
+                                <span>{task.title}</span>
+                              </h3>
+
+                              <div className="flex flex-wrap gap-1 mb-3">
+                                {task.placements.slice(0, 3).map((placement) => (
+                                  <span
+                                    key={placement}
+                                    className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
+                                  >
+                                    {placement}
+                                  </span>
+                                ))}
+                                {task.placements.length > 3 && (
+                                  <span className="text-[10px] font-medium text-zinc-400 px-1">
+                                    +{task.placements.length - 3}
+                                  </span>
                                 )}
                               </div>
-                              {!isCollapsed && (
-                                <div
-                                  className={`flex-1 flex flex-col min-h-0 rounded-lg p-1 ${isArchived ? 'bg-amber-50/30 dark:bg-amber-950/10 border border-dashed border-amber-300 dark:border-amber-800' : 'bg-zinc-50/50 dark:bg-zinc-900/30'}`}
-                                >
-                                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                                    {sortTasks(colTasks).map((task) => {
-                                      const assignees = getMembersByIds(task.assigneeIds);
-                                      return (
-                                        <div
-                                          key={task.id}
-                                          onClick={() => onTaskClick(task)}
-                                          draggable
-                                          onDragStart={(e) => handleDragStart(e, task.id, col.id)}
-                                          className="bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group cursor-grab active:cursor-grabbing relative"
-                                        >
-                                          <div className="flex justify-between items-start mb-2">
-                                            <div className="flex gap-1 flex-wrap">
-                                              {task.contentInfo?.type && (
-                                                <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded">
-                                                  {task.contentInfo.type}
-                                                </span>
-                                              )}
-                                              <span
-                                                className={`inline-flex items-center gap-1 text-[10px] font-medium capitalize px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority] || ''}`}
-                                              >
-                                                <span
-                                                  className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
-                                                ></span>
-                                                {task.priority}
-                                              </span>
-                                            </div>
-                                          </div>
-                                          <div className="flex flex-wrap gap-1 mb-2">
-                                            {task.placements.slice(0, 2).map((placement) => (
-                                              <span
-                                                key={placement}
-                                                className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
-                                              >
-                                                {placement}
-                                              </span>
-                                            ))}
-                                            {task.placements.length > 2 && (
-                                              <span className="text-[10px] font-medium text-zinc-400 px-1">
-                                                +{task.placements.length - 2}
-                                              </span>
-                                            )}
-                                          </div>
-                                          <p className="font-medium text-sm text-zinc-900 dark:text-white leading-snug mb-2">
-                                            {task.title}
-                                          </p>
-                                          {assignees.length > 0 && (
-                                            <div className="flex items-center gap-1 mt-1">
-                                              {assignees.slice(0, 3).map((a) => (
-                                                <Avatar key={a.id} src={a.avatar} alt={a.name} size="sm" />
-                                              ))}
-                                              {assignees.length > 3 && (
-                                                <span className="text-[10px] text-zinc-400">
-                                                  +{assignees.length - 3}
-                                                </span>
-                                              )}
-                                            </div>
-                                          )}
-                                        </div>
-                                      );
-                                    })}
-                                  </div>
+
+                              <div className="flex items-center justify-between pt-2">
+                                {(() => {
+                                  const urgency = getDeadlineUrgency(task.dueDate);
+                                  return (
+                                    <div className={`flex items-center gap-1.5 text-[10px] ${urgency.text}`}>
+                                      {urgency.dot ? (
+                                        <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
+                                      ) : (
+                                        <CalendarIcon size={12} />
+                                      )}
+                                      <span>
+                                        {new Date(task.dueDate).toLocaleDateString('en-US', {
+                                          month: 'short',
+                                          day: 'numeric',
+                                        })}
+                                      </span>
+                                    </div>
+                                  );
+                                })()}
+                                <div className="flex -space-x-1.5">
+                                  {assignees.length > 0 ? (
+                                    assignees
+                                      .slice(0, 3)
+                                      .map((a) => (
+                                        <Avatar
+                                          key={a.id}
+                                          src={a.avatar}
+                                          alt={a.name}
+                                          size="sm"
+                                          className="!w-5 !h-5 !border-white dark:!border-zinc-900"
+                                        />
+                                      ))
+                                  ) : (
+                                    <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
+                                      <User size={10} />
+                                    </div>
+                                  )}
+                                  {assignees.length > 3 && (
+                                    <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[10px] border border-white dark:border-zinc-900">
+                                      +{assignees.length - 3}
+                                    </div>
+                                  )}
                                 </div>
-                              )}
+                              </div>
                             </div>
                           );
                         })}
                       </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="flex gap-6 overflow-x-auto pb-4 h-full">
-              {displayColumns.map((col) => {
-                const isCollapsed = collapsedSections[col.id];
-                const isArchived = archivedStatuses[teamFilter]?.includes(col.id);
-                const statusCategory = statusCategories[teamFilter]?.[col.id] || 'active';
-                const isDoneStatus = statusCategory === 'completed';
-                const isIgnoredStatus = statusCategory === 'ignored';
-                return (
-                  <div
-                    key={col.id}
-                    onDrop={(e) => handleDropStatus(e, col.id)}
-                    onDragOver={handleDragOver}
-                    className={`flex flex-col h-full transition-all ${isCollapsed ? 'w-12' : 'min-w-[300px] max-w-[300px]'}`}
-                  >
-                    <div className="flex items-center justify-between px-1 mb-3 pb-2 group/header">
-                      {isCollapsed ? (
-                        <div
-                          className="flex flex-col items-center gap-4 h-full py-4 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
-                          onClick={() => toggleSection(col.id)}
-                        >
-                          <span
-                            className={`text-[10px] font-semibold px-1.5 rounded ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
-                          >
-                            {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
-                          </span>
-                          <div
-                            className={`writing-mode-vertical text-xs font-semibold tracking-wider whitespace-nowrap rotate-180 ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-500'}`}
-                            style={{ writingMode: 'vertical-rl' }}
-                          >
-                            {col.label}
-                          </div>
-                          <ChevronDown size={14} className="text-zinc-400" />
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex-1">
-                            {editingColumnId === col.id ? (
-                              <input
-                                autoFocus
-                                className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-xs font-semibold w-full outline-none"
-                                value={tempColumnName}
-                                onChange={(e) => setTempColumnName(e.target.value)}
-                                onBlur={handleSaveRename}
-                                onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
-                              />
-                            ) : (
-                              <div className="flex items-center gap-2">
-                                {teamFilter !== 'my-work' && (
-                                  <>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleMoveStatus(col.id, 'up');
-                                      }}
-                                      className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                      title="Move left"
-                                    >
-                                      <ChevronLeft size={14} />
-                                    </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        handleMoveStatus(col.id, 'down');
-                                      }}
-                                      className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                      title="Move right"
-                                    >
-                                      <ChevronRight size={14} />
-                                    </button>
-                                  </>
-                                )}
-                                <span
-                                  className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isArchived ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
-                                >
-                                  {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
-                                </span>
-                                <span
-                                  onClick={() => handleStartRename(col.id, col.label)}
-                                  className={`font-semibold text-xs flex items-center gap-1 ${isArchived ? 'text-amber-600 dark:text-amber-400' : isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
-                                >
-                                  {isArchived && <Archive size={12} />}
-                                  {col.label}
-                                </span>
-                                {(teamFilter === 'my-work' || teamFilter === 'all') &&
-                                  (() => {
-                                    const sectionTasks = filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id);
-                                    const teamIds = [...new Set(sectionTasks.map((t) => t.teamId))];
-                                    const teamNames = teamIds
-                                      .map((id) => allTeams.find((t) => t.id === id)?.name)
-                                      .filter(Boolean);
-                                    return teamNames.length > 0 ? (
-                                      <span className="text-[10px] font-normal text-zinc-400 dark:text-zinc-500">
-                                        {teamNames.join(', ')}
-                                      </span>
-                                    ) : null;
-                                  })()}
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    toggleSection(col.id);
-                                  }}
-                                  className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                >
-                                  {collapsedSections[col.id] ? <EyeOff size={14} /> : <Eye size={14} />}
-                                </button>
-                              </div>
-                            )}
-                          </div>
-
-                          {teamFilter !== 'my-work' && (
-                            <div className="relative">
-                              <div className="opacity-0 group-hover/header:opacity-100 flex items-center transition-opacity">
-                                <button
-                                  ref={(el) => {
-                                    columnMenuTriggerRefs.current[`board-${col.id}`] = el;
-                                  }}
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveColumnMenu(activeColumnMenu === col.id ? null : col.id);
-                                  }}
-                                  className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-1"
-                                >
-                                  <MoreHorizontal size={14} />
-                                </button>
-                                {teamFilter !== 'my-work' && (
-                                  <button
-                                    onClick={() => onAddTask({ status: col.id })}
-                                    className="text-zinc-400 hover:text-black dark:hover:text-white transition-colors p-1"
-                                  >
-                                    <Plus size={14} />
-                                  </button>
-                                )}
-                              </div>
-
-                              <ColumnMenu
-                                isOpen={activeColumnMenu === col.id}
-                                onClose={() => setActiveColumnMenu(null)}
-                                triggerKey={`board-${col.id}`}
-                                triggerRefs={columnMenuTriggerRefs}
-                                onRename={() => handleStartRename(col.id, col.label)}
-                                onDuplicateEmpty={() => {
-                                  onDuplicateStatus(teamFilter, col.id, false);
-                                  setActiveColumnMenu(null);
-                                }}
-                                onDuplicateWithData={() => {
-                                  onDuplicateStatus(teamFilter, col.id, true);
-                                  setActiveColumnMenu(null);
-                                }}
-                                onToggleDone={() => {
-                                  const current = statusCategories[teamFilter]?.[col.id] || 'active';
-                                  onSetStatusCategory(
-                                    teamFilter,
-                                    col.id,
-                                    current === 'completed' ? 'active' : 'completed',
-                                  );
-                                  setActiveColumnMenu(null);
-                                }}
-                                onArchive={() => {
-                                  onArchiveStatus(teamFilter, col.id);
-                                  setActiveColumnMenu(null);
-                                }}
-                                onDelete={() => handleDeleteColumn(col.id)}
-                                isArchived={!!isArchived}
-                                isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
-                                isArchiveCategory={statusCategories[teamFilter]?.[col.id] === 'ignored'}
-                                onToggleArchiveCategory={() => {
-                                  const current = statusCategories[teamFilter]?.[col.id] || 'active';
-                                  onSetStatusCategory(teamFilter, col.id, current === 'ignored' ? 'active' : 'ignored');
-                                  setActiveColumnMenu(null);
-                                }}
-                              />
-                            </div>
-                          )}
-                        </>
-                      )}
                     </div>
-
-                    {!isCollapsed && (
-                      <div
-                        className={`flex-1 flex flex-col min-h-0 rounded-lg p-1 ${isArchived ? 'bg-amber-50/30 dark:bg-amber-950/10 border border-dashed border-amber-300 dark:border-amber-800' : 'bg-zinc-50/50 dark:bg-zinc-900/30'}`}
-                      >
-                        <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                          {sortTasks(filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id)).map((task) => {
-                            const assignees = getMembersByIds(task.assigneeIds);
-                            return (
-                              <div
-                                key={task.id}
-                                onClick={() => onTaskClick(task)}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, task.id, col.id)}
-                                className="bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group cursor-grab active:cursor-grabbing relative"
-                              >
-                                <div className="flex justify-between items-start mb-2">
-                                  <div className="flex gap-1 flex-wrap">
-                                    {task.contentInfo?.type && (
-                                      <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded">
-                                        {task.contentInfo.type}
-                                      </span>
-                                    )}
-                                    <span
-                                      className={`inline-flex items-center gap-1 text-[10px] font-medium capitalize px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority] || ''}`}
-                                    >
-                                      <span
-                                        className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
-                                      />
-                                      {task.priority}
-                                    </span>
-                                  </div>
-                                  <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
-                                    <GripVertical size={14} />
-                                  </div>
-                                </div>
-                                <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden flex items-center gap-1.5">
-                                  {isLinkedCopy(task) && <Link2 size={12} className="text-blue-500 flex-shrink-0" />}
-                                  <span>{task.title}</span>
-                                </h3>
-
-                                <div className="flex flex-wrap gap-1 mb-3">
-                                  {task.placements.slice(0, 2).map((placement) => (
-                                    <span
-                                      key={placement}
-                                      className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
-                                    >
-                                      {placement}
-                                    </span>
-                                  ))}
-                                  {task.placements.length > 2 && (
-                                    <span className="text-[10px] font-medium text-zinc-400 px-1">
-                                      +{task.placements.length - 2}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center justify-between pt-2">
-                                  {(() => {
-                                    const urgency = getDeadlineUrgency(task.dueDate);
-                                    return (
-                                      <div className={`flex items-center gap-1.5 text-[10px] ${urgency.text}`}>
-                                        {urgency.dot ? (
-                                          <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
-                                        ) : (
-                                          <CalendarIcon size={12} />
-                                        )}
-                                        <span>
-                                          {new Date(task.dueDate).toLocaleDateString('en-US', {
-                                            month: 'short',
-                                            day: 'numeric',
-                                          })}
-                                        </span>
-                                      </div>
-                                    );
-                                  })()}
-                                  <div className="flex -space-x-1.5">
-                                    {assignees.length > 0 ? (
-                                      assignees
-                                        .slice(0, 3)
-                                        .map((a) => (
-                                          <Avatar
-                                            key={a.id}
-                                            src={a.avatar}
-                                            alt={a.name}
-                                            size="sm"
-                                            className="!w-5 !h-5 !border-white dark:!border-zinc-900"
-                                          />
-                                        ))
-                                    ) : (
-                                      <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
-                                        <User size={10} />
-                                      </div>
-                                    )}
-                                    {assignees.length > 3 && (
-                                      <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[10px] border border-white dark:border-zinc-900">
-                                        +{assignees.length - 3}
-                                      </div>
-                                    )}
-                                  </div>
-                                </div>
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-              {/* Only show "Add Status" if not searching and not My Work */}
-              {!searchQuery && teamFilter !== 'my-work' && (
-                <div className="min-w-[300px]">
-                  <button
-                    onClick={handleAddColumn}
-                    className="w-full h-12 flex items-center justify-center gap-2 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
-                  >
-                    <Plus size={16} /> Add Status
-                  </button>
+                  )}
                 </div>
-              )}
-            </div>
-          ))}
+              );
+            })}
+            {/* Only show "Add Status" if not searching and not My Work */}
+            {!searchQuery && teamFilter !== 'my-work' && (
+              <div className="min-w-[300px]">
+                <button
+                  onClick={handleAddColumn}
+                  className="w-full h-12 flex items-center justify-center gap-2 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                >
+                  <Plus size={16} /> Add Status
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {viewMode === 'table' && (
           <div className="h-full overflow-auto custom-scrollbar space-y-8 pr-2 pb-10">
@@ -1596,997 +1401,359 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Tasks assigned to you will appear here</p>
               </div>
             )}
-            {/* Team-grouped rendering for my-work */}
-            {teamFilter === 'my-work' &&
-              myWorkTeamGroups.map((group) => {
-                const isTeamCollapsed = collapsedSections[`team::${group.teamId}`];
-                return (
-                  <div key={group.teamId} className="space-y-6">
-                    <div
-                      className="flex items-center gap-2 sticky top-0 bg-white dark:bg-black z-20 py-2 cursor-pointer select-none border-b border-zinc-200 dark:border-zinc-800"
-                      onClick={() => toggleSection(`team::${group.teamId}`)}
-                    >
-                      <ChevronRight
-                        size={16}
-                        className={`text-zinc-400 transition-transform ${isTeamCollapsed ? '' : 'rotate-90'}`}
-                      />
-                      <span className="text-base font-bold text-zinc-900 dark:text-white">{group.teamName}</span>
-                      <span className="text-xs px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
-                        {group.tasks.length}
-                      </span>
-                    </div>
-                    {!isTeamCollapsed &&
-                      group.statuses.map((status) => {
-                        const col = status;
-                        const colTasks = group.tasks.filter((t) => t.status === col.id);
-                        const statusCollapseKey = `${col.id}::${group.teamId}`;
-                        const isCollapsed = collapsedSections[statusCollapseKey];
-                        const isArchived = archivedStatuses[group.teamId]?.includes(col.id);
-                        const isDoneTable = statusCategories[group.teamId]?.[col.id] === 'completed';
-                        const isIgnoredTable = statusCategories[group.teamId]?.[col.id] === 'ignored';
+            {displayColumns.map((col) => {
+              const colTasks = filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id);
+              const isCollapsed = collapsedSections[col.id];
+              const isArchived = archivedStatuses[teamFilter]?.includes(col.id);
 
-                        return (
-                          <div
-                            key={statusCollapseKey}
-                            className={`space-y-2 group/section relative ml-4 ${isArchived || isIgnoredTable ? 'opacity-60' : ''}`}
-                          >
-                            <div className="flex items-center gap-2 sticky top-8 bg-white dark:bg-black z-10 py-1.5 group/header">
-                              <span
-                                className={`text-xs px-2 py-0.5 rounded font-medium ${isArchived || isIgnoredTable ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : isDoneTable ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
-                              >
-                                {colTasks.length}
-                              </span>
-                              <h3
-                                className={`text-sm font-semibold flex items-center gap-1.5 ${isArchived || isIgnoredTable ? 'text-amber-600 dark:text-amber-400' : isDoneTable ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-900 dark:text-white'}`}
-                              >
-                                {(isArchived || isIgnoredTable) && <Archive size={14} />}
-                                {isDoneTable && <CheckCircle size={14} />}
-                                {col.label}
-                              </h3>
-                              <button
-                                onClick={() => toggleSection(statusCollapseKey)}
-                                className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 transition-all"
-                              >
-                                {isCollapsed ? <EyeOff size={14} /> : <Eye size={14} />}
-                              </button>
-                            </div>
+              const isDoneTable = statusCategories[teamFilter]?.[col.id] === 'completed';
+              const isIgnoredTable = statusCategories[teamFilter]?.[col.id] === 'ignored';
 
-                            {!isCollapsed && (
-                              <>
-                                <div
-                                  className={`border rounded-lg cursor-default overflow-clip ${isArchived || isIgnoredTable ? 'border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/10' : isDoneTable ? 'border-dashed border-emerald-300 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10' : 'border-zinc-200 dark:border-zinc-800'}`}
-                                >
-                                  <table className="w-full text-left text-sm border-collapse min-w-[1100px] table-fixed">
-                                    <thead
-                                      className={`border-b ${isArchived || isIgnoredTable ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40' : isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
-                                    >
-                                      <tr>
-                                        <th className="p-3 w-10">
-                                          <input
-                                            type="checkbox"
-                                            ref={(el) => {
-                                              if (el) {
-                                                const someSelected = colTasks.some((t) => selectedTaskIds.has(t.id));
-                                                const allSelected =
-                                                  colTasks.length > 0 &&
-                                                  colTasks.every((t) => selectedTaskIds.has(t.id));
-                                                el.indeterminate = someSelected && !allSelected;
-                                              }
-                                            }}
-                                            checked={
-                                              colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id))
-                                            }
-                                            onChange={() => toggleGroupSelection(col.id)}
-                                            className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                            onClick={(e) => e.stopPropagation()}
-                                          />
-                                        </th>
-                                        {orderedTableColumns.map((tc) => (
-                                          <th
-                                            key={tc.key}
-                                            className={`p-3 font-medium text-xs ${tc.className} cursor-pointer select-none transition-colors ${isArchived || isIgnoredTable ? 'text-amber-500 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-300' : isDoneTable ? 'text-emerald-500 dark:text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
-                                            onClick={() => handleHeaderSort(tc.key)}
-                                          >
-                                            <div className="flex items-center gap-1">
-                                              <span>{tc.label}</span>
-                                            </div>
-                                          </th>
-                                        ))}
-                                        <th className="p-3 w-10"></th>
-                                      </tr>
-                                    </thead>
-                                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                                      {colTasks.length > 0 ? (
-                                        sortTasks(colTasks).map((task) => {
-                                          const assignees = getMembersByIds(task.assigneeIds);
-                                          return (
-                                            <tr
-                                              key={task.id}
-                                              className={`hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer ${selectedTaskIds.has(task.id) ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
-                                              onClick={() => onTaskClick(task)}
-                                              draggable
-                                              onDragStart={(e) => handleDragStart(e, task.id, col.id)}
-                                              onDragOver={(e) => handleTaskDragOver(e, task.id)}
-                                              onDrop={(e) => handleDropOnTask(e, task.id, col.id)}
-                                            >
-                                              <td className="p-3 w-10" onClick={(e) => e.stopPropagation()}>
-                                                <input
-                                                  type="checkbox"
-                                                  checked={selectedTaskIds.has(task.id)}
-                                                  onChange={(e) =>
-                                                    toggleTaskSelection(
-                                                      task.id,
-                                                      e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey,
-                                                    )
-                                                  }
-                                                  className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                                />
-                                              </td>
-                                              {orderedTableColumns.map((tc) => {
-                                                switch (tc.key) {
-                                                  case 'title':
-                                                    return (
-                                                      <td key={tc.key} className="p-3">
-                                                        <span className="font-medium text-zinc-900 dark:text-white">
-                                                          {task.title}
-                                                        </span>
-                                                      </td>
-                                                    );
-                                                  case 'type':
-                                                    return (
-                                                      <td key={tc.key} className="p-3">
-                                                        {task.contentInfo?.type ? (
-                                                          <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded">
-                                                            {task.contentInfo.type}
-                                                          </span>
-                                                        ) : (
-                                                          <span className="text-zinc-300 dark:text-zinc-600 text-sm">
-                                                            —
-                                                          </span>
-                                                        )}
-                                                      </td>
-                                                    );
-                                                  case 'assignee':
-                                                  case 'editor': {
-                                                    const personKey = tc.key;
-                                                    const selectedIds =
-                                                      personKey === 'assignee'
-                                                        ? task.assigneeIds
-                                                        : task.contentInfo?.editorIds || [];
-                                                    const people = getMembersByIds(selectedIds);
-                                                    return (
-                                                      <td key={tc.key} className="p-3">
-                                                        {people.length > 0 ? (
-                                                          <div className="flex flex-col gap-1">
-                                                            {people.map((p) => (
-                                                              <div key={p.id} className="flex items-center gap-1.5">
-                                                                <Avatar
-                                                                  src={p.avatar}
-                                                                  alt={p.name}
-                                                                  size="sm"
-                                                                  className="flex-shrink-0"
-                                                                />
-                                                                <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
-                                                                  {p.name}
-                                                                </span>
-                                                              </div>
-                                                            ))}
-                                                          </div>
-                                                        ) : (
-                                                          <span className="text-zinc-300 dark:text-zinc-600 text-sm">
-                                                            —
-                                                          </span>
-                                                        )}
-                                                      </td>
-                                                    );
-                                                  }
-                                                  case 'priority':
-                                                    return (
-                                                      <td key={tc.key} className="p-3">
-                                                        <span
-                                                          className={`inline-flex items-center gap-1 text-xs capitalize ${PRIORITY_COLORS[task.priority] || ''}`}
-                                                        >
-                                                          <span
-                                                            className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
-                                                          ></span>
-                                                          {task.priority}
-                                                        </span>
-                                                      </td>
-                                                    );
-                                                  case 'deadline': {
-                                                    const urgency = getDeadlineUrgency(task.dueDate);
-                                                    return (
-                                                      <td
-                                                        key={tc.key}
-                                                        className="p-3 text-xs text-zinc-600 dark:text-zinc-400"
-                                                      >
-                                                        {task.dueDate ? (
-                                                          <span className={urgency.text}>
-                                                            {urgency.dot && (
-                                                              <span
-                                                                className={`inline-block w-1.5 h-1.5 rounded-full mr-1 ${urgency.dot}`}
-                                                              ></span>
-                                                            )}
-                                                            {new Date(task.dueDate).toLocaleDateString()}
-                                                          </span>
-                                                        ) : (
-                                                          '—'
-                                                        )}
-                                                      </td>
-                                                    );
-                                                  }
-                                                  case 'links':
-                                                    return (
-                                                      <td key={tc.key} className="p-3">
-                                                        {task.links && task.links.length > 0 ? (
-                                                          <div className="flex items-center gap-1">
-                                                            {task.links.slice(0, 3).map((link, i) => {
-                                                              let hostname = '';
-                                                              try {
-                                                                hostname = new URL(link.url).hostname;
-                                                              } catch {
-                                                                /* ignore */
-                                                              }
-                                                              return (
-                                                                <a
-                                                                  key={i}
-                                                                  href={link.url}
-                                                                  target="_blank"
-                                                                  rel="noopener noreferrer"
-                                                                  onClick={(e) => e.stopPropagation()}
-                                                                  title={link.title || link.url}
-                                                                  className="flex-shrink-0 w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center justify-center transition-colors"
-                                                                >
-                                                                  <img
-                                                                    src={
-                                                                      hostname
-                                                                        ? getFaviconUrl(link.url, hostname)
-                                                                        : undefined
-                                                                    }
-                                                                    alt=""
-                                                                    className="w-3.5 h-3.5"
-                                                                    onError={(e) => {
-                                                                      const img = e.target as HTMLImageElement;
-                                                                      img.style.display = 'none';
-                                                                      img.parentElement!.innerHTML =
-                                                                        '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
-                                                                    }}
-                                                                  />
-                                                                </a>
-                                                              );
-                                                            })}
-                                                            {task.links.length > 3 && (
-                                                              <span className="text-[11px] text-zinc-400 flex-shrink-0">
-                                                                +{task.links.length - 3}
-                                                              </span>
-                                                            )}
-                                                          </div>
-                                                        ) : (
-                                                          <span className="text-zinc-300 dark:text-zinc-600 text-sm">
-                                                            —
-                                                          </span>
-                                                        )}
-                                                      </td>
-                                                    );
-                                                  case 'placements':
-                                                    return (
-                                                      <td key={tc.key} className="p-3">
-                                                        {task.placements.length > 0 ? (
-                                                          <div className="flex flex-col gap-1">
-                                                            {task.placements.slice(0, 2).map((p, i) => (
-                                                              <span
-                                                                key={`${p}-${i}`}
-                                                                className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded w-fit"
-                                                              >
-                                                                {p}
-                                                              </span>
-                                                            ))}
-                                                            {task.placements.length > 2 && (
-                                                              <span className="text-[11px] text-zinc-400">
-                                                                +{task.placements.length - 2}
-                                                              </span>
-                                                            )}
-                                                          </div>
-                                                        ) : (
-                                                          <span className="text-zinc-300 dark:text-zinc-600 text-sm">
-                                                            —
-                                                          </span>
-                                                        )}
-                                                      </td>
-                                                    );
-                                                  default: {
-                                                    if (tc.key.startsWith('prop:')) {
-                                                      const propId = tc.key.slice(5);
-                                                      const prop = customProperties.find((p) => p.id === propId);
-                                                      const fieldValues = getTaskFieldsInTeam(task);
-                                                      const val = fieldValues[propId];
-                                                      if (prop?.type === 'person' && val) {
-                                                        const personIds = Array.isArray(val) ? val : [val];
-                                                        const people = members.filter((m) => personIds.includes(m.id));
-                                                        return (
-                                                          <td key={tc.key} className="p-3">
-                                                            {people.length > 0 ? (
-                                                              <div className="flex flex-col gap-1">
-                                                                {people.map((p) => (
-                                                                  <div key={p.id} className="flex items-center gap-1.5">
-                                                                    <Avatar
-                                                                      src={p.avatar}
-                                                                      alt={p.name}
-                                                                      size="sm"
-                                                                      className="flex-shrink-0"
-                                                                    />
-                                                                    <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
-                                                                      {p.name}
-                                                                    </span>
-                                                                  </div>
-                                                                ))}
-                                                              </div>
-                                                            ) : (
-                                                              <span className="text-xs text-zinc-400">-</span>
-                                                            )}
-                                                          </td>
-                                                        );
-                                                      }
-                                                      if (prop?.type === 'tags') {
-                                                        const tagVals: string[] = Array.isArray(val)
-                                                          ? val
-                                                          : val
-                                                            ? [val]
-                                                            : [];
-                                                        return (
-                                                          <td
-                                                            key={tc.key}
-                                                            className="p-3"
-                                                            onClick={(e) => e.stopPropagation()}
-                                                          >
-                                                            <TagSelect
-                                                              tags={prop.options || []}
-                                                              selected={tagVals}
-                                                              tagColors={prop.optionColors || {}}
-                                                              onChange={(tags) =>
-                                                                onUpdateTask({
-                                                                  ...task,
-                                                                  customFieldValues: {
-                                                                    ...task.customFieldValues,
-                                                                    [propId]: tags,
-                                                                  },
-                                                                })
-                                                              }
-                                                              onAddTag={(name, color) => {
-                                                                if (onUpdateProperty)
-                                                                  onUpdateProperty({
-                                                                    ...prop,
-                                                                    options: [...(prop.options || []), name],
-                                                                    optionColors: {
-                                                                      ...(prop.optionColors || {}),
-                                                                      [name]: color,
-                                                                    },
-                                                                  });
-                                                              }}
-                                                              onUpdateTagColor={(name, color) => {
-                                                                if (onUpdateProperty)
-                                                                  onUpdateProperty({
-                                                                    ...prop,
-                                                                    optionColors: {
-                                                                      ...(prop.optionColors || {}),
-                                                                      [name]: color,
-                                                                    },
-                                                                  });
-                                                              }}
-                                                              onDeleteTag={(name) => {
-                                                                if (onUpdateProperty) {
-                                                                  const newColors = { ...(prop.optionColors || {}) };
-                                                                  delete newColors[name];
-                                                                  onUpdateProperty({
-                                                                    ...prop,
-                                                                    options: (prop.options || []).filter(
-                                                                      (o) => o !== name,
-                                                                    ),
-                                                                    optionColors: newColors,
-                                                                  });
-                                                                  if (Array.isArray(val) && val.includes(name))
-                                                                    onUpdateTask({
-                                                                      ...task,
-                                                                      customFieldValues: {
-                                                                        ...task.customFieldValues,
-                                                                        [propId]: val.filter((t: string) => t !== name),
-                                                                      },
-                                                                    });
-                                                                }
-                                                              }}
-                                                              compact
-                                                              maxVisible={3}
-                                                            />
-                                                          </td>
-                                                        );
-                                                      }
-                                                      return (
-                                                        <td
-                                                          key={tc.key}
-                                                          className="p-3 text-xs text-zinc-600 dark:text-zinc-400 truncate"
-                                                        >
-                                                          {val ? String(val) : '-'}
-                                                        </td>
-                                                      );
-                                                    }
-                                                    return <td key={tc.key} className="p-3" />;
-                                                  }
-                                                }
-                                              })}
-                                              <td className="p-3"></td>
-                                            </tr>
-                                          );
-                                        })
-                                      ) : (
-                                        <tr>
-                                          <td
-                                            colSpan={orderedTableColumns.length + 2}
-                                            className="p-4 text-center text-xs text-zinc-400 italic"
-                                          >
-                                            No tasks in this step
-                                          </td>
-                                        </tr>
-                                      )}
-                                    </tbody>
-                                  </table>
-                                </div>
-                              </>
-                            )}
-                          </div>
-                        );
-                      })}
-                  </div>
-                );
-              })}
-
-            {/* Regular (non-my-work) table rendering */}
-            {teamFilter !== 'my-work' &&
-              displayColumns.map((col) => {
-                const colTasks = filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id);
-                const isCollapsed = collapsedSections[col.id];
-                const isArchived = archivedStatuses[teamFilter]?.includes(col.id);
-
-                const isDoneTable = statusCategories[teamFilter]?.[col.id] === 'completed';
-                const isIgnoredTable = statusCategories[teamFilter]?.[col.id] === 'ignored';
-
-                return (
-                  <div
-                    key={col.id}
-                    className={`space-y-2 group/section relative ${isArchived || isIgnoredTable ? 'opacity-60' : ''}`}
-                    onDrop={(e) => handleDropStatus(e, col.id)}
-                    onDragOver={handleDragOver}
-                  >
-                    <div className="flex items-center gap-2 sticky top-0 bg-white dark:bg-black z-10 py-2 group/header">
-                      {!statusSort && teamFilter !== 'my-work' && (
-                        <div className="flex flex-col">
-                          <button
-                            onClick={() => handleMoveStatus(col.id, 'up')}
-                            className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 leading-none disabled:opacity-30 disabled:cursor-not-allowed"
-                            disabled={currentStatusList.indexOf(col.id) === 0}
-                          >
-                            <ChevronUp size={14} />
-                          </button>
-                          <button
-                            onClick={() => handleMoveStatus(col.id, 'down')}
-                            className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 leading-none disabled:opacity-30 disabled:cursor-not-allowed"
-                            disabled={currentStatusList.indexOf(col.id) === currentStatusList.length - 1}
-                          >
-                            <ChevronDown size={14} />
-                          </button>
-                        </div>
-                      )}
-                      <span
-                        className={`text-xs px-2 py-0.5 rounded font-medium ${isArchived || isIgnoredTable ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : isDoneTable ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
-                      >
-                        {colTasks.length}
-                      </span>
-
-                      {editingColumnId === col.id ? (
-                        <input
-                          autoFocus
-                          className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-sm font-semibold w-64 outline-none"
-                          value={tempColumnName}
-                          onChange={(e) => setTempColumnName(e.target.value)}
-                          onBlur={handleSaveRename}
-                          onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
-                        />
-                      ) : (
-                        <>
-                          <h3
-                            onClick={() => handleStartRename(col.id, col.label)}
-                            className={`text-sm font-semibold flex items-center gap-1.5 ${isArchived || isIgnoredTable ? 'text-amber-600 dark:text-amber-400' : isDoneTable ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'cursor-pointer hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
-                          >
-                            {(isArchived || isIgnoredTable) && <Archive size={14} />}
-                            {isDoneTable && <CheckCircle size={14} />}
-                            {col.label}
-                          </h3>
-                          {(teamFilter === 'my-work' || teamFilter === 'all') &&
-                            (() => {
-                              const teamIds = [...new Set(colTasks.map((t) => t.teamId))];
-                              const teamNames = teamIds
-                                .map((id) => allTeams.find((t) => t.id === id)?.name)
-                                .filter(Boolean);
-                              return teamNames.length > 0 ? (
-                                <span className="text-[11px] font-normal text-zinc-400 dark:text-zinc-500">
-                                  {teamNames.join(', ')}
-                                </span>
-                              ) : null;
-                            })()}
-                        </>
-                      )}
-                      <button
-                        onClick={() => toggleSection(col.id)}
-                        className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 transition-all"
-                        title={isCollapsed ? 'Show section' : 'Hide section'}
-                      >
-                        {isCollapsed ? <EyeOff size={14} /> : <Eye size={14} />}
-                      </button>
-
-                      {teamFilter !== 'my-work' && (
-                        <div className="relative ml-2">
-                          <button
-                            ref={(el) => {
-                              columnMenuTriggerRefs.current[`table-${col.id}`] = el;
-                            }}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setActiveColumnMenu(activeColumnMenu === col.id ? null : col.id);
-                            }}
-                            className="opacity-0 group-hover/header:opacity-100 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-1 transition-opacity"
-                          >
-                            <MoreHorizontal size={14} />
-                          </button>
-
-                          <ColumnMenu
-                            isOpen={activeColumnMenu === col.id}
-                            onClose={() => setActiveColumnMenu(null)}
-                            triggerKey={`table-${col.id}`}
-                            triggerRefs={columnMenuTriggerRefs}
-                            onRename={() => handleStartRename(col.id, col.label)}
-                            onDuplicateEmpty={() => {
-                              onDuplicateStatus(teamFilter, col.id, false);
-                              setActiveColumnMenu(null);
-                            }}
-                            onDuplicateWithData={() => {
-                              onDuplicateStatus(teamFilter, col.id, true);
-                              setActiveColumnMenu(null);
-                            }}
-                            onToggleDone={() => {
-                              const current = statusCategories[teamFilter]?.[col.id] || 'active';
-                              onSetStatusCategory(teamFilter, col.id, current === 'completed' ? 'active' : 'completed');
-                              setActiveColumnMenu(null);
-                            }}
-                            onArchive={() => {
-                              onArchiveStatus(teamFilter, col.id);
-                              setActiveColumnMenu(null);
-                            }}
-                            onDelete={() => handleDeleteColumn(col.id)}
-                            isArchived={!!isArchived}
-                            isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
-                            isArchiveCategory={statusCategories[teamFilter]?.[col.id] === 'ignored'}
-                            onToggleArchiveCategory={() => {
-                              const current = statusCategories[teamFilter]?.[col.id] || 'active';
-                              onSetStatusCategory(teamFilter, col.id, current === 'ignored' ? 'active' : 'ignored');
-                              setActiveColumnMenu(null);
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {!isCollapsed && (
-                      <>
-                        <div
-                          className={`border rounded-lg cursor-default overflow-clip ${isArchived || isIgnoredTable ? 'border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/10' : isDoneTable ? 'border-dashed border-emerald-300 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10' : 'border-zinc-200 dark:border-zinc-800'}`}
+              return (
+                <div
+                  key={col.id}
+                  className={`space-y-2 group/section relative ${isArchived ? 'opacity-70' : ''}`}
+                  onDrop={(e) => handleDropStatus(e, col.id)}
+                  onDragOver={handleDragOver}
+                >
+                  <div className="flex items-center gap-2 sticky top-0 bg-white dark:bg-black z-10 py-2 group/header">
+                    {!statusSort && teamFilter !== 'my-work' && (
+                      <div className="flex flex-col">
+                        <button
+                          onClick={() => handleMoveStatus(col.id, 'up')}
+                          className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 leading-none disabled:opacity-30 disabled:cursor-not-allowed"
+                          disabled={currentStatusList.indexOf(col.id) === 0}
                         >
-                          {/* Added table-fixed and specific widths for alignment */}
-                          <table className="w-full text-left text-sm border-collapse min-w-[1100px] table-fixed">
-                            <thead
-                              className={`border-b ${isArchived || isIgnoredTable ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40' : isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
-                            >
-                              <tr>
-                                <th className="p-3 w-10">
-                                  <input
-                                    type="checkbox"
-                                    ref={(el) => {
-                                      if (el) {
-                                        const someSelected = colTasks.some((t) => selectedTaskIds.has(t.id));
-                                        const allSelected =
-                                          colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id));
-                                        el.indeterminate = someSelected && !allSelected;
-                                      }
-                                    }}
-                                    checked={colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id))}
-                                    onChange={() => toggleGroupSelection(col.id)}
-                                    className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                    onClick={(e) => e.stopPropagation()}
-                                  />
-                                </th>
-                                {orderedTableColumns.map((tc) => {
-                                  const isProp = tc.key.startsWith('prop:');
-                                  const prop = isProp
-                                    ? customProperties.find((p) => p.id === tc.key.slice(5))
-                                    : undefined;
-                                  return (
-                                    <th
-                                      key={tc.key}
-                                      className={`p-3 font-medium text-xs ${tc.className} cursor-pointer select-none transition-colors ${isProp ? 'group/prop relative' : ''} ${isArchived || isIgnoredTable ? 'text-amber-500 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-300' : isDoneTable ? 'text-emerald-500 dark:text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
-                                      onClick={() => handleHeaderSort(tc.key)}
-                                    >
-                                      {isProp && editingColumnId === prop?.id ? (
-                                        <input
-                                          autoFocus
-                                          className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1 py-0.5 text-xs font-semibold w-full outline-none"
-                                          value={tempColumnName}
-                                          onChange={(e) => setTempColumnName(e.target.value)}
-                                          onBlur={handleSaveRename}
-                                          onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
-                                          onClick={(e) => e.stopPropagation()}
-                                        />
-                                      ) : (
-                                        <div className="flex items-center justify-between">
-                                          <span className="inline-flex items-center gap-1">
-                                            <span
-                                              className={sortColumn === tc.key ? 'text-zinc-900 dark:text-white' : ''}
-                                            >
-                                              {tc.label}
-                                            </span>
-                                            {sortColumn === tc.key &&
-                                              (sortDirection === 'asc' ? (
-                                                <ChevronUp size={12} className="text-zinc-900 dark:text-white" />
-                                              ) : (
-                                                <ChevronDown size={12} className="text-zinc-900 dark:text-white" />
-                                              ))}
+                          <ChevronUp size={14} />
+                        </button>
+                        <button
+                          onClick={() => handleMoveStatus(col.id, 'down')}
+                          className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 leading-none disabled:opacity-30 disabled:cursor-not-allowed"
+                          disabled={currentStatusList.indexOf(col.id) === currentStatusList.length - 1}
+                        >
+                          <ChevronDown size={14} />
+                        </button>
+                      </div>
+                    )}
+                    <span
+                      className={`text-xs px-2 py-0.5 rounded font-medium ${isDoneTable ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredTable ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
+                    >
+                      {colTasks.length}
+                    </span>
+
+                    {editingColumnId === col.id ? (
+                      <input
+                        autoFocus
+                        className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-sm font-semibold w-64 outline-none"
+                        value={tempColumnName}
+                        onChange={(e) => setTempColumnName(e.target.value)}
+                        onBlur={handleSaveRename}
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
+                      />
+                    ) : (
+                      <>
+                        <h3
+                          onClick={() => handleStartRename(col.id, col.label)}
+                          className={`text-sm font-semibold ${isDoneTable ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredTable ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'cursor-pointer hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
+                        >
+                          {col.label} {isArchived && '(Archived)'}
+                        </h3>
+                        {(teamFilter === 'my-work' || teamFilter === 'all') &&
+                          (() => {
+                            const teamIds = [...new Set(colTasks.map((t) => t.teamId))];
+                            const teamNames = teamIds
+                              .map((id) => allTeams.find((t) => t.id === id)?.name)
+                              .filter(Boolean);
+                            return teamNames.length > 0 ? (
+                              <span className="text-[11px] font-normal text-zinc-400 dark:text-zinc-500">
+                                {teamNames.join(', ')}
+                              </span>
+                            ) : null;
+                          })()}
+                      </>
+                    )}
+                    <button
+                      onClick={() => toggleSection(col.id)}
+                      className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 transition-all"
+                      title={isCollapsed ? 'Show section' : 'Hide section'}
+                    >
+                      {isCollapsed ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+
+                    {teamFilter !== 'my-work' && (
+                      <div className="relative ml-2">
+                        <button
+                          ref={(el) => {
+                            columnMenuTriggerRefs.current[`table-${col.id}`] = el;
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setActiveColumnMenu(activeColumnMenu === col.id ? null : col.id);
+                          }}
+                          className="opacity-0 group-hover/header:opacity-100 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-1 transition-opacity"
+                        >
+                          <MoreHorizontal size={14} />
+                        </button>
+
+                        <ColumnMenu
+                          isOpen={activeColumnMenu === col.id}
+                          onClose={() => setActiveColumnMenu(null)}
+                          triggerKey={`table-${col.id}`}
+                          triggerRefs={columnMenuTriggerRefs}
+                          onRename={() => handleStartRename(col.id, col.label)}
+                          onDuplicateEmpty={() => {
+                            onDuplicateStatus(teamFilter, col.id, false);
+                            setActiveColumnMenu(null);
+                          }}
+                          onDuplicateWithData={() => {
+                            onDuplicateStatus(teamFilter, col.id, true);
+                            setActiveColumnMenu(null);
+                          }}
+                          onToggleDone={() => {
+                            const current = statusCategories[teamFilter]?.[col.id] || 'active';
+                            onSetStatusCategory(teamFilter, col.id, current === 'completed' ? 'active' : 'completed');
+                            setActiveColumnMenu(null);
+                          }}
+                          onArchive={() => {
+                            onArchiveStatus(teamFilter, col.id);
+                            setActiveColumnMenu(null);
+                          }}
+                          onDelete={() => handleDeleteColumn(col.id)}
+                          isArchived={!!isArchived}
+                          isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
+                          isArchiveCategory={statusCategories[teamFilter]?.[col.id] === 'ignored'}
+                          onToggleArchiveCategory={() => {
+                            const current = statusCategories[teamFilter]?.[col.id] || 'active';
+                            onSetStatusCategory(teamFilter, col.id, current === 'ignored' ? 'active' : 'ignored');
+                            setActiveColumnMenu(null);
+                          }}
+                        />
+                      </div>
+                    )}
+                  </div>
+
+                  {!isCollapsed && (
+                    <>
+                      <div
+                        className={`overflow-visible border border-zinc-200 dark:border-zinc-800 rounded-lg cursor-default ${isArchived ? 'bg-yellow-50/10' : ''}`}
+                      >
+                        {/* Added table-fixed and specific widths for alignment */}
+                        <table className="w-full text-left text-sm border-collapse min-w-[1100px] table-fixed">
+                          <thead
+                            className={`border-b ${isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : isIgnoredTable ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
+                          >
+                            <tr>
+                              <th className="p-3 w-10">
+                                <input
+                                  type="checkbox"
+                                  ref={(el) => {
+                                    if (el) {
+                                      const someSelected = colTasks.some((t) => selectedTaskIds.has(t.id));
+                                      const allSelected =
+                                        colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id));
+                                      el.indeterminate = someSelected && !allSelected;
+                                    }
+                                  }}
+                                  checked={colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id))}
+                                  onChange={() => toggleGroupSelection(col.id)}
+                                  className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                  onClick={(e) => e.stopPropagation()}
+                                />
+                              </th>
+                              {orderedTableColumns.map((tc) => {
+                                const isProp = tc.key.startsWith('prop:');
+                                const prop = isProp
+                                  ? customProperties.find((p) => p.id === tc.key.slice(5))
+                                  : undefined;
+                                return (
+                                  <th
+                                    key={tc.key}
+                                    className={`p-3 font-medium text-xs ${tc.className} cursor-pointer select-none transition-colors ${isProp ? 'group/prop relative' : ''} ${isDoneTable ? 'text-emerald-500 dark:text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
+                                    onClick={() => handleHeaderSort(tc.key)}
+                                  >
+                                    {isProp && editingColumnId === prop?.id ? (
+                                      <input
+                                        autoFocus
+                                        className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1 py-0.5 text-xs font-semibold w-full outline-none"
+                                        value={tempColumnName}
+                                        onChange={(e) => setTempColumnName(e.target.value)}
+                                        onBlur={handleSaveRename}
+                                        onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
+                                        onClick={(e) => e.stopPropagation()}
+                                      />
+                                    ) : (
+                                      <div className="flex items-center justify-between">
+                                        <span className="inline-flex items-center gap-1">
+                                          <span
+                                            className={sortColumn === tc.key ? 'text-zinc-900 dark:text-white' : ''}
+                                          >
+                                            {tc.label}
                                           </span>
-                                          {isProp && prop && (
-                                            <button
-                                              onClick={(e) => {
-                                                e.stopPropagation();
-                                                const key = `${col.id}:${prop.id}`;
-                                                setActivePropertyMenu(activePropertyMenu === key ? null : key);
-                                              }}
-                                              className="opacity-0 group-hover/prop:opacity-100 hover:text-zinc-900 dark:hover:text-white"
+                                          {sortColumn === tc.key &&
+                                            (sortDirection === 'asc' ? (
+                                              <ChevronUp size={12} className="text-zinc-900 dark:text-white" />
+                                            ) : (
+                                              <ChevronDown size={12} className="text-zinc-900 dark:text-white" />
+                                            ))}
+                                        </span>
+                                        {isProp && prop && (
+                                          <button
+                                            onClick={(e) => {
+                                              e.stopPropagation();
+                                              const key = `${col.id}:${prop.id}`;
+                                              setActivePropertyMenu(activePropertyMenu === key ? null : key);
+                                            }}
+                                            className="opacity-0 group-hover/prop:opacity-100 hover:text-zinc-900 dark:hover:text-white"
+                                          >
+                                            <MoreHorizontal size={12} />
+                                          </button>
+                                        )}
+                                      </div>
+                                    )}
+                                  </th>
+                                );
+                              })}
+                              <th className="p-2 w-16 text-center">
+                                <div className="flex items-center justify-center gap-0.5">
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setIsReorderColumnsOpen(isReorderColumnsOpen === col.id ? null : col.id);
+                                      setIsAddPropertyOpen(null);
+                                    }}
+                                    className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                    title="Reorder columns"
+                                  >
+                                    <ArrowLeftRight size={14} />
+                                  </button>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setIsAddPropertyOpen(isAddPropertyOpen === col.id ? null : col.id);
+                                      setIsReorderColumnsOpen(null);
+                                    }}
+                                    className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400"
+                                  >
+                                    <Plus size={14} />
+                                  </button>
+                                </div>
+                              </th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900/40">
+                            {colTasks.length > 0 ? (
+                              sortTasks(colTasks).map((task) => {
+                                const isDragOver = dragOverTaskId === task.id;
+                                return (
+                                  <tr
+                                    key={task.id}
+                                    draggable={!sortColumn}
+                                    onDragStart={(e) => handleDragStart(e, task.id, col.id)}
+                                    onDragOver={(e) => !sortColumn && handleTaskDragOver(e, task.id)}
+                                    onDragLeave={handleTaskDragLeave}
+                                    onDrop={(e) => handleDropOnTask(e, task.id, col.id)}
+                                    className={`hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group ${!sortColumn ? 'cursor-grab active:cursor-grabbing' : ''} relative ${selectedTaskIds.has(task.id) ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
+                                    style={
+                                      isDragOver && !sortColumn
+                                        ? {
+                                            borderTop:
+                                              dragPosition === 'above' ? '2px solid rgb(59 130 246)' : undefined,
+                                            borderBottom:
+                                              dragPosition === 'below' ? '2px solid rgb(59 130 246)' : undefined,
+                                          }
+                                        : undefined
+                                    }
+                                    onClick={() => onTaskClick(task)}
+                                  >
+                                    <td className="p-3 w-10" onClick={(e) => e.stopPropagation()}>
+                                      <input
+                                        type="checkbox"
+                                        checked={selectedTaskIds.has(task.id)}
+                                        onChange={(e) =>
+                                          toggleTaskSelection(
+                                            task.id,
+                                            e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey,
+                                          )
+                                        }
+                                        className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                      />
+                                    </td>
+                                    {/* Data-driven cells */}
+                                    {orderedTableColumns.map((tc) => {
+                                      switch (tc.key) {
+                                        case 'title':
+                                          return (
+                                            <td
+                                              key={tc.key}
+                                              className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 truncate"
                                             >
-                                              <MoreHorizontal size={12} />
-                                            </button>
-                                          )}
-                                        </div>
-                                      )}
-                                    </th>
-                                  );
-                                })}
-                                <th className="p-2 w-16 text-center">
-                                  <div className="flex items-center justify-center gap-0.5">
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setIsReorderColumnsOpen(isReorderColumnsOpen === col.id ? null : col.id);
-                                        setIsAddPropertyOpen(null);
-                                      }}
-                                      className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                      title="Reorder columns"
-                                    >
-                                      <ArrowLeftRight size={14} />
-                                    </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        setIsAddPropertyOpen(isAddPropertyOpen === col.id ? null : col.id);
-                                        setIsReorderColumnsOpen(null);
-                                      }}
-                                      className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400"
-                                    >
-                                      <Plus size={14} />
-                                    </button>
-                                  </div>
-                                </th>
-                              </tr>
-                            </thead>
-                            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800 bg-white dark:bg-zinc-900/40">
-                              {colTasks.length > 0 ? (
-                                sortTasks(colTasks).map((task) => {
-                                  const isDragOver = dragOverTaskId === task.id;
-                                  return (
-                                    <tr
-                                      key={task.id}
-                                      draggable={!sortColumn}
-                                      onDragStart={(e) => handleDragStart(e, task.id, col.id)}
-                                      onDragOver={(e) => !sortColumn && handleTaskDragOver(e, task.id)}
-                                      onDragLeave={handleTaskDragLeave}
-                                      onDrop={(e) => handleDropOnTask(e, task.id, col.id)}
-                                      className={`hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group ${!sortColumn ? 'cursor-grab active:cursor-grabbing' : ''} relative ${selectedTaskIds.has(task.id) ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
-                                      style={
-                                        isDragOver && !sortColumn
-                                          ? {
-                                              borderTop:
-                                                dragPosition === 'above' ? '2px solid rgb(59 130 246)' : undefined,
-                                              borderBottom:
-                                                dragPosition === 'below' ? '2px solid rgb(59 130 246)' : undefined,
+                                              <div className="flex items-center gap-2">
+                                                {!sortColumn && (
+                                                  <GripVertical
+                                                    size={12}
+                                                    className="text-zinc-300 opacity-0 group-hover:opacity-100 flex-shrink-0"
+                                                  />
+                                                )}
+                                                {isLinkedCopy(task) && (
+                                                  <Link2 size={12} className="text-blue-500 flex-shrink-0" />
+                                                )}
+                                                <span className="truncate">{task.title}</span>
+                                              </div>
+                                            </td>
+                                          );
+                                        case 'type':
+                                          return (
+                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                              <CustomSelect
+                                                compact
+                                                options={teamTypes[task.teamId] || teamTypes['default'] || ['General']}
+                                                value={task.contentInfo?.type || ''}
+                                                onChange={(val) =>
+                                                  onUpdateTask({
+                                                    ...task,
+                                                    contentInfo: { ...task.contentInfo!, type: val },
+                                                  })
+                                                }
+                                              />
+                                            </td>
+                                          );
+                                        case 'assignee':
+                                        case 'editor': {
+                                          const personKey = tc.key;
+                                          const selectedIds =
+                                            personKey === 'assignee'
+                                              ? task.assigneeIds
+                                              : task.contentInfo?.editorIds || [];
+                                          const handleChange = (ids: string[]) => {
+                                            if (personKey === 'assignee') {
+                                              onUpdateTask({ ...task, assigneeIds: ids });
+                                            } else {
+                                              onUpdateTask({
+                                                ...task,
+                                                contentInfo: { ...task.contentInfo!, editorIds: ids },
+                                              });
                                             }
-                                          : undefined
-                                      }
-                                      onClick={() => onTaskClick(task)}
-                                    >
-                                      <td className="p-3 w-10" onClick={(e) => e.stopPropagation()}>
-                                        <input
-                                          type="checkbox"
-                                          checked={selectedTaskIds.has(task.id)}
-                                          onChange={(e) =>
-                                            toggleTaskSelection(
-                                              task.id,
-                                              e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey,
-                                            )
-                                          }
-                                          className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                        />
-                                      </td>
-                                      {/* Data-driven cells */}
-                                      {orderedTableColumns.map((tc) => {
-                                        switch (tc.key) {
-                                          case 'title':
-                                            return (
-                                              <td
-                                                key={tc.key}
-                                                className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 truncate"
-                                              >
-                                                <div className="flex items-center gap-2">
-                                                  {!sortColumn && (
-                                                    <GripVertical
-                                                      size={12}
-                                                      className="text-zinc-300 opacity-0 group-hover:opacity-100 flex-shrink-0"
-                                                    />
-                                                  )}
-                                                  {isLinkedCopy(task) && (
-                                                    <Link2 size={12} className="text-blue-500 flex-shrink-0" />
-                                                  )}
-                                                  <span className="truncate">{task.title}</span>
-                                                </div>
-                                              </td>
-                                            );
-                                          case 'type':
-                                            return (
-                                              <td key={tc.key} className="p-3">
-                                                {task.contentInfo?.type ? (
-                                                  <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded">
-                                                    {task.contentInfo.type}
-                                                  </span>
-                                                ) : (
-                                                  <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
-                                                )}
-                                              </td>
-                                            );
-                                          case 'assignee':
-                                          case 'editor': {
-                                            const personKey = tc.key;
-                                            const selectedIds =
-                                              personKey === 'assignee'
-                                                ? task.assigneeIds
-                                                : task.contentInfo?.editorIds || [];
-                                            const handleChange = (ids: string[]) => {
-                                              if (personKey === 'assignee') {
-                                                onUpdateTask({ ...task, assigneeIds: ids });
-                                              } else {
-                                                onUpdateTask({
-                                                  ...task,
-                                                  contentInfo: { ...task.contentInfo!, editorIds: ids },
-                                                });
-                                              }
-                                            };
-                                            return (
-                                              <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                                <MultiSelect
-                                                  icon={personKey === 'editor' ? Eye : User}
-                                                  label=""
-                                                  options={members.map((m) => ({ value: m.id, label: m.name }))}
-                                                  selected={selectedIds}
-                                                  onChange={handleChange}
-                                                  placeholder="—"
-                                                  className="min-w-0"
-                                                  compact
-                                                  renderTrigger={(onClick, sIds) => {
-                                                    const people = members.filter((m) => sIds.includes(m.id));
-                                                    return (
-                                                      <div
-                                                        onClick={onClick}
-                                                        className="flex flex-col gap-1 cursor-pointer rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-h-[24px]"
-                                                      >
-                                                        {people.length > 0 ? (
-                                                          people.map((p) => (
-                                                            <div key={p.id} className="flex items-center gap-1.5">
-                                                              <Avatar
-                                                                src={p.avatar}
-                                                                alt={p.name}
-                                                                size="sm"
-                                                                className="flex-shrink-0"
-                                                              />
-                                                              <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
-                                                                {p.name}
-                                                              </span>
-                                                            </div>
-                                                          ))
-                                                        ) : (
-                                                          <span className="text-xs text-zinc-400">—</span>
-                                                        )}
-                                                      </div>
-                                                    );
-                                                  }}
-                                                />
-                                              </td>
-                                            );
-                                          }
-                                          case 'priority':
-                                            return (
-                                              <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                                <CustomSelect
-                                                  compact
-                                                  options={[
-                                                    { value: 'low', label: 'Low' },
-                                                    { value: 'medium', label: 'Medium' },
-                                                    { value: 'high', label: 'High' },
-                                                  ]}
-                                                  value={task.priority}
-                                                  onChange={(val) =>
-                                                    onUpdateTask({ ...task, priority: val as Priority })
-                                                  }
-                                                  renderValue={(val) => (
-                                                    <span
-                                                      className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[val] || ''}`}
-                                                    >
-                                                      <span
-                                                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[val] || ''}`}
-                                                      />
-                                                      {val}
-                                                    </span>
-                                                  )}
-                                                />
-                                              </td>
-                                            );
-                                          case 'deadline':
-                                            return (
-                                              <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                                <SimpleDatePicker
-                                                  value={task.dueDate ? task.dueDate.split('T')[0] : ''}
-                                                  onChange={(date) =>
-                                                    onUpdateTask({
-                                                      ...task,
-                                                      dueDate: new Date(date).toISOString(),
-                                                    })
-                                                  }
-                                                  placeholder="Set date"
-                                                  renderTrigger={(onClick, value) => {
-                                                    const urgency = getDeadlineUrgency(value || undefined);
-                                                    return (
-                                                      <span
-                                                        onClick={onClick}
-                                                        className={`text-xs flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors ${value ? urgency.text : 'text-zinc-500'}`}
-                                                      >
-                                                        {value && urgency.dot && (
-                                                          <span
-                                                            className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${urgency.dot}`}
-                                                          />
-                                                        )}
-                                                        {value
-                                                          ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
-                                                          : 'Set date'}
-                                                      </span>
-                                                    );
-                                                  }}
-                                                />
-                                              </td>
-                                            );
-                                          case 'done':
-                                            return (
-                                              <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                                <SimpleDatePicker
-                                                  value={task.doneDate ? task.doneDate.split('T')[0] : ''}
-                                                  onChange={(date) =>
-                                                    onUpdateTask({
-                                                      ...task,
-                                                      doneDate: new Date(date).toISOString(),
-                                                    })
-                                                  }
-                                                  placeholder="Set date"
-                                                  renderTrigger={(onClick, value) => (
-                                                    <span
+                                          };
+                                          return (
+                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                              <MultiSelect
+                                                icon={personKey === 'editor' ? Eye : User}
+                                                label=""
+                                                options={members.map((m) => ({ value: m.id, label: m.name }))}
+                                                selected={selectedIds}
+                                                onChange={handleChange}
+                                                placeholder="—"
+                                                className="min-w-0"
+                                                compact
+                                                renderTrigger={(onClick, sIds) => {
+                                                  const people = members.filter((m) => sIds.includes(m.id));
+                                                  return (
+                                                    <div
                                                       onClick={onClick}
-                                                      className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
+                                                      className="flex flex-col gap-1 cursor-pointer rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-h-[24px]"
                                                     >
-                                                      {value
-                                                        ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
-                                                        : 'Set date'}
-                                                    </span>
-                                                  )}
-                                                />
-                                              </td>
-                                            );
-                                          case 'links':
-                                            return (
-                                              <td key={tc.key} className="p-3">
-                                                {task.links && task.links.length > 0 ? (
-                                                  <div className="flex items-center gap-1">
-                                                    {task.links.slice(0, 3).map((link, i) => {
-                                                      let hostname = '';
-                                                      try {
-                                                        hostname = new URL(link.url).hostname;
-                                                      } catch {
-                                                        /* ignore */
-                                                      }
-                                                      return (
-                                                        <a
-                                                          key={i}
-                                                          href={link.url}
-                                                          target="_blank"
-                                                          rel="noopener noreferrer"
-                                                          onClick={(e) => e.stopPropagation()}
-                                                          title={link.title || link.url}
-                                                          className="flex-shrink-0 w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center justify-center transition-colors"
-                                                        >
-                                                          <img
-                                                            src={
-                                                              hostname ? getFaviconUrl(link.url, hostname) : undefined
-                                                            }
-                                                            alt=""
-                                                            className="w-3.5 h-3.5"
-                                                            onError={(e) => {
-                                                              const img = e.target as HTMLImageElement;
-                                                              img.style.display = 'none';
-                                                              img.parentElement!.innerHTML =
-                                                                '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
-                                                            }}
-                                                          />
-                                                        </a>
-                                                      );
-                                                    })}
-                                                    {task.links.length > 3 && (
-                                                      <span className="text-[11px] text-zinc-400 flex-shrink-0">
-                                                        +{task.links.length - 3}
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                ) : (
-                                                  <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
-                                                )}
-                                              </td>
-                                            );
-                                          case 'placements':
-                                            return (
-                                              <td key={tc.key} className="p-3">
-                                                {task.placements.length > 0 ? (
-                                                  <div className="flex flex-col gap-1">
-                                                    {task.placements.slice(0, 2).map((p, i) => (
-                                                      <span
-                                                        key={`${p}-${i}`}
-                                                        className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded w-fit"
-                                                      >
-                                                        {p}
-                                                      </span>
-                                                    ))}
-                                                    {task.placements.length > 2 && (
-                                                      <span className="text-[11px] text-zinc-400">
-                                                        +{task.placements.length - 2}
-                                                      </span>
-                                                    )}
-                                                  </div>
-                                                ) : (
-                                                  <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
-                                                )}
-                                              </td>
-                                            );
-                                          default: {
-                                            // Custom properties
-                                            if (tc.key.startsWith('prop:')) {
-                                              const propId = tc.key.slice(5);
-                                              const prop = customProperties.find((p) => p.id === propId);
-                                              const fieldValues = getTaskFieldsInTeam(task);
-                                              const val = fieldValues[propId];
-                                              if (prop?.type === 'person' && val) {
-                                                const personIds = Array.isArray(val) ? val : [val];
-                                                const people = members.filter((m) => personIds.includes(m.id));
-                                                return (
-                                                  <td key={tc.key} className="p-3">
-                                                    {people.length > 0 ? (
-                                                      <div className="flex flex-col gap-1">
-                                                        {people.map((p) => (
+                                                      {people.length > 0 ? (
+                                                        people.map((p) => (
                                                           <div key={p.id} className="flex items-center gap-1.5">
                                                             <Avatar
                                                               src={p.avatar}
@@ -2598,286 +1765,469 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                               {p.name}
                                                             </span>
                                                           </div>
-                                                        ))}
-                                                      </div>
-                                                    ) : (
-                                                      <span className="text-xs text-zinc-400">-</span>
-                                                    )}
-                                                  </td>
-                                                );
-                                              }
-                                              if (prop?.type === 'tags') {
-                                                const tagVals: string[] = Array.isArray(val) ? val : val ? [val] : [];
-                                                return (
-                                                  <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                                    <TagSelect
-                                                      tags={prop.options || []}
-                                                      selected={tagVals}
-                                                      tagColors={prop.optionColors || {}}
-                                                      onChange={(tags) =>
-                                                        onUpdateTask({
-                                                          ...task,
-                                                          customFieldValues: {
-                                                            ...task.customFieldValues,
-                                                            [propId]: tags,
-                                                          },
-                                                        })
-                                                      }
-                                                      onAddTag={(name, color) => {
-                                                        if (onUpdateProperty) {
-                                                          onUpdateProperty({
-                                                            ...prop,
-                                                            options: [...(prop.options || []), name],
-                                                            optionColors: {
-                                                              ...(prop.optionColors || {}),
-                                                              [name]: color,
-                                                            },
-                                                          });
-                                                        }
-                                                      }}
-                                                      onUpdateTagColor={(name, color) => {
-                                                        if (onUpdateProperty) {
-                                                          onUpdateProperty({
-                                                            ...prop,
-                                                            optionColors: {
-                                                              ...(prop.optionColors || {}),
-                                                              [name]: color,
-                                                            },
-                                                          });
-                                                        }
-                                                      }}
-                                                      onDeleteTag={(name) => {
-                                                        if (onUpdateProperty) {
-                                                          const newColors = { ...(prop.optionColors || {}) };
-                                                          delete newColors[name];
-                                                          onUpdateProperty({
-                                                            ...prop,
-                                                            options: (prop.options || []).filter((o) => o !== name),
-                                                            optionColors: newColors,
-                                                          });
-                                                          if (Array.isArray(val) && val.includes(name)) {
-                                                            onUpdateTask({
-                                                              ...task,
-                                                              customFieldValues: {
-                                                                ...task.customFieldValues,
-                                                                [propId]: val.filter((t: string) => t !== name),
-                                                              },
-                                                            });
-                                                          }
-                                                        }
-                                                      }}
-                                                      compact
-                                                      maxVisible={3}
+                                                        ))
+                                                      ) : (
+                                                        <span className="text-xs text-zinc-400">—</span>
+                                                      )}
+                                                    </div>
+                                                  );
+                                                }}
+                                              />
+                                            </td>
+                                          );
+                                        }
+                                        case 'priority':
+                                          return (
+                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                              <CustomSelect
+                                                compact
+                                                options={[
+                                                  { value: 'low', label: 'Low' },
+                                                  { value: 'medium', label: 'Medium' },
+                                                  { value: 'high', label: 'High' },
+                                                ]}
+                                                value={task.priority}
+                                                onChange={(val) => onUpdateTask({ ...task, priority: val as Priority })}
+                                                renderValue={(val) => (
+                                                  <span
+                                                    className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[val] || ''}`}
+                                                  >
+                                                    <span
+                                                      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[val] || ''}`}
                                                     />
-                                                  </td>
-                                                );
-                                              }
+                                                    {val}
+                                                  </span>
+                                                )}
+                                              />
+                                            </td>
+                                          );
+                                        case 'deadline':
+                                          return (
+                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                              <SimpleDatePicker
+                                                value={task.dueDate ? task.dueDate.split('T')[0] : ''}
+                                                onChange={(date) =>
+                                                  onUpdateTask({
+                                                    ...task,
+                                                    dueDate: new Date(date).toISOString(),
+                                                  })
+                                                }
+                                                placeholder="Set date"
+                                                renderTrigger={(onClick, value) => {
+                                                  const urgency = getDeadlineUrgency(value || undefined);
+                                                  return (
+                                                    <span
+                                                      onClick={onClick}
+                                                      className={`text-xs flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors ${value ? urgency.text : 'text-zinc-500'}`}
+                                                    >
+                                                      {value && urgency.dot && (
+                                                        <span
+                                                          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${urgency.dot}`}
+                                                        />
+                                                      )}
+                                                      {value
+                                                        ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
+                                                        : 'Set date'}
+                                                    </span>
+                                                  );
+                                                }}
+                                              />
+                                            </td>
+                                          );
+                                        case 'done':
+                                          return (
+                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                              <SimpleDatePicker
+                                                value={task.doneDate ? task.doneDate.split('T')[0] : ''}
+                                                onChange={(date) =>
+                                                  onUpdateTask({
+                                                    ...task,
+                                                    doneDate: new Date(date).toISOString(),
+                                                  })
+                                                }
+                                                placeholder="Set date"
+                                                renderTrigger={(onClick, value) => (
+                                                  <span
+                                                    onClick={onClick}
+                                                    className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
+                                                  >
+                                                    {value
+                                                      ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
+                                                      : 'Set date'}
+                                                  </span>
+                                                )}
+                                              />
+                                            </td>
+                                          );
+                                        case 'links':
+                                          return (
+                                            <td key={tc.key} className="p-3">
+                                              {task.links && task.links.length > 0 ? (
+                                                <div className="flex items-center gap-1">
+                                                  {task.links.slice(0, 3).map((link, i) => {
+                                                    let hostname = '';
+                                                    try {
+                                                      hostname = new URL(link.url).hostname;
+                                                    } catch {
+                                                      /* ignore */
+                                                    }
+                                                    return (
+                                                      <a
+                                                        key={i}
+                                                        href={link.url}
+                                                        target="_blank"
+                                                        rel="noopener noreferrer"
+                                                        onClick={(e) => e.stopPropagation()}
+                                                        title={link.title || link.url}
+                                                        className="flex-shrink-0 w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center justify-center transition-colors"
+                                                      >
+                                                        <img
+                                                          src={hostname ? getFaviconUrl(link.url, hostname) : undefined}
+                                                          alt=""
+                                                          className="w-3.5 h-3.5"
+                                                          onError={(e) => {
+                                                            const img = e.target as HTMLImageElement;
+                                                            img.style.display = 'none';
+                                                            img.parentElement!.innerHTML =
+                                                              '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+                                                          }}
+                                                        />
+                                                      </a>
+                                                    );
+                                                  })}
+                                                  {task.links.length > 3 && (
+                                                    <span className="text-[11px] text-zinc-400 flex-shrink-0">
+                                                      +{task.links.length - 3}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
+                                              )}
+                                            </td>
+                                          );
+                                        case 'placements':
+                                          return (
+                                            <td key={tc.key} className="p-3">
+                                              {task.placements.length > 0 ? (
+                                                <div className="flex flex-col gap-1">
+                                                  {task.placements.slice(0, 3).map((p, i) => (
+                                                    <span
+                                                      key={`${p}-${i}`}
+                                                      className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded w-fit"
+                                                    >
+                                                      {p}
+                                                    </span>
+                                                  ))}
+                                                  {task.placements.length > 3 && (
+                                                    <span className="text-[11px] text-zinc-400">
+                                                      +{task.placements.length - 3}
+                                                    </span>
+                                                  )}
+                                                </div>
+                                              ) : (
+                                                <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
+                                              )}
+                                            </td>
+                                          );
+                                        default: {
+                                          // Custom properties
+                                          if (tc.key.startsWith('prop:')) {
+                                            const propId = tc.key.slice(5);
+                                            const prop = customProperties.find((p) => p.id === propId);
+                                            const fieldValues = getTaskFieldsInTeam(task);
+                                            const val = fieldValues[propId];
+                                            if (prop?.type === 'person' && val) {
+                                              const personIds = Array.isArray(val) ? val : [val];
+                                              const people = members.filter((m) => personIds.includes(m.id));
                                               return (
-                                                <td
-                                                  key={tc.key}
-                                                  className="p-3 text-xs text-zinc-600 dark:text-zinc-400 truncate"
-                                                >
-                                                  {val ? String(val) : '-'}
+                                                <td key={tc.key} className="p-3">
+                                                  {people.length > 0 ? (
+                                                    <div className="flex flex-col gap-1">
+                                                      {people.map((p) => (
+                                                        <div key={p.id} className="flex items-center gap-1.5">
+                                                          <Avatar
+                                                            src={p.avatar}
+                                                            alt={p.name}
+                                                            size="sm"
+                                                            className="flex-shrink-0"
+                                                          />
+                                                          <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
+                                                            {p.name}
+                                                          </span>
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  ) : (
+                                                    <span className="text-xs text-zinc-400">-</span>
+                                                  )}
                                                 </td>
                                               );
                                             }
-                                            return <td key={tc.key} className="p-3" />;
+                                            if (prop?.type === 'tags') {
+                                              const tagVals: string[] = Array.isArray(val) ? val : val ? [val] : [];
+                                              return (
+                                                <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                                  <TagSelect
+                                                    tags={prop.options || []}
+                                                    selected={tagVals}
+                                                    tagColors={prop.optionColors || {}}
+                                                    onChange={(tags) =>
+                                                      onUpdateTask({
+                                                        ...task,
+                                                        customFieldValues: {
+                                                          ...task.customFieldValues,
+                                                          [propId]: tags,
+                                                        },
+                                                      })
+                                                    }
+                                                    onAddTag={(name, color) => {
+                                                      if (onUpdateProperty) {
+                                                        onUpdateProperty({
+                                                          ...prop,
+                                                          options: [...(prop.options || []), name],
+                                                          optionColors: { ...(prop.optionColors || {}), [name]: color },
+                                                        });
+                                                      }
+                                                    }}
+                                                    onUpdateTagColor={(name, color) => {
+                                                      if (onUpdateProperty) {
+                                                        onUpdateProperty({
+                                                          ...prop,
+                                                          optionColors: { ...(prop.optionColors || {}), [name]: color },
+                                                        });
+                                                      }
+                                                    }}
+                                                    onDeleteTag={(name) => {
+                                                      if (onUpdateProperty) {
+                                                        const newColors = { ...(prop.optionColors || {}) };
+                                                        delete newColors[name];
+                                                        onUpdateProperty({
+                                                          ...prop,
+                                                          options: (prop.options || []).filter((o) => o !== name),
+                                                          optionColors: newColors,
+                                                        });
+                                                        if (Array.isArray(val) && val.includes(name)) {
+                                                          onUpdateTask({
+                                                            ...task,
+                                                            customFieldValues: {
+                                                              ...task.customFieldValues,
+                                                              [propId]: val.filter((t: string) => t !== name),
+                                                            },
+                                                          });
+                                                        }
+                                                      }
+                                                    }}
+                                                    compact
+                                                    maxVisible={3}
+                                                  />
+                                                </td>
+                                              );
+                                            }
+                                            return (
+                                              <td
+                                                key={tc.key}
+                                                className="p-3 text-xs text-zinc-600 dark:text-zinc-400 truncate"
+                                              >
+                                                {val ? String(val) : '-'}
+                                              </td>
+                                            );
                                           }
+                                          return <td key={tc.key} className="p-3" />;
                                         }
-                                      })}
-                                      <td className="p-3"></td>
-                                    </tr>
-                                  );
-                                })
-                              ) : (
-                                <tr>
-                                  <td
-                                    colSpan={orderedTableColumns.length + 2}
-                                    className="p-4 text-center text-xs text-zinc-400 italic"
-                                  >
-                                    No tasks in this step
-                                  </td>
-                                </tr>
-                              )}
-                              {/* Add Task Row */}
-                              {!searchQuery && teamFilter !== 'my-work' && (
-                                <tr
-                                  className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
-                                  onClick={() => onAddTask({ status: col.id })}
+                                      }
+                                    })}
+                                    <td className="p-3"></td>
+                                  </tr>
+                                );
+                              })
+                            ) : (
+                              <tr>
+                                <td
+                                  colSpan={orderedTableColumns.length + 2}
+                                  className="p-4 text-center text-xs text-zinc-400 italic"
                                 >
-                                  <td
-                                    colSpan={orderedTableColumns.length + 2}
-                                    className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium"
-                                  >
-                                    <span className="flex items-center gap-2">
-                                      <Plus size={14} /> Add Task
-                                    </span>
-                                  </td>
-                                </tr>
-                              )}
-                            </tbody>
-                          </table>
-                        </div>
-                        {activePropertyMenu?.startsWith(`${col.id}:`) &&
-                          (() => {
-                            const propId = activePropertyMenu.split(':')[1];
-                            const prop = customProperties.find((p) => p.id === propId);
-                            if (!prop) return null;
-                            return (
-                              <div
-                                className="absolute right-12 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 w-44"
-                                onClick={(e) => e.stopPropagation()}
+                                  No tasks in this step
+                                </td>
+                              </tr>
+                            )}
+                            {/* Add Task Row */}
+                            {!searchQuery && teamFilter !== 'my-work' && (
+                              <tr
+                                className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
+                                onClick={() => onAddTask({ status: col.id })}
                               >
+                                <td
+                                  colSpan={orderedTableColumns.length + 2}
+                                  className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium"
+                                >
+                                  <span className="flex items-center gap-2">
+                                    <Plus size={14} /> Add Task
+                                  </span>
+                                </td>
+                              </tr>
+                            )}
+                          </tbody>
+                        </table>
+                      </div>
+                      {activePropertyMenu?.startsWith(`${col.id}:`) &&
+                        (() => {
+                          const propId = activePropertyMenu.split(':')[1];
+                          const prop = customProperties.find((p) => p.id === propId);
+                          if (!prop) return null;
+                          return (
+                            <div
+                              className="absolute right-12 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 w-44"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button
+                                onClick={() => {
+                                  handleStartRename(prop.id, prop.name);
+                                  setActivePropertyMenu(null);
+                                }}
+                                className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
+                              >
+                                <Edit2 size={12} /> Rename
+                              </button>
+                              <Divider className="my-1" />
+                              <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase">Change Type</p>
+                              {[
+                                { type: 'text' as const, icon: Type, label: 'Text' },
+                                { type: 'select' as const, icon: ListIcon, label: 'Select' },
+                                { type: 'tags' as const, icon: TagsIcon, label: 'Tags' },
+                                { type: 'date' as const, icon: CalendarIcon, label: 'Date' },
+                                { type: 'person' as const, icon: Users, label: 'Person' },
+                              ].map(({ type, icon: Icon, label }) => (
                                 <button
+                                  key={type}
                                   onClick={() => {
-                                    handleStartRename(prop.id, prop.name);
+                                    if (onUpdateProperty) {
+                                      onUpdateProperty({ ...prop, type });
+                                    }
                                     setActivePropertyMenu(null);
                                   }}
-                                  className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
+                                  className={`w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs ${prop.type === type ? 'text-black dark:text-white font-medium' : ''}`}
                                 >
-                                  <Edit2 size={12} /> Rename
+                                  <Icon size={12} /> {label} {prop.type === type && '(current)'}
                                 </button>
-                                <Divider className="my-1" />
-                                <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase">
-                                  Change Type
-                                </p>
-                                {[
-                                  { type: 'text' as const, icon: Type, label: 'Text' },
-                                  { type: 'select' as const, icon: ListIcon, label: 'Select' },
-                                  { type: 'tags' as const, icon: TagsIcon, label: 'Tags' },
-                                  { type: 'date' as const, icon: CalendarIcon, label: 'Date' },
-                                  { type: 'person' as const, icon: Users, label: 'Person' },
-                                ].map(({ type, icon: Icon, label }) => (
-                                  <button
-                                    key={type}
-                                    onClick={() => {
-                                      if (onUpdateProperty) {
-                                        onUpdateProperty({ ...prop, type });
-                                      }
-                                      setActivePropertyMenu(null);
-                                    }}
-                                    className={`w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs ${prop.type === type ? 'text-black dark:text-white font-medium' : ''}`}
-                                  >
-                                    <Icon size={12} /> {label} {prop.type === type && '(current)'}
-                                  </button>
-                                ))}
-                                <Divider className="my-1" />
-                                <button
-                                  onClick={() => handleDeleteProperty(prop.id)}
-                                  className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs text-red-500"
-                                >
-                                  <Trash2 size={12} /> Delete
-                                </button>
-                              </div>
-                            );
-                          })()}
-                        {isAddPropertyOpen === col.id && (
-                          <div
-                            className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <h4 className="text-xs font-semibold text-zinc-900 dark:text-white mb-2">New Property</h4>
-                            <input
-                              className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 mb-2"
-                              placeholder="Property Name"
-                              value={newPropName}
-                              onChange={(e) => setNewPropName(e.target.value)}
-                              autoFocus
-                            />
-                            <div className="space-y-1 mb-3">
-                              <button
-                                onClick={() => setNewPropType('text')}
-                                className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'text' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
-                              >
-                                <Type size={12} /> Text
-                              </button>
-                              <button
-                                onClick={() => setNewPropType('select')}
-                                className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'select' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
-                              >
-                                <ListIcon size={12} /> Select
-                              </button>
-                              <button
-                                onClick={() => setNewPropType('tags')}
-                                className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'tags' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
-                              >
-                                <TagsIcon size={12} /> Tags
-                              </button>
-                              <button
-                                onClick={() => setNewPropType('date')}
-                                className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'date' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
-                              >
-                                <CalendarIcon size={12} /> Date
-                              </button>
-                              <button
-                                onClick={() => setNewPropType('person')}
-                                className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'person' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
-                              >
-                                <Users size={12} /> Person
-                              </button>
-                            </div>
-                            <Button size="sm" onClick={handleCreateProperty} className="w-full">
-                              Create
-                            </Button>
-                          </div>
-                        )}
-                        {isReorderColumnsOpen === col.id && (
-                          <div
-                            className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left max-h-[400px] overflow-y-auto custom-scrollbar"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="flex items-center justify-between mb-2">
-                              <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">Reorder Columns</h4>
-                              <button
-                                onClick={() => setIsReorderColumnsOpen(null)}
-                                className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded transition-colors"
-                              >
-                                <X size={14} />
-                              </button>
-                            </div>
-                            <div className="space-y-1">
-                              {orderedTableColumns.map((tc, idx) => (
-                                <div
-                                  key={tc.key}
-                                  className="flex items-center justify-between px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-xs"
-                                >
-                                  <span className="text-zinc-700 dark:text-zinc-300 truncate">{tc.label}</span>
-                                  <div className="flex items-center gap-0.5 flex-shrink-0">
-                                    <button
-                                      onClick={() => {
-                                        if (idx === 0) return;
-                                        const keys = orderedTableColumns.map((c) => c.key);
-                                        [keys[idx - 1], keys[idx]] = [keys[idx], keys[idx - 1]];
-                                        reorderColumns(keys);
-                                      }}
-                                      disabled={idx === 0}
-                                      className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
-                                    >
-                                      <ChevronUp size={14} />
-                                    </button>
-                                    <button
-                                      onClick={() => {
-                                        if (idx === orderedTableColumns.length - 1) return;
-                                        const keys = orderedTableColumns.map((c) => c.key);
-                                        [keys[idx], keys[idx + 1]] = [keys[idx + 1], keys[idx]];
-                                        reorderColumns(keys);
-                                      }}
-                                      disabled={idx === orderedTableColumns.length - 1}
-                                      className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
-                                    >
-                                      <ChevronDown size={14} />
-                                    </button>
-                                  </div>
-                                </div>
                               ))}
+                              <Divider className="my-1" />
+                              <button
+                                onClick={() => handleDeleteProperty(prop.id)}
+                                className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs text-red-500"
+                              >
+                                <Trash2 size={12} /> Delete
+                              </button>
                             </div>
+                          );
+                        })()}
+                      {isAddPropertyOpen === col.id && (
+                        <div
+                          className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <h4 className="text-xs font-semibold text-zinc-900 dark:text-white mb-2">New Property</h4>
+                          <input
+                            className="w-full p-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 mb-2"
+                            placeholder="Property Name"
+                            value={newPropName}
+                            onChange={(e) => setNewPropName(e.target.value)}
+                            autoFocus
+                          />
+                          <div className="space-y-1 mb-3">
+                            <button
+                              onClick={() => setNewPropType('text')}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'text' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                            >
+                              <Type size={12} /> Text
+                            </button>
+                            <button
+                              onClick={() => setNewPropType('select')}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'select' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                            >
+                              <ListIcon size={12} /> Select
+                            </button>
+                            <button
+                              onClick={() => setNewPropType('tags')}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'tags' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                            >
+                              <TagsIcon size={12} /> Tags
+                            </button>
+                            <button
+                              onClick={() => setNewPropType('date')}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'date' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                            >
+                              <CalendarIcon size={12} /> Date
+                            </button>
+                            <button
+                              onClick={() => setNewPropType('person')}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === 'person' ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                            >
+                              <Users size={12} /> Person
+                            </button>
                           </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                );
-              })}
+                          <Button size="sm" onClick={handleCreateProperty} className="w-full">
+                            Create
+                          </Button>
+                        </div>
+                      )}
+                      {isReorderColumnsOpen === col.id && (
+                        <div
+                          className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left max-h-[400px] overflow-y-auto custom-scrollbar"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">Reorder Columns</h4>
+                            <button
+                              onClick={() => setIsReorderColumnsOpen(null)}
+                              className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded transition-colors"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                          <div className="space-y-1">
+                            {orderedTableColumns.map((tc, idx) => (
+                              <div
+                                key={tc.key}
+                                className="flex items-center justify-between px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-xs"
+                              >
+                                <span className="text-zinc-700 dark:text-zinc-300 truncate">{tc.label}</span>
+                                <div className="flex items-center gap-0.5 flex-shrink-0">
+                                  <button
+                                    onClick={() => {
+                                      if (idx === 0) return;
+                                      const keys = orderedTableColumns.map((c) => c.key);
+                                      [keys[idx - 1], keys[idx]] = [keys[idx], keys[idx - 1]];
+                                      reorderColumns(keys);
+                                    }}
+                                    disabled={idx === 0}
+                                    className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                                  >
+                                    <ChevronUp size={14} />
+                                  </button>
+                                  <button
+                                    onClick={() => {
+                                      if (idx === orderedTableColumns.length - 1) return;
+                                      const keys = orderedTableColumns.map((c) => c.key);
+                                      [keys[idx], keys[idx + 1]] = [keys[idx + 1], keys[idx]];
+                                      reorderColumns(keys);
+                                    }}
+                                    disabled={idx === orderedTableColumns.length - 1}
+                                    className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                                  >
+                                    <ChevronDown size={14} />
+                                  </button>
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  )}
+                </div>
+              );
+            })}
 
             {!searchQuery && teamFilter !== 'my-work' && (
               <button
