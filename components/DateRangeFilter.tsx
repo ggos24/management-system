@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 
 type PresetKey =
@@ -230,19 +231,43 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
   const [isOpen, setIsOpen] = useState(false);
   const [activePreset, setActivePreset] = useState<PresetKey | 'custom'>(defaultPreset);
   const [activeTab, setActiveTab] = useState<TabKey>('presets');
-  const ref = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
 
   const presets = useMemo(() => buildPresets(), []);
 
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setDropdownPos({
+      top: rect.bottom + 8,
+      right: window.innerWidth - rect.right,
+    });
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
+      if (!isOpen) return;
+      const target = e.target as Node;
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(target) &&
+        (!dropdownRef.current || !dropdownRef.current.contains(target))
+      ) {
         setIsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleScroll = () => updatePosition();
+    window.addEventListener('scroll', handleScroll, true);
+    return () => window.removeEventListener('scroll', handleScroll, true);
+  }, [isOpen, updatePosition]);
 
   const handlePreset = (preset: Preset) => {
     const [s, e] = preset.getRange();
@@ -267,10 +292,15 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
     return presets.find((p) => p.key === activePreset)?.label || 'All Time';
   }, [activePreset, startDate, endDate, presets]);
 
+  const handleTriggerClick = () => {
+    updatePosition();
+    setIsOpen(!isOpen);
+  };
+
   return (
-    <div className="relative" ref={ref}>
+    <div className="relative" ref={triggerRef}>
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleTriggerClick}
         className="flex items-center gap-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[32px] px-2.5 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors text-sm text-zinc-900 dark:text-zinc-100"
       >
         <Calendar size={14} className="text-zinc-500" />
@@ -278,10 +308,17 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
         <ChevronDown size={12} className="text-zinc-400 ml-0.5" />
       </button>
 
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-[110]" onClick={() => setIsOpen(false)} />
-          <div className="absolute top-full right-0 mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[120] animate-in fade-in zoom-in-95 duration-100 overflow-hidden w-[240px]">
+      {isOpen &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={{
+              position: 'fixed',
+              top: dropdownPos.top,
+              right: dropdownPos.right,
+            }}
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] animate-in fade-in zoom-in-95 duration-100 overflow-hidden w-[240px]"
+          >
             {/* Tabs */}
             <div className="flex border-b border-zinc-100 dark:border-zinc-800">
               {(['presets', 'custom'] as const).map((tab) => (
@@ -350,9 +387,9 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
                 )}
               </div>
             )}
-          </div>
-        </>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };

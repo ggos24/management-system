@@ -81,15 +81,29 @@ export const TagSelect: React.FC<TagSelectProps> = ({
   const [isAdding, setIsAdding] = useState(false);
   const [editingTagColor, setEditingTagColor] = useState<string | null>(null);
   const [colorPickerPos, setColorPickerPos] = useState<ColorPickerPos | null>(null);
+  const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const colorPickerRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+
+  const updateDropdownPos = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setDropdownPos({
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
+      if (!isOpen) return;
       const target = event.target as Node;
       if (
-        dropdownRef.current &&
-        !dropdownRef.current.contains(target) &&
+        triggerRef.current &&
+        !triggerRef.current.contains(target) &&
+        (!dropdownRef.current || !dropdownRef.current.contains(target)) &&
         (!colorPickerRef.current || !colorPickerRef.current.contains(target))
       ) {
         setIsOpen(false);
@@ -99,7 +113,14 @@ export const TagSelect: React.FC<TagSelectProps> = ({
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleScroll = () => updateDropdownPos();
+    window.addEventListener('scroll', handleScroll, true);
+    return () => window.removeEventListener('scroll', handleScroll, true);
+  }, [isOpen, updateDropdownPos]);
 
   const openColorPicker = useCallback(
     (tag: string, buttonEl: HTMLButtonElement) => {
@@ -139,10 +160,15 @@ export const TagSelect: React.FC<TagSelectProps> = ({
   const visibleTags = maxVisible != null && !isOpen ? selected.slice(0, maxVisible) : selected;
   const hiddenCount = maxVisible != null && !isOpen ? Math.max(0, selected.length - maxVisible) : 0;
 
+  const handleTriggerClick = () => {
+    updateDropdownPos();
+    setIsOpen(!isOpen);
+  };
+
   return (
-    <div className={`relative ${compact ? '' : 'space-y-1'}`} ref={dropdownRef}>
+    <div className={`relative ${compact ? '' : 'space-y-1'}`} ref={triggerRef}>
       <div
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={handleTriggerClick}
         className={
           compact
             ? 'w-full min-h-[24px] px-1.5 py-0.5 rounded text-xs cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 relative'
@@ -180,108 +206,121 @@ export const TagSelect: React.FC<TagSelectProps> = ({
         )}
       </div>
 
-      {isOpen && (
-        <div className="absolute top-full left-0 w-full min-w-[200px] mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-50 max-h-72 overflow-y-auto p-1 animate-in fade-in zoom-in-95 duration-100">
-          {tags.length === 0 && !isAdding && <p className="text-xs text-zinc-400 px-2 py-2 text-center">No tags yet</p>}
-          {tags.map((tag) => {
-            const color = getTagColorClasses(tagColors[tag]);
-            const isSelected = selected.includes(tag);
-            return (
-              <div key={tag} className="flex items-center group/tag">
-                <div
-                  onClick={() => toggleSelection(tag)}
-                  className={`flex-1 px-2 py-1.5 rounded text-xs cursor-pointer flex items-center gap-2 hover:bg-zinc-100 dark:hover:bg-zinc-700 ${isSelected ? 'font-semibold' : ''}`}
-                >
-                  <span className={`${color.bg} ${color.text} px-1.5 py-0.5 rounded text-[10px] font-medium`}>
-                    {tag}
-                  </span>
-                  <span className="flex-1" />
-                  {isSelected && <Check size={12} className="text-black dark:text-white flex-shrink-0" />}
+      {isOpen &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={{
+              position: 'fixed',
+              top: dropdownPos.top,
+              left: dropdownPos.left,
+              minWidth: 120,
+              width: dropdownPos.width,
+            }}
+            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg z-[10000] max-h-72 overflow-y-auto p-0.5 animate-in fade-in zoom-in-95 duration-100"
+          >
+            {tags.length === 0 && !isAdding && (
+              <p className="text-xs text-zinc-400 px-2 py-2 text-center">No tags yet</p>
+            )}
+            {tags.map((tag) => {
+              const color = getTagColorClasses(tagColors[tag]);
+              const isSelected = selected.includes(tag);
+              return (
+                <div key={tag} className="flex items-center group/tag">
+                  <div
+                    onClick={() => toggleSelection(tag)}
+                    className={`flex-1 px-1.5 py-1 rounded text-xs cursor-pointer flex items-center gap-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 ${isSelected ? 'font-semibold' : ''}`}
+                  >
+                    <span className={`${color.bg} ${color.text} px-1.5 py-0.5 rounded text-[10px] font-medium`}>
+                      {tag}
+                    </span>
+                    {isSelected && <Check size={10} className="text-black dark:text-white flex-shrink-0" />}
+                  </div>
+                  {onUpdateTagColor && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        openColorPicker(tag, e.currentTarget);
+                      }}
+                      className="p-1 rounded opacity-0 group-hover/tag:opacity-100 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-opacity flex-shrink-0"
+                    >
+                      <div
+                        className="w-3 h-3 rounded-full border border-zinc-300 dark:border-zinc-600"
+                        style={{ backgroundColor: tagColors[tag] || TAG_COLORS[0].hex }}
+                      />
+                    </button>
+                  )}
+                  {onDeleteTag && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onDeleteTag(tag);
+                      }}
+                      className="p-1 rounded opacity-0 group-hover/tag:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-all flex-shrink-0"
+                      title="Delete tag"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  )}
                 </div>
-                {onUpdateTagColor && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      openColorPicker(tag, e.currentTarget);
-                    }}
-                    className="p-1 rounded opacity-0 group-hover/tag:opacity-100 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-opacity flex-shrink-0"
-                  >
-                    <div
-                      className="w-3 h-3 rounded-full border border-zinc-300 dark:border-zinc-600"
-                      style={{ backgroundColor: tagColors[tag] || TAG_COLORS[0].hex }}
-                    />
-                  </button>
-                )}
-                {onDeleteTag && (
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onDeleteTag(tag);
-                    }}
-                    className="p-1 rounded opacity-0 group-hover/tag:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-all flex-shrink-0"
-                    title="Delete tag"
-                  >
-                    <Trash2 size={12} />
-                  </button>
-                )}
-              </div>
-            );
-          })}
+              );
+            })}
 
-          {onAddTag && !isAdding && (
-            <button
-              onClick={() => setIsAdding(true)}
-              className="w-full px-2 py-1.5 rounded text-xs cursor-pointer flex items-center gap-2 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500 border-t border-zinc-100 dark:border-zinc-700 mt-1"
-            >
-              <Plus size={12} /> Create tag
-            </button>
-          )}
+            {onAddTag && !isAdding && (
+              <button
+                onClick={() => setIsAdding(true)}
+                className="w-full px-2 py-1.5 rounded text-xs cursor-pointer flex items-center gap-2 hover:bg-zinc-100 dark:hover:bg-zinc-700 text-zinc-500 border-t border-zinc-100 dark:border-zinc-700 mt-1"
+              >
+                <Plus size={12} /> Create tag
+              </button>
+            )}
 
-          {isAdding && (
-            <div className="border-t border-zinc-100 dark:border-zinc-700 mt-1 pt-2 px-1 space-y-2">
-              <input
-                value={newTagName}
-                onChange={(e) => setNewTagName(e.target.value)}
-                className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-zinc-400"
-                placeholder="Tag name..."
-                autoFocus
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleAddTag();
-                  if (e.key === 'Escape') setIsAdding(false);
-                }}
-              />
-              <div className="flex gap-1 items-center">
-                {TAG_COLORS.map((c) => (
-                  <button
-                    key={c.hex}
-                    onClick={() => setNewTagColor(c.hex)}
-                    className={`w-4 h-4 rounded-full border-2 transition-transform hover:scale-110 ${newTagColor === c.hex ? 'border-zinc-900 dark:border-white scale-110' : 'border-transparent'}`}
-                    style={{ backgroundColor: c.hex }}
-                    title={c.name}
-                  />
-                ))}
-              </div>
-              <div className="flex gap-1">
-                <button
-                  onClick={handleAddTag}
-                  className="flex-1 px-2 py-1 bg-black dark:bg-white text-white dark:text-black rounded text-xs font-medium hover:opacity-90"
-                >
-                  Add
-                </button>
-                <button
-                  onClick={() => {
-                    setIsAdding(false);
-                    setNewTagName('');
+            {isAdding && (
+              <div className="border-t border-zinc-100 dark:border-zinc-700 mt-1 pt-2 px-1 space-y-2">
+                <input
+                  value={newTagName}
+                  onChange={(e) => setNewTagName(e.target.value)}
+                  className="w-full bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1.5 text-xs outline-none focus:ring-1 focus:ring-zinc-400"
+                  placeholder="Tag name..."
+                  autoFocus
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') handleAddTag();
+                    if (e.key === 'Escape') setIsAdding(false);
                   }}
-                  className="px-2 py-1 text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
-                >
-                  Cancel
-                </button>
+                />
+                <div className="flex gap-1 items-center">
+                  {TAG_COLORS.map((c) => (
+                    <button
+                      key={c.hex}
+                      onClick={() => setNewTagColor(c.hex)}
+                      className={`w-4 h-4 rounded-full border-2 transition-transform hover:scale-110 ${newTagColor === c.hex ? 'border-zinc-900 dark:border-white scale-110' : 'border-transparent'}`}
+                      style={{ backgroundColor: c.hex }}
+                      title={c.name}
+                    />
+                  ))}
+                </div>
+                <div className="flex gap-1">
+                  <button
+                    onClick={handleAddTag}
+                    className="flex-1 px-2 py-1 bg-black dark:bg-white text-white dark:text-black rounded text-xs font-medium hover:opacity-90"
+                  >
+                    Add
+                  </button>
+                  <button
+                    onClick={() => {
+                      setIsAdding(false);
+                      setNewTagName('');
+                    }}
+                    className="px-2 py-1 text-xs text-zinc-500 hover:text-zinc-700 dark:hover:text-zinc-300"
+                  >
+                    Cancel
+                  </button>
+                </div>
               </div>
-            </div>
-          )}
-        </div>
-      )}
+            )}
+          </div>,
+          document.body,
+        )}
 
       {editingTagColor &&
         colorPickerPos &&
@@ -290,7 +329,12 @@ export const TagSelect: React.FC<TagSelectProps> = ({
           <div
             ref={colorPickerRef}
             className="fixed bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg p-2 animate-in fade-in zoom-in-95 duration-100"
-            style={{ top: colorPickerPos.top, left: colorPickerPos.left, zIndex: 9999, transform: 'translateY(-100%)' }}
+            style={{
+              top: colorPickerPos.top,
+              left: colorPickerPos.left,
+              zIndex: 10001,
+              transform: 'translateY(-100%)',
+            }}
             onClick={(e) => e.stopPropagation()}
           >
             <div className="grid grid-cols-5 gap-1">

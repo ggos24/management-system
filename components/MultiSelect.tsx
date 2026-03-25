@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronDown, X, Check, Plus } from 'lucide-react';
 
 export interface MultiSelectOptionGroup {
@@ -43,17 +44,43 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [newItem, setNewItem] = useState('');
+  const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setDropdownPos({
+      top: rect.bottom + 4,
+      left: rect.left,
+      width: rect.width,
+    });
+  }, []);
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+      if (!isOpen) return;
+      const target = event.target as Node;
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(target) &&
+        (!dropdownRef.current || !dropdownRef.current.contains(target))
+      ) {
         setIsOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, []);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    updatePosition();
+    const handleScroll = () => updatePosition();
+    window.addEventListener('scroll', handleScroll, true);
+    return () => window.removeEventListener('scroll', handleScroll, true);
+  }, [isOpen, updatePosition]);
 
   // Flat options list for chip label lookup (from groups or options)
   const allOptions = groups ? groups.flatMap((g) => g.options) : options;
@@ -79,8 +106,16 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
     </div>
   );
 
+  const toggle = () => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
+    }
+    setIsOpen((v) => !v);
+  };
+
   return (
-    <div className={`relative space-y-1 ${className}`} ref={dropdownRef}>
+    <div className={`relative space-y-1 ${className}`} ref={triggerRef}>
       {label && (
         <div>
           <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
@@ -90,10 +125,10 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
         </div>
       )}
       {renderTrigger ? (
-        renderTrigger(() => setIsOpen(!isOpen), selected)
+        renderTrigger(() => setIsOpen((v) => !v), selected)
       ) : (
         <div
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={toggle}
           className={
             compact
               ? 'w-full min-h-[24px] px-1.5 py-0.5 rounded text-xs cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 relative'
@@ -141,50 +176,61 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
           )}
         </div>
       )}
-      {isOpen && (
-        <div className="absolute top-full left-0 w-full min-w-[150px] mt-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-50 max-h-60 overflow-y-auto p-1 animate-in fade-in zoom-in-95 duration-100">
-          {groups
-            ? groups.map((group, gi) => (
-                <div key={group.teamId}>
-                  {gi > 0 && <div className="border-t border-zinc-100 dark:border-zinc-700 my-1" />}
-                  <div
-                    className={`text-[10px] uppercase tracking-wider font-semibold px-2 pt-2 pb-1 ${group.highlighted ? 'text-blue-500 dark:text-blue-400' : 'text-zinc-400'}`}
-                  >
-                    {group.label}
+      {isOpen &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={{
+              position: 'fixed',
+              top: dropdownPos.top,
+              left: dropdownPos.left,
+              width: Math.max(dropdownPos.width, 150),
+            }}
+            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-[10000] max-h-60 overflow-y-auto p-1 animate-in fade-in zoom-in-95 duration-100"
+          >
+            {groups
+              ? groups.map((group, gi) => (
+                  <div key={group.teamId}>
+                    {gi > 0 && <div className="border-t border-zinc-100 dark:border-zinc-700 my-1" />}
+                    <div
+                      className={`text-[10px] uppercase tracking-wider font-semibold px-2 pt-2 pb-1 ${group.highlighted ? 'text-blue-500 dark:text-blue-400' : 'text-zinc-400'}`}
+                    >
+                      {group.label}
+                    </div>
+                    {group.options.map((opt) => renderOption(opt, group))}
                   </div>
-                  {group.options.map((opt) => renderOption(opt, group))}
-                </div>
-              ))
-            : options.map((opt) => renderOption(opt))}
-          {onAdd && (
-            <div className="border-t border-zinc-100 dark:border-zinc-800 mt-1 pt-1 p-1 flex gap-1">
-              <input
-                value={newItem}
-                onChange={(e) => setNewItem(e.target.value)}
-                className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-zinc-400"
-                placeholder="Add new..."
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && newItem) {
-                    onAdd(newItem);
-                    setNewItem('');
-                  }
-                }}
-              />
-              <button
-                onClick={() => {
-                  if (newItem) {
-                    onAdd(newItem);
-                    setNewItem('');
-                  }
-                }}
-                className="p-1 bg-black dark:bg-white text-white dark:text-black rounded hover:opacity-90"
-              >
-                <Plus size={12} />
-              </button>
-            </div>
-          )}
-        </div>
-      )}
+                ))
+              : options.map((opt) => renderOption(opt))}
+            {onAdd && (
+              <div className="border-t border-zinc-100 dark:border-zinc-800 mt-1 pt-1 p-1 flex gap-1">
+                <input
+                  value={newItem}
+                  onChange={(e) => setNewItem(e.target.value)}
+                  className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-zinc-400"
+                  placeholder="Add new..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && newItem) {
+                      onAdd(newItem);
+                      setNewItem('');
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => {
+                    if (newItem) {
+                      onAdd(newItem);
+                      setNewItem('');
+                    }
+                  }}
+                  className="p-1 bg-black dark:bg-white text-white dark:text-black rounded hover:opacity-90"
+                >
+                  <Plus size={12} />
+                </button>
+              </div>
+            )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };

@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 
 interface SimpleDatePickerProps {
@@ -24,6 +25,42 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
     }
     return new Date();
   });
+  const triggerRef = useRef<HTMLDivElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+
+  const updatePosition = useCallback(() => {
+    if (!triggerRef.current) return;
+    const rect = triggerRef.current.getBoundingClientRect();
+    setDropdownPos({
+      top: rect.bottom + 8,
+      left: rect.left,
+    });
+  }, []);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (!isOpen) return;
+      const target = event.target as Node;
+      if (
+        triggerRef.current &&
+        !triggerRef.current.contains(target) &&
+        (!dropdownRef.current || !dropdownRef.current.contains(target))
+      ) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    updatePosition();
+    const handleScroll = () => updatePosition();
+    window.addEventListener('scroll', handleScroll, true);
+    return () => window.removeEventListener('scroll', handleScroll, true);
+  }, [isOpen, updatePosition]);
 
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
 
@@ -52,13 +89,21 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
     return y === currentMonth.getFullYear() && m === currentMonth.getMonth() + 1 && d === day;
   };
 
+  const toggle = () => {
+    if (triggerRef.current) {
+      const rect = triggerRef.current.getBoundingClientRect();
+      setDropdownPos({ top: rect.bottom + 8, left: rect.left });
+    }
+    setIsOpen((v) => !v);
+  };
+
   return (
-    <div className={`relative ${className || ''}`}>
+    <div className={`relative ${className || ''}`} ref={triggerRef}>
       {renderTrigger ? (
-        renderTrigger(() => setIsOpen(!isOpen), value, placeholder)
+        renderTrigger(() => setIsOpen((v) => !v), value, placeholder)
       ) : (
         <button
-          onClick={() => setIsOpen(!isOpen)}
+          onClick={toggle}
           className="w-full text-left px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400 text-zinc-900 dark:text-zinc-100 transition-colors flex items-center justify-between"
         >
           <span>{value || placeholder}</span>
@@ -66,10 +111,17 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
         </button>
       )}
 
-      {isOpen && (
-        <>
-          <div className="fixed inset-0 z-[110]" onClick={() => setIsOpen(false)}></div>
-          <div className="absolute top-full left-0 mt-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[120] p-3 w-64 animate-in fade-in zoom-in-95 duration-100">
+      {isOpen &&
+        createPortal(
+          <div
+            ref={dropdownRef}
+            style={{
+              position: 'fixed',
+              top: dropdownPos.top,
+              left: dropdownPos.left,
+            }}
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] p-3 w-64 animate-in fade-in zoom-in-95 duration-100"
+          >
             <div className="flex justify-between items-center mb-2">
               <button
                 onClick={() => handleMonthChange(-1)}
@@ -116,9 +168,9 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
                 );
               })}
             </div>
-          </div>
-        </>
-      )}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };
