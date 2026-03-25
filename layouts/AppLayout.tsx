@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
 import { Toaster } from 'sonner';
+import { useShallow } from 'zustand/react/shallow';
 import Sidebar from '../components/Sidebar';
 import { Header } from '../components/Header';
 import { TaskModal } from '../components/TaskModal';
@@ -28,21 +29,28 @@ const AppLayout: React.FC = () => {
 
   const currentUser = useAuthStore((s) => s.currentUser)!;
 
-  const { tasks, teams, teamStatuses, teamTypes, statusCategories, absences } = useDataStore();
+  const { tasks, teams, teamStatuses, teamTypes, statusCategories, absences } = useDataStore(
+    useShallow((s) => ({
+      tasks: s.tasks,
+      teams: s.teams,
+      teamStatuses: s.teamStatuses,
+      teamTypes: s.teamTypes,
+      statusCategories: s.statusCategories,
+      absences: s.absences,
+    })),
+  );
 
-  const {
-    isDarkMode,
-    sidebarCollapsed,
-    setSidebarCollapsed,
-    mobileSidebarOpen,
-    setMobileSidebarOpen,
-    isLogoutModalOpen,
-    setIsLogoutModalOpen,
-    setIsSettingsModalOpen,
-    setIsManageTeamsModalOpen,
-    setIsTaskModalOpen,
-    setTaskModalData,
-  } = useUiStore();
+  const isDarkMode = useUiStore((s) => s.isDarkMode);
+  const sidebarCollapsed = useUiStore((s) => s.sidebarCollapsed);
+  const setSidebarCollapsed = useUiStore((s) => s.setSidebarCollapsed);
+  const mobileSidebarOpen = useUiStore((s) => s.mobileSidebarOpen);
+  const setMobileSidebarOpen = useUiStore((s) => s.setMobileSidebarOpen);
+  const isLogoutModalOpen = useUiStore((s) => s.isLogoutModalOpen);
+  const setIsLogoutModalOpen = useUiStore((s) => s.setIsLogoutModalOpen);
+  const setIsSettingsModalOpen = useUiStore((s) => s.setIsSettingsModalOpen);
+  const setIsManageTeamsModalOpen = useUiStore((s) => s.setIsManageTeamsModalOpen);
+  const setIsTaskModalOpen = useUiStore((s) => s.setIsTaskModalOpen);
+  const setTaskModalData = useUiStore((s) => s.setTaskModalData);
 
   // Resolve URL param (slug or UUID) to actual team
   const activeTeam = useMemo(() => (teamParam ? findTeamByParam(teams, teamParam) : undefined), [teamParam, teams]);
@@ -86,10 +94,7 @@ const AppLayout: React.FC = () => {
     return counts;
   }, [tasks, statusCategories, currentUser]);
 
-  const pendingAbsenceCount = useMemo(
-    () => absences.filter((a) => a.status === 'pending').length,
-    [absences],
-  );
+  const pendingAbsenceCount = useMemo(() => absences.filter((a) => a.status === 'pending').length, [absences]);
 
   const openTaskModal = (taskOrPreset?: Partial<Task>) => {
     const defaultTeamId =
@@ -164,7 +169,15 @@ const AppLayout: React.FC = () => {
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
           <Header />
           <main className="flex-1 overflow-hidden relative">
-            <Outlet context={{ openTaskModal, currentView }} />
+            <React.Suspense
+              fallback={
+                <div className="flex items-center justify-center h-full">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-400" />
+                </div>
+              }
+            >
+              <Outlet context={{ openTaskModal, currentView }} />
+            </React.Suspense>
           </main>
         </div>
 
