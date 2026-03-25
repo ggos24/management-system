@@ -1981,43 +1981,6 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                         },
                                                       })
                                                     }
-                                                    onAddTag={(name, color) => {
-                                                      if (onUpdateProperty) {
-                                                        onUpdateProperty({
-                                                          ...prop,
-                                                          options: [...(prop.options || []), name],
-                                                          optionColors: { ...(prop.optionColors || {}), [name]: color },
-                                                        });
-                                                      }
-                                                    }}
-                                                    onUpdateTagColor={(name, color) => {
-                                                      if (onUpdateProperty) {
-                                                        onUpdateProperty({
-                                                          ...prop,
-                                                          optionColors: { ...(prop.optionColors || {}), [name]: color },
-                                                        });
-                                                      }
-                                                    }}
-                                                    onDeleteTag={(name) => {
-                                                      if (onUpdateProperty) {
-                                                        const newColors = { ...(prop.optionColors || {}) };
-                                                        delete newColors[name];
-                                                        onUpdateProperty({
-                                                          ...prop,
-                                                          options: (prop.options || []).filter((o) => o !== name),
-                                                          optionColors: newColors,
-                                                        });
-                                                        if (Array.isArray(val) && val.includes(name)) {
-                                                          onUpdateTask({
-                                                            ...task,
-                                                            customFieldValues: {
-                                                              ...task.customFieldValues,
-                                                              [propId]: val.filter((t: string) => t !== name),
-                                                            },
-                                                          });
-                                                        }
-                                                      }
-                                                    }}
                                                     compact
                                                     maxVisible={3}
                                                   />
