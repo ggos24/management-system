@@ -128,36 +128,57 @@ export const TaskModal: React.FC = () => {
   // Track which foreign teams have been selected via placements (for new tasks)
   const pendingLinkedTeamIdsRef = useRef(new Set<string>());
 
+  // O(1) lookup: placement name → list of team IDs that have it
+  const placementToTeamIds = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const [teamId, placements] of Object.entries(teamPlacements)) {
+      for (const p of placements) {
+        const arr = map.get(p);
+        if (arr) arr.push(teamId);
+        else map.set(p, [teamId]);
+      }
+    }
+    return map;
+  }, [teamPlacements]);
+
   // Convert task's plain placement names to composite keys for the MultiSelect selected state
   const selectedCompositeKeys = useMemo(() => {
     const taskPlacements = taskModalData.placements || [];
     const homeTeamId = taskModalData.teamId || '';
     const keys: string[] = [];
     for (const p of taskPlacements) {
+      // Strip existing composite prefixes from corrupted data
+      const plainName = p.includes(':') && p.indexOf(':') > 8 ? p.substring(p.indexOf(':') + 1) : p;
       // Check home team first
-      if ((teamPlacements[homeTeamId] || []).includes(p)) {
-        keys.push(`${homeTeamId}:${p}`);
+      if ((teamPlacements[homeTeamId] || []).includes(plainName)) {
+        keys.push(`${homeTeamId}:${plainName}`);
         continue;
       }
       // Check foreign teams — only match if the task has a link to that team
       let matched = false;
-      for (const [teamId, placements] of Object.entries(teamPlacements)) {
+      const candidateTeamIds = placementToTeamIds.get(plainName) || [];
+      for (const teamId of candidateTeamIds) {
         if (teamId === homeTeamId) continue;
-        if (placements.includes(p)) {
-          const isLinked = taskModalData.id
-            ? taskTeamLinks.some((l) => l.taskId === taskModalData.id && l.teamId === teamId)
-            : pendingLinkedTeamIdsRef.current.has(teamId);
-          if (isLinked) {
-            keys.push(`${teamId}:${p}`);
-            matched = true;
-          }
+        const isLinked = taskModalData.id
+          ? taskTeamLinks.some((l) => l.taskId === taskModalData.id && l.teamId === teamId)
+          : pendingLinkedTeamIdsRef.current.has(teamId);
+        if (isLinked) {
+          keys.push(`${teamId}:${plainName}`);
+          matched = true;
         }
       }
       // Fallback: unmatched placement, show as home
-      if (!matched) keys.push(`${homeTeamId}:${p}`);
+      if (!matched) keys.push(`${homeTeamId}:${plainName}`);
     }
     return keys;
-  }, [taskModalData.placements, taskModalData.teamId, taskModalData.id, teamPlacements, taskTeamLinks]);
+  }, [
+    taskModalData.placements,
+    taskModalData.teamId,
+    taskModalData.id,
+    teamPlacements,
+    taskTeamLinks,
+    placementToTeamIds,
+  ]);
 
   const pendingLinkedTeamIds = useMemo(() => {
     const homeTeamId = taskModalData.teamId || '';
@@ -694,8 +715,14 @@ export const TaskModal: React.FC = () => {
                   groups={placementGroups}
                   selected={selectedCompositeKeys}
                   onChange={(compositeKeys) => {
-                    // Extract plain placement names from composite keys
-                    const plainNames = compositeKeys.map((k) => k.substring(k.indexOf(':') + 1));
+                    // Extract plain placement names from composite keys, stripping any corrupted prefixes
+                    const plainNames = compositeKeys.map((k) => {
+                      const idx = k.indexOf(':');
+                      const raw = k.substring(idx + 1);
+                      // Strip nested composite prefix from corrupted data
+                      const innerIdx = raw.indexOf(':');
+                      return innerIdx > 8 ? raw.substring(innerIdx + 1) : raw;
+                    });
                     setTaskModalData({ ...taskModalData, placements: plainNames });
                   }}
                   onToggleWithGroup={(compositeValue, isSelected, group) => {

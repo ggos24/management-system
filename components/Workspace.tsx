@@ -475,14 +475,22 @@ const Workspace: React.FC<WorkspaceProps> = ({
     return new Set(taskTeamLinks.filter((l) => l.teamId === teamFilter).map((l) => l.taskId));
   }, [taskTeamLinks, teamFilter]);
 
+  const taskTeamLinkMap = useMemo(() => {
+    const map = new Map<string, TaskTeamLink>();
+    for (const link of taskTeamLinks) {
+      map.set(`${link.taskId}::${link.teamId}`, link);
+    }
+    return map;
+  }, [taskTeamLinks]);
+
   // Resolve a task's status within the current team context
   const getTaskStatusInTeam = useCallback(
     (task: Task): string => {
       if (teamFilter === 'my-work' || teamFilter === 'all' || task.teamId === teamFilter) return task.status;
-      const link = taskTeamLinks.find((l) => l.taskId === task.id && l.teamId === teamFilter);
+      const link = taskTeamLinkMap.get(`${task.id}::${teamFilter}`);
       return link ? link.status : task.status;
     },
-    [teamFilter, taskTeamLinks],
+    [teamFilter, taskTeamLinkMap],
   );
 
   // Resolve custom field values for the current team context
@@ -490,10 +498,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
     (task: Task): Record<string, any> => {
       if (teamFilter === 'my-work' || teamFilter === 'all' || task.teamId === teamFilter)
         return task.customFieldValues || {};
-      const link = taskTeamLinks.find((l) => l.taskId === task.id && l.teamId === teamFilter);
+      const link = taskTeamLinkMap.get(`${task.id}::${teamFilter}`);
       return link ? link.customFieldValues : task.customFieldValues || {};
     },
-    [teamFilter, taskTeamLinks],
+    [teamFilter, taskTeamLinkMap],
   );
 
   // Check if a task is a linked copy (not home) in the current team
@@ -592,7 +600,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
     statusSortDirection,
   ]);
 
-  const getMembersByIds = (ids: string[]) => members.filter((m) => ids.includes(m.id));
+  const memberMap = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
+  const getMembersByIds = useCallback(
+    (ids: string[]) => ids.map((id) => memberMap.get(id)).filter(Boolean) as Member[],
+    [memberMap],
+  );
 
   // Column Management
   const updateParentStatuses = (newStatuses: string[]) => {
@@ -708,55 +720,58 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   // Sort tasks within a group
-  const sortTasks = (taskList: Task[]): Task[] => {
-    if (!sortColumn) {
-      // Default: sort by sortOrder
-      return [...taskList].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
-    }
-
-    const dir = sortDirection === 'asc' ? 1 : -1;
-    return [...taskList].sort((a, b) => {
-      switch (sortColumn) {
-        case 'title':
-          return dir * a.title.localeCompare(b.title);
-        case 'priority': {
-          const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
-          return dir * ((order[a.priority] ?? 1) - (order[b.priority] ?? 1));
-        }
-        case 'deadline':
-          return dir * (a.dueDate || '').localeCompare(b.dueDate || '');
-        case 'done':
-          return dir * (a.doneDate || '').localeCompare(b.doneDate || '');
-        case 'type':
-          return dir * (a.contentInfo?.type || '').localeCompare(b.contentInfo?.type || '');
-        case 'assignee': {
-          const nameA = members.find((m) => a.assigneeIds[0] === m.id)?.name || '';
-          const nameB = members.find((m) => b.assigneeIds[0] === m.id)?.name || '';
-          return dir * nameA.localeCompare(nameB);
-        }
-        case 'editor': {
-          const edA = members.find((m) => a.contentInfo?.editorIds?.[0] === m.id)?.name || '';
-          const edB = members.find((m) => b.contentInfo?.editorIds?.[0] === m.id)?.name || '';
-          return dir * edA.localeCompare(edB);
-        }
-
-        case 'links':
-          return dir * ((a.links?.length || 0) - (b.links?.length || 0));
-        case 'placements':
-          return dir * (a.placements || []).join(', ').localeCompare((b.placements || []).join(', '));
-        default: {
-          // Custom properties — key format: "prop:<id>"
-          if (sortColumn.startsWith('prop:')) {
-            const propId = sortColumn.slice(5);
-            const valA = String(getTaskFieldsInTeam(a)[propId] || '');
-            const valB = String(getTaskFieldsInTeam(b)[propId] || '');
-            return dir * valA.localeCompare(valB);
-          }
-          return 0;
-        }
+  const sortTasks = useCallback(
+    (taskList: Task[]): Task[] => {
+      if (!sortColumn) {
+        // Default: sort by sortOrder
+        return [...taskList].sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
       }
-    });
-  };
+
+      const dir = sortDirection === 'asc' ? 1 : -1;
+      return [...taskList].sort((a, b) => {
+        switch (sortColumn) {
+          case 'title':
+            return dir * a.title.localeCompare(b.title);
+          case 'priority': {
+            const order: Record<string, number> = { high: 0, medium: 1, low: 2 };
+            return dir * ((order[a.priority] ?? 1) - (order[b.priority] ?? 1));
+          }
+          case 'deadline':
+            return dir * (a.dueDate || '').localeCompare(b.dueDate || '');
+          case 'done':
+            return dir * (a.doneDate || '').localeCompare(b.doneDate || '');
+          case 'type':
+            return dir * (a.contentInfo?.type || '').localeCompare(b.contentInfo?.type || '');
+          case 'assignee': {
+            const nameA = memberMap.get(a.assigneeIds[0])?.name || '';
+            const nameB = memberMap.get(b.assigneeIds[0])?.name || '';
+            return dir * nameA.localeCompare(nameB);
+          }
+          case 'editor': {
+            const edA = memberMap.get(a.contentInfo?.editorIds?.[0] || '')?.name || '';
+            const edB = memberMap.get(b.contentInfo?.editorIds?.[0] || '')?.name || '';
+            return dir * edA.localeCompare(edB);
+          }
+
+          case 'links':
+            return dir * ((a.links?.length || 0) - (b.links?.length || 0));
+          case 'placements':
+            return dir * (a.placements || []).join(', ').localeCompare((b.placements || []).join(', '));
+          default: {
+            // Custom properties — key format: "prop:<id>"
+            if (sortColumn.startsWith('prop:')) {
+              const propId = sortColumn.slice(5);
+              const valA = String(getTaskFieldsInTeam(a)[propId] || '');
+              const valB = String(getTaskFieldsInTeam(b)[propId] || '');
+              return dir * valA.localeCompare(valB);
+            }
+            return 0;
+          }
+        }
+      });
+    },
+    [sortColumn, sortDirection, memberMap, getTaskFieldsInTeam],
+  );
 
   // --- Bulk selection helpers ---
   const selectedCount = selectedTaskIds.size;
@@ -985,7 +1000,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       setActiveColumnMenu(null);
       setActivePropertyMenu(null);
       setIsAddPropertyOpen(null);
-      setIsReorderPropsOpen(null);
+      setIsReorderColumnsOpen(null);
     };
     document.addEventListener('click', closeMenu);
     return () => document.removeEventListener('click', closeMenu);
