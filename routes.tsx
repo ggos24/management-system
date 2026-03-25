@@ -1,13 +1,9 @@
 import React from 'react';
 import { createBrowserRouter, Navigate, Outlet, useParams, useNavigate, useOutletContext } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import { AuthGuard } from './components/AuthGuard';
 import AppLayout from './layouts/AppLayout';
 import LoginPage from './components/LoginPage';
-import Dashboard from './components/Dashboard';
-import Workspace from './components/Workspace';
-import Schedule from './components/Schedule';
-import Bin from './components/Bin';
-import { DocsView } from './components/DocsView';
 import { useAuthStore } from './stores/authStore';
 import { useDataStore } from './stores/dataStore';
 import { useUiStore } from './stores/uiStore';
@@ -15,6 +11,12 @@ import { findTeamByParam } from './lib/utils';
 
 import { Task, DocSection } from './types';
 import { isAdminOrAbove } from './constants';
+
+const Dashboard = React.lazy(() => import('./components/Dashboard'));
+const Workspace = React.lazy(() => import('./components/Workspace'));
+const Schedule = React.lazy(() => import('./components/Schedule'));
+const Bin = React.lazy(() => import('./components/Bin'));
+const DocsView = React.lazy(() => import('./components/DocsView').then((m) => ({ default: m.DocsView })));
 
 // Outlet context type used by route wrappers
 interface LayoutContext {
@@ -26,7 +28,15 @@ interface LayoutContext {
 // These map store data to the existing prop interfaces, keeping page components untouched.
 
 const DashboardRoute: React.FC = () => {
-  const { tasks, members, absences, teams, statusCategories } = useDataStore();
+  const { tasks, members, absences, teams, statusCategories } = useDataStore(
+    useShallow((s) => ({
+      tasks: s.tasks,
+      members: s.members,
+      absences: s.absences,
+      teams: s.teams,
+      statusCategories: s.statusCategories,
+    })),
+  );
   return (
     <Dashboard tasks={tasks} members={members} absences={absences} teams={teams} statusCategories={statusCategories} />
   );
@@ -46,7 +56,21 @@ const ScheduleRoute: React.FC = () => {
     cancelAbsence,
     updateShift,
     deleteShift,
-  } = useDataStore();
+  } = useDataStore(
+    useShallow((s) => ({
+      members: s.members,
+      absences: s.absences,
+      shifts: s.shifts,
+      teams: s.teams,
+      updateAbsence: s.updateAbsence,
+      deleteAbsence: s.deleteAbsence,
+      approveAbsence: s.approveAbsence,
+      declineAbsence: s.declineAbsence,
+      cancelAbsence: s.cancelAbsence,
+      updateShift: s.updateShift,
+      deleteShift: s.deleteShift,
+    })),
+  );
   return (
     <Schedule
       members={members}
@@ -93,7 +117,34 @@ const MyWorkspaceRoute: React.FC = () => {
     taskTeamLinks,
     linkTaskToTeam,
     deleteTask,
-  } = useDataStore();
+  } = useDataStore(
+    useShallow((s) => ({
+      tasks: s.tasks,
+      members: s.members,
+      teams: s.teams,
+      updateTaskStatus: s.updateTaskStatus,
+      updateTask: s.updateTask,
+      teamStatuses: s.teamStatuses,
+      reorderStatuses: s.reorderStatuses,
+      archivedStatuses: s.archivedStatuses,
+      statusCategories: s.statusCategories,
+      archiveStatus: s.archiveStatus,
+      duplicateStatus: s.duplicateStatus,
+      setStatusCategory: s.setStatusCategory,
+      teamProperties: s.teamProperties,
+      addProperty: s.addProperty,
+      updateProperty: s.updateProperty,
+      deleteProperty: s.deleteProperty,
+      reorderProperties: s.reorderProperties,
+      reorderTaskInStatus: s.reorderTaskInStatus,
+      allPlacements: s.allPlacements,
+      teamPlacements: s.teamPlacements,
+      teamTypes: s.teamTypes,
+      taskTeamLinks: s.taskTeamLinks,
+      linkTaskToTeam: s.linkTaskToTeam,
+      deleteTask: s.deleteTask,
+    })),
+  );
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setIsAiChatOpen = useUiStore((s) => s.setIsAiChatOpen);
   const { openTaskModal } = useOutletContext<LayoutContext>();
@@ -170,7 +221,34 @@ const TeamWorkspaceRoute: React.FC = () => {
     taskTeamLinks,
     linkTaskToTeam,
     deleteTask,
-  } = useDataStore();
+  } = useDataStore(
+    useShallow((s) => ({
+      tasks: s.tasks,
+      members: s.members,
+      teams: s.teams,
+      updateTaskStatus: s.updateTaskStatus,
+      updateTask: s.updateTask,
+      teamStatuses: s.teamStatuses,
+      reorderStatuses: s.reorderStatuses,
+      archivedStatuses: s.archivedStatuses,
+      statusCategories: s.statusCategories,
+      archiveStatus: s.archiveStatus,
+      duplicateStatus: s.duplicateStatus,
+      setStatusCategory: s.setStatusCategory,
+      teamProperties: s.teamProperties,
+      addProperty: s.addProperty,
+      updateProperty: s.updateProperty,
+      deleteProperty: s.deleteProperty,
+      reorderProperties: s.reorderProperties,
+      reorderTaskInStatus: s.reorderTaskInStatus,
+      allPlacements: s.allPlacements,
+      teamPlacements: s.teamPlacements,
+      teamTypes: s.teamTypes,
+      taskTeamLinks: s.taskTeamLinks,
+      linkTaskToTeam: s.linkTaskToTeam,
+      deleteTask: s.deleteTask,
+    })),
+  );
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setIsAiChatOpen = useUiStore((s) => s.setIsAiChatOpen);
   const { openTaskModal } = useOutletContext<LayoutContext>();
