@@ -10,7 +10,7 @@ import { useUiStore } from './stores/uiStore';
 import { findTeamByParam } from './lib/utils';
 
 import { Task, DocSection } from './types';
-import { isAdminOrAbove } from './constants';
+import { isAdmin } from './constants';
 
 const Dashboard = React.lazy(() => import('./components/Dashboard'));
 const Workspace = React.lazy(() => import('./components/Workspace'));
@@ -255,7 +255,7 @@ const TeamWorkspaceRoute: React.FC = () => {
 
   const team = teamParam ? findTeamByParam(teams, teamParam) : undefined;
 
-  if (!team || (team.adminOnly && !isAdminOrAbove(currentUser.role))) {
+  if (!team || (team.adminOnly && !isAdmin(currentUser.role))) {
     return <Navigate to="/workspace" replace />;
   }
 

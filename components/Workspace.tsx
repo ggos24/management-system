@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { Task, TaskStatus, TeamType, Member, Priority, CustomProperty, TaskTeamLink, UserRole } from '../types';
-import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent, getDeadlineUrgency, isAdminOrAbove } from '../constants';
+import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent, getDeadlineUrgency, isEditorOrAbove } from '../constants';
 import {
   Plus,
   MoreHorizontal,
@@ -614,6 +614,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   const handleAddColumn = () => {
     if (teamFilter === 'my-work') return;
+    if (!userRole || !isEditorOrAbove(userRole)) return;
     const name = 'New Status';
     let uniqueName = name;
     let counter = 1;
@@ -631,6 +632,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleStartRename = (id: string, currentLabel: string) => {
+    if (!userRole || !isEditorOrAbove(userRole)) return;
     if (teamFilter === 'my-work' && !customProperties.find((p) => p.id === id)) return;
     setEditingColumnId(id);
     setTempColumnName(currentLabel);
@@ -658,8 +660,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleDeleteColumn = (id: string) => {
-    if (!userRole || !isAdminOrAbove(userRole)) {
-      toast.error('Only admins can delete statuses.');
+    if (!userRole || !isEditorOrAbove(userRole)) {
+      toast.error('Only editors can delete statuses.');
       return;
     }
     if (confirm(`Delete "${id}" status? Tasks in this column will be hidden.`)) {
@@ -670,6 +672,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleDeleteProperty = (id: string) => {
+    if (!userRole || !isEditorOrAbove(userRole)) return;
     if (confirm('Delete this property? Data will be lost.') && onDeleteProperty) {
       onDeleteProperty(id);
     }
@@ -678,6 +681,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Move a status group up or down
   const handleMoveStatus = (statusId: string, direction: 'up' | 'down') => {
+    if (!userRole || !isEditorOrAbove(userRole)) return;
     const idx = currentStatusList.indexOf(statusId);
     if (idx === -1) return;
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;

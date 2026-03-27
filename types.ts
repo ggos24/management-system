@@ -1,7 +1,7 @@
 export type TeamType = 'editorial' | 'video' | 'social' | 'management' | string;
 export type TaskStatus = string; // Was specific union, now string to support custom columns
 export type Priority = 'low' | 'medium' | 'high';
-export type UserRole = 'super_admin' | 'admin' | 'user';
+export type UserRole = 'admin' | 'editor' | 'user';
 export type AbsenceStatus = 'pending' | 'approved' | 'declined';
 
 export interface User {

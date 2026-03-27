@@ -1113,8 +1113,7 @@ export const TaskModal: React.FC = () => {
                           {c.updatedAt && <span className="text-[10px] text-zinc-400 italic">(edited)</span>}
                           {currentUser &&
                             (currentUser.id === c.userId ||
-                              currentUser.role === 'admin' ||
-                              currentUser.role === 'super_admin') && (
+                              currentUser.role === 'admin') && (
                               <div className="opacity-0 group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
                                 {currentUser.id === c.userId && (
                                   <button

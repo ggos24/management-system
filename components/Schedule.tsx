@@ -19,7 +19,7 @@ import { Avatar } from './Avatar';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { CustomSelect } from './CustomSelect';
 import { calculateAbsenceStats } from '../lib/utils';
-import { isSuperAdmin, isAdminOrAbove } from '../constants';
+import { isAdmin, isEditorOrAbove } from '../constants';
 import { Button, Label, Input, Badge } from './ui';
 import { AbsenceApprovalQueue } from './AbsenceApprovalQueue';
 
@@ -126,7 +126,8 @@ const Schedule: React.FC<ScheduleProps> = ({
   };
 
   const handleMouseDown = (member: Member, day: number) => {
-    if (!isAdminOrAbove(userRole) && member.id !== currentUserId) return;
+    // Editors+ can click any row; users can only click their own row (for absences)
+    if (!isEditorOrAbove(userRole) && member.id !== currentUserId) return;
     setIsDragging(true);
     setDragStart({ memberId: member.id, day });
     setDragEnd({ memberId: member.id, day });
@@ -193,6 +194,9 @@ const Schedule: React.FC<ScheduleProps> = ({
   const handleSave = () => {
     if (!selectedCell) return;
 
+    // Only editors+ can save shifts
+    if (editType === 'shift' && !isEditorOrAbove(userRole)) return;
+
     if (editType === 'absence') {
       if (!rangeStartDate || !rangeEndDate) return;
       const existing = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
@@ -203,7 +207,7 @@ const Schedule: React.FC<ScheduleProps> = ({
         type: absenceType,
         startDate: rangeStartDate,
         endDate: rangeEndDate,
-        status: existing?.status || (isSuperAdmin(userRole) ? 'approved' : 'pending'),
+        status: existing?.status || (isAdmin(userRole) ? 'approved' : 'pending'),
       };
       onUpdateAbsence(newAbsence);
     } else {
@@ -308,7 +312,7 @@ const Schedule: React.FC<ScheduleProps> = ({
     [absences],
   );
   const pendingCount = pendingAbsences.length;
-  const showPendingTab = isSuperAdmin(userRole);
+  const showPendingTab = isAdmin(userRole);
 
   return (
     <div className="p-6 h-full flex flex-col bg-white dark:bg-black relative">
@@ -641,7 +645,7 @@ const Schedule: React.FC<ScheduleProps> = ({
               const existingAbsence = selectedCell ? getAbsenceForDay(selectedCell.member.id, selectedCell.day) : null;
               const isOwnPending =
                 existingAbsence && existingAbsence.memberId === currentUserId && existingAbsence.status === 'pending';
-              const isReadOnly = existingAbsence && existingAbsence.status !== 'pending' && !isSuperAdmin(userRole);
+              const isReadOnly = existingAbsence && existingAbsence.status !== 'pending' && !isAdmin(userRole);
               return (
                 <>
                   {isOwnPending && (
@@ -683,7 +687,7 @@ const Schedule: React.FC<ScheduleProps> = ({
         {selectedCell &&
           (() => {
             const existingAbsence = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
-            const isSA = isSuperAdmin(userRole);
+            const isSA = isAdmin(userRole);
             const decider = existingAbsence?.decidedBy ? members.find((m) => m.id === existingAbsence.decidedBy) : null;
             const holidayStats =
               existingAbsence?.type === 'holiday' ? calculateAbsenceStats(selectedCell.member.id, absences) : null;
@@ -812,20 +816,26 @@ const Schedule: React.FC<ScheduleProps> = ({
                 )}
 
                 <div className="space-y-4">
-                  <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded mb-4">
-                    <button
-                      onClick={() => setEditType('shift')}
-                      className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'shift' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
-                    >
-                      Shift
-                    </button>
-                    <button
-                      onClick={() => setEditType('absence')}
-                      className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'absence' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
-                    >
-                      Absence
-                    </button>
-                  </div>
+                  {isEditorOrAbove(userRole) ? (
+                    <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded mb-4">
+                      <button
+                        onClick={() => setEditType('shift')}
+                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'shift' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+                      >
+                        Shift
+                      </button>
+                      <button
+                        onClick={() => setEditType('absence')}
+                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'absence' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+                      >
+                        Absence
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mb-4">
+                      <span className="text-xs font-medium text-zinc-500">Absence Request</span>
+                    </div>
+                  )}
 
                   <div className="grid grid-cols-2 gap-3">
                     <div>

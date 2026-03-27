@@ -137,6 +137,7 @@ export const InviteModal: React.FC = () => {
             label="Role"
             options={[
               { value: 'user', label: 'User' },
+              { value: 'editor', label: 'Editor' },
               { value: 'admin', label: 'Admin' },
             ]}
             value={inviteForm.role || 'user'}

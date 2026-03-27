@@ -1,7 +1,7 @@
 import type { UserRole } from './types';
 
-export const isAdminOrAbove = (role: UserRole) => role === 'admin' || role === 'super_admin';
-export const isSuperAdmin = (role: UserRole) => role === 'super_admin';
+export const isEditorOrAbove = (role: UserRole) => role === 'editor' || role === 'admin';
+export const isAdmin = (role: UserRole) => role === 'admin';
 
 export const STATUS_COLORS: Record<string, string> = {
   // Generic / Video

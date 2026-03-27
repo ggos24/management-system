@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { Team, UserRole } from '../types';
 import { IconComponent } from './IconComponent';
-import { isAdminOrAbove, isSuperAdmin } from '../constants';
+import { isEditorOrAbove, isAdmin } from '../constants';
 
 interface SidebarProps {
   currentView: string;
@@ -174,7 +174,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               >
                 Schedule
               </span>
-              {!isCollapsed && isSuperAdmin(userRole) && pendingAbsenceCount > 0 && (
+              {!isCollapsed && isAdmin(userRole) && pendingAbsenceCount > 0 && (
                 <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center bg-amber-500 text-white text-[10px] font-semibold rounded-full px-1">
                   {pendingAbsenceCount}
                 </span>
@@ -190,7 +190,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               )}
               {isCollapsed && <div className="h-px w-4 bg-zinc-200 dark:bg-zinc-800"></div>}
 
-              {!isCollapsed && isAdminOrAbove(userRole) && (
+              {!isCollapsed && isAdmin(userRole) && (
                 <button
                   onClick={onManageTeams}
                   className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
@@ -203,7 +203,7 @@ const Sidebar: React.FC<SidebarProps> = ({
 
             <nav className="space-y-0.5">
               {teams
-                .filter((t) => !t.hidden && !t.archived && (!t.adminOnly || isAdminOrAbove(userRole)))
+                .filter((t) => !t.hidden && !t.archived && (!t.adminOnly || isAdmin(userRole)))
                 .map((team) => {
                   const isActive = currentView === team.id;
                   return (

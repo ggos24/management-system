@@ -12,7 +12,7 @@ import {
   NotificationType,
   UserRole,
 } from '../types';
-import { isSuperAdmin } from '../constants';
+import { isAdmin } from '../constants';
 import * as db from '../lib/database';
 import { useAuthStore } from './authStore';
 import { supabase } from '../lib/supabase';
@@ -569,10 +569,10 @@ export const useDataStore = create<DataState>((set, get) => ({
     const memberName = members.find((m) => m.id === absence.memberId)?.name || 'Someone';
 
     if (isNew) {
-      // New absence submitted → notify all super_admins
-      const superAdminIds = members.filter((m) => m.role === 'super_admin').map((m) => m.id);
+      // New absence submitted → notify all admins
+      const adminIds = members.filter((m) => m.role === 'admin').map((m) => m.id);
       notifyMany(
-        superAdminIds,
+        adminIds,
         'absence_submitted',
         `${memberName} submitted a ${absence.type.replace('_', ' ')} request`,
         { absenceId: absence.id, memberId: absence.memberId },
@@ -650,9 +650,9 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     const { members } = get();
     const memberName = getCurrentUserName();
-    const superAdminIds = members.filter((m) => m.role === 'super_admin').map((m) => m.id);
+    const adminIds = members.filter((m) => m.role === 'admin').map((m) => m.id);
     notifyMany(
-      superAdminIds,
+      adminIds,
       'absence_cancelled',
       `${memberName} cancelled their ${absence.type.replace('_', ' ')} request`,
       { absenceId, memberId: absence.memberId },

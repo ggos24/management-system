@@ -17,7 +17,7 @@ import { Label } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
-import { isAdminOrAbove, isSuperAdmin } from '../constants';
+import { isEditorOrAbove, isAdmin } from '../constants';
 
 export const SettingsModal: React.FC = () => {
   const { isSettingsModalOpen, setIsSettingsModalOpen, activeSettingsTab, setActiveSettingsTab, setIsInviteModalOpen } =
@@ -242,7 +242,7 @@ export const SettingsModal: React.FC = () => {
                     </h3>
                   )}
                   <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium capitalize">
-                    {currentUser.role === 'super_admin' ? 'Super Admin' : currentUser.role}
+                    {currentUser.role === 'admin' ? 'Admin' : currentUser.role === 'editor' ? 'Editor' : 'User'}
                   </span>
                 </div>
                 {editingJobTitle ? (
@@ -381,20 +381,13 @@ export const SettingsModal: React.FC = () => {
             <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
               {members.map((m) => {
                 const isMe = m.id === currentUser.id;
-                const canManage = isAdminOrAbove(currentUser.role) && !isMe;
-                // Only super_admins can assign/remove super_admin role
-                const canAssignSuperAdmin = isSuperAdmin(currentUser.role);
-                const roleOptions = canAssignSuperAdmin
-                  ? [
-                      { value: 'super_admin', label: 'Super Admin' },
-                      { value: 'admin', label: 'Admin' },
-                      { value: 'user', label: 'User' },
-                    ]
-                  : [
-                      { value: 'admin', label: 'Admin' },
-                      { value: 'user', label: 'User' },
-                    ];
-                const roleLabel = m.role === 'super_admin' ? 'Super Admin' : m.role === 'admin' ? 'Admin' : 'User';
+                const canManage = isAdmin(currentUser.role) && !isMe;
+                const roleOptions = [
+                  { value: 'admin', label: 'Admin' },
+                  { value: 'editor', label: 'Editor' },
+                  { value: 'user', label: 'User' },
+                ];
+                const roleLabel = m.role === 'admin' ? 'Admin' : m.role === 'editor' ? 'Editor' : 'User';
                 return (
                   <div
                     key={m.id}
@@ -411,19 +404,19 @@ export const SettingsModal: React.FC = () => {
                       </div>
                     </div>
                     <div className="flex items-center gap-2 flex-shrink-0">
-                      {canManage && (m.role !== 'super_admin' || canAssignSuperAdmin) ? (
+                      {canManage ? (
                         <>
                           <CustomSelect
                             compact
                             value={m.role}
                             onChange={(newRole) => {
                               updateMemberRole(m.id, newRole as any);
-                              toast.success(`${m.name} is now ${newRole === 'super_admin' ? 'Super Admin' : newRole}`);
+                              toast.success(`${m.name} is now ${newRole === 'admin' ? 'Admin' : newRole === 'editor' ? 'Editor' : 'User'}`);
                             }}
                             options={roleOptions}
                             renderValue={(v) => (
                               <span className="flex items-center gap-1 text-xs">
-                                {v === 'super_admin' ? 'Super Admin' : v === 'admin' ? 'Admin' : 'User'}
+                                {v === 'admin' ? 'Admin' : v === 'editor' ? 'Editor' : 'User'}
                                 <ChevronDown size={12} className="text-zinc-400" />
                               </span>
                             )}
@@ -451,7 +444,7 @@ export const SettingsModal: React.FC = () => {
                 );
               })}
             </div>
-            {isAdminOrAbove(currentUser.role) && (
+            {isAdmin(currentUser.role) && (
               <button
                 onClick={() => setIsInviteModalOpen(true)}
                 className="w-full py-2 border border-dashed border-zinc-300 dark:border-zinc-700 rounded-lg text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 hover:border-zinc-400 dark:hover:border-zinc-600 transition-colors mt-3"
@@ -774,7 +767,7 @@ export const SettingsModal: React.FC = () => {
             'My Profile',
             'Notifications',
             'Team Members',
-            ...(currentUser && isAdminOrAbove(currentUser.role) ? ['Content'] : []),
+            ...(currentUser && isEditorOrAbove(currentUser.role) ? ['Content'] : []),
             'Logs History',
           ].map((tab) => (
             <button

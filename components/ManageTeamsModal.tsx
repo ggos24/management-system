@@ -8,7 +8,7 @@ import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { Team } from '../types';
-import { isAdminOrAbove } from '../constants';
+import { isAdmin, isEditorOrAbove } from '../constants';
 
 export const ManageTeamsModal: React.FC = () => {
   const {
@@ -34,6 +34,10 @@ export const ManageTeamsModal: React.FC = () => {
 
   const handleAddTeam = () => {
     if (!newTeamName) return;
+    if (!currentUser || !isAdmin(currentUser.role)) {
+      toast.error('Only admins can create workspaces.');
+      return;
+    }
     const newTeam: Team = {
       id: crypto.randomUUID(),
       name: newTeamName,
@@ -49,7 +53,7 @@ export const ManageTeamsModal: React.FC = () => {
   };
 
   const handleDeleteTeam = (id: string) => {
-    if (!currentUser || !isAdminOrAbove(currentUser.role)) {
+    if (!currentUser || !isAdmin(currentUser.role)) {
       toast.error('Only admins can delete workspaces.');
       return;
     }
@@ -160,35 +164,43 @@ export const ManageTeamsModal: React.FC = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => toggleTeamAdminOnly(team.id)}
-                      className={`p-1.5 rounded transition-colors ${team.adminOnly ? 'text-amber-600 dark:text-amber-400 hover:text-amber-700 bg-amber-50 dark:bg-amber-900/20' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
-                      title={team.adminOnly ? 'Make visible to all' : 'Restrict to admins'}
-                    >
-                      {team.adminOnly ? <Lock size={14} /> : <Unlock size={14} />}
-                    </button>
-                    <button
-                      onClick={() => toggleTeamVisibility(team.id)}
-                      className="p-1.5 text-zinc-400 hover:text-black dark:hover:text-white"
-                      title={team.hidden ? 'Show' : 'Hide'}
-                    >
-                      {team.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
-                    </button>
-                    <button
-                      onClick={() => setEditingTeamId(team.id)}
-                      className="p-1.5 text-zinc-400 hover:text-blue-500"
-                      title="Rename"
-                    >
-                      <Edit2 size={14} />
-                    </button>
-                    <button
-                      onClick={() => archiveTeam(team.id)}
-                      className={`p-1.5 text-zinc-400 hover:text-yellow-600 ${team.archived ? 'text-yellow-600' : ''}`}
-                      title={team.archived ? 'Unarchive' : 'Archive'}
-                    >
-                      <Archive size={14} />
-                    </button>
-                    {team.id !== 'management' && (
+                    {currentUser && isAdmin(currentUser.role) && (
+                      <button
+                        onClick={() => toggleTeamAdminOnly(team.id)}
+                        className={`p-1.5 rounded transition-colors ${team.adminOnly ? 'text-amber-600 dark:text-amber-400 hover:text-amber-700 bg-amber-50 dark:bg-amber-900/20' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
+                        title={team.adminOnly ? 'Make visible to all' : 'Restrict to admins'}
+                      >
+                        {team.adminOnly ? <Lock size={14} /> : <Unlock size={14} />}
+                      </button>
+                    )}
+                    {currentUser && isAdmin(currentUser.role) && (
+                      <button
+                        onClick={() => toggleTeamVisibility(team.id)}
+                        className="p-1.5 text-zinc-400 hover:text-black dark:hover:text-white"
+                        title={team.hidden ? 'Show' : 'Hide'}
+                      >
+                        {team.hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                      </button>
+                    )}
+                    {currentUser && isEditorOrAbove(currentUser.role) && (
+                      <button
+                        onClick={() => setEditingTeamId(team.id)}
+                        className="p-1.5 text-zinc-400 hover:text-blue-500"
+                        title="Rename"
+                      >
+                        <Edit2 size={14} />
+                      </button>
+                    )}
+                    {currentUser && isAdmin(currentUser.role) && (
+                      <button
+                        onClick={() => archiveTeam(team.id)}
+                        className={`p-1.5 text-zinc-400 hover:text-yellow-600 ${team.archived ? 'text-yellow-600' : ''}`}
+                        title={team.archived ? 'Unarchive' : 'Archive'}
+                      >
+                        <Archive size={14} />
+                      </button>
+                    )}
+                    {team.id !== 'management' && currentUser && isAdmin(currentUser.role) && (
                       <button
                         onClick={() => handleDeleteTeam(team.id)}
                         className="p-1.5 text-zinc-400 hover:text-red-500"

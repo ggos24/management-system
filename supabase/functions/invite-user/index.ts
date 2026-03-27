@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
       .eq('auth_user_id', callerUser.id)
       .single();
 
-    if (!callerProfile || (callerProfile.role !== 'admin' && callerProfile.role !== 'super_admin')) {
+    if (!callerProfile || callerProfile.role !== 'admin') {
       return new Response(JSON.stringify({ error: 'Only admins can invite users' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -87,8 +87,8 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    if (role && !['admin', 'user'].includes(role)) {
-      return new Response(JSON.stringify({ error: "Role must be 'admin' or 'user'" }), {
+    if (role && !['admin', 'editor', 'user'].includes(role)) {
+      return new Response(JSON.stringify({ error: "Role must be 'admin', 'editor', or 'user'" }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -164,7 +164,7 @@ Deno.serve(async (req) => {
       .select('id')
       .neq('id', profileId)
       .neq('id', callerFullProfile?.id || '')
-      .in('role', ['admin', 'super_admin']);
+      .in('role', ['admin']);
     if (existingProfiles && existingProfiles.length > 0) {
       const callerName = callerFullProfile?.id
         ? (await adminClient.from('profiles').select('name').eq('id', callerFullProfile.id).single()).data?.name ||
