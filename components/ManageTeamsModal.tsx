@@ -163,7 +163,7 @@ export const ManageTeamsModal: React.FC = () => {
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 flex-wrap">
                     {currentUser && isAdmin(currentUser.role) && (
                       <button
                         onClick={() => toggleTeamAdminOnly(team.id)}

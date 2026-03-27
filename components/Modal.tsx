@@ -48,10 +48,10 @@ export const Modal: React.FC<ModalProps> = ({
       onClick={onClose}
     >
       <div
-        className={`bg-white dark:bg-zinc-900 w-full ${sizeClasses[size]} rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in duration-200 ${allowOverflow ? 'overflow-visible' : 'max-h-[90vh] overflow-y-auto'}`}
+        className={`bg-white dark:bg-zinc-900 w-full ${sizeClasses[size]} rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in duration-200 ${allowOverflow ? 'overflow-visible' : 'max-h-[90dvh] overflow-y-auto'}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center px-6 py-4">
+        <div className="flex justify-between items-center px-4 md:px-6 py-4">
           <div>{title && <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">{title}</h3>}</div>
           <div className="flex-1 flex justify-end gap-2 items-center">
             {headerActions}
@@ -63,9 +63,9 @@ export const Modal: React.FC<ModalProps> = ({
             </button>
           </div>
         </div>
-        <div className="px-6 pb-6">{children}</div>
+        <div className="px-4 md:px-6 pb-6">{children}</div>
         {actions && (
-          <div className="px-6 py-4 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-100 dark:border-zinc-800 flex justify-end gap-3 rounded-b-lg">
+          <div className="px-4 md:px-6 py-4 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-100 dark:border-zinc-800 flex flex-wrap justify-end gap-3 rounded-b-lg">
             {actions}
           </div>
         )}

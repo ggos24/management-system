@@ -1011,11 +1011,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
   }, []);
 
   return (
-    <div className="h-full flex flex-col p-6 overflow-hidden bg-white dark:bg-black">
+    <div className="h-full flex flex-col p-3 md:p-6 overflow-hidden bg-white dark:bg-black">
       {/* Header */}
       <div className="flex flex-col gap-6 mb-6 flex-shrink-0">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
+        <div className="flex items-center justify-between flex-wrap gap-2">
+          <div className="flex items-center gap-2 md:gap-4 flex-wrap">
             <h2 className="text-2xl font-bold tracking-tight text-zinc-900 dark:text-white">{teamName}</h2>
             <Divider orientation="vertical" className="h-6" />
             {/* View Switcher */}
@@ -1553,10 +1553,76 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
                   {!isCollapsed && (
                     <>
+                      {/* Mobile card list */}
+                      <div className={`md:hidden space-y-2 ${isArchived ? 'opacity-60' : ''}`}>
+                        {sortTasks(colTasks).length > 0 ? (
+                          sortTasks(colTasks).map((task) => {
+                            const assignees = members.filter((m) => task.assigneeIds.includes(m.id));
+                            const urgency = task.dueDate ? getDeadlineUrgency(task.dueDate) : null;
+                            return (
+                              <div
+                                key={task.id}
+                                onClick={() => onTaskClick(task)}
+                                className={`border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 bg-white dark:bg-zinc-900/40 active:bg-zinc-50 dark:active:bg-zinc-800/50 transition-colors cursor-pointer ${selectedTaskIds.has(task.id) ? 'ring-1 ring-blue-500 bg-blue-50/50 dark:bg-blue-950/30' : ''}`}
+                              >
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <span
+                                    className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
+                                  />
+                                  <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                                    {task.title}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-3 mt-1.5 ml-3.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                  {assignees.length > 0 && (
+                                    <div className="flex items-center -space-x-1">
+                                      {assignees.slice(0, 3).map((m) => (
+                                        <Avatar
+                                          key={m.id}
+                                          src={m.avatar}
+                                          alt={m.name}
+                                          size="xs"
+                                          className="ring-1 ring-white dark:ring-zinc-900"
+                                        />
+                                      ))}
+                                      {assignees.length > 3 && (
+                                        <span className="ml-1.5 text-[10px]">+{assignees.length - 3}</span>
+                                      )}
+                                    </div>
+                                  )}
+                                  {task.contentInfo?.type && (
+                                    <span className="truncate max-w-[80px]">{task.contentInfo.type}</span>
+                                  )}
+                                  {task.dueDate && urgency && (
+                                    <span className={`flex items-center gap-1 ${urgency.text}`}>
+                                      {urgency.dot && <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />}
+                                      {new Date(task.dueDate.split('T')[0] + 'T00:00:00').toLocaleDateString('en-US', {
+                                        month: 'short',
+                                        day: 'numeric',
+                                      })}
+                                    </span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })
+                        ) : (
+                          <p className="p-3 text-center text-xs text-zinc-400 italic">No tasks in this step</p>
+                        )}
+                        {!searchQuery && teamFilter !== 'my-work' && (
+                          <button
+                            onClick={() => onAddTask({ status: col.id })}
+                            className="w-full p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium flex items-center gap-2"
+                          >
+                            <Plus size={14} /> Add Task
+                          </button>
+                        )}
+                      </div>
+
+                      {/* Desktop table */}
                       <div
-                        className={`overflow-visible border border-zinc-200 dark:border-zinc-800 rounded-lg cursor-default ${isArchived ? 'bg-yellow-50/10' : ''}`}
+                        className={`hidden md:block overflow-visible border border-zinc-200 dark:border-zinc-800 rounded-lg cursor-default ${isArchived ? 'bg-yellow-50/10' : ''}`}
                       >
-                        {/* Added table-fixed and specific widths for alignment */}
                         <table className="w-full text-left text-sm border-collapse min-w-[1100px] table-fixed">
                           <thead
                             className={`border-b ${isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : isIgnoredTable ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}

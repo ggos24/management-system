@@ -10,8 +10,8 @@ const buttonVariants = {
 };
 
 const buttonSizes = {
-  sm: 'px-3 py-1.5 text-xs',
-  md: 'px-6 py-2 text-sm',
+  sm: 'px-3 py-2.5 md:py-1.5 text-xs',
+  md: 'px-6 py-3 md:py-2 text-sm',
 };
 
 const looseSizes = {
@@ -47,8 +47,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = 'Button';
 
 const iconButtonSizes = {
-  sm: 'p-1.5',
-  md: 'p-2',
+  sm: 'p-2.5 md:p-1.5',
+  md: 'p-3 md:p-2',
 };
 
 interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

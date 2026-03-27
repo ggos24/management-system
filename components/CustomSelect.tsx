@@ -127,7 +127,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                     onChange(opt.value);
                     setIsOpen(false);
                   }}
-                  className={`px-2 py-1.5 rounded text-sm cursor-pointer flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-700 ${value === opt.value ? 'bg-zinc-50 dark:bg-zinc-700/50 font-semibold' : ''}`}
+                  className={`px-2 py-2.5 md:py-1.5 rounded text-sm cursor-pointer flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-700 ${value === opt.value ? 'bg-zinc-50 dark:bg-zinc-700/50 font-semibold' : ''}`}
                 >
                   <span className="truncate">{opt.label}</span>
                   {value === opt.value && <Check size={14} className="text-black dark:text-white flex-shrink-0" />}

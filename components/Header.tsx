@@ -103,6 +103,7 @@ export const Header: React.FC = () => {
   const tasks = useDataStore((s) => s.tasks);
 
   const isTeamView = location.pathname.startsWith('/teams/') || location.pathname === '/workspace';
+  const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
 
   const handleNotificationClick = (n: Notification) => {
     markNotificationRead(n.id);
@@ -144,6 +145,24 @@ export const Header: React.FC = () => {
 
   return (
     <header className="h-16 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-4 bg-white dark:bg-zinc-900/50 backdrop-blur-md sticky top-0 z-50">
+      {/* Mobile search overlay */}
+      {mobileSearchOpen && (
+        <div className="absolute inset-0 z-50 flex items-center px-4 bg-white dark:bg-zinc-900/95 md:hidden">
+          <Search className="text-zinc-400 shrink-0" size={18} />
+          <input
+            autoFocus
+            type="text"
+            placeholder="Search..."
+            value={displaySearch}
+            onChange={handleSearchChange}
+            className="flex-1 px-3 py-2 bg-transparent border-none text-base outline-none text-zinc-900 dark:text-white"
+          />
+          <button onClick={() => setMobileSearchOpen(false)} className="p-2 shrink-0">
+            <X size={18} className="text-zinc-400" />
+          </button>
+        </div>
+      )}
+
       <div className="flex items-center gap-3">
         <button
           onClick={() => setMobileSidebarOpen(true)}
@@ -152,16 +171,24 @@ export const Header: React.FC = () => {
           <Menu size={20} />
         </button>
         {isTeamView && (
-          <div className="relative hidden md:block group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
-            <input
-              type="text"
-              placeholder="Search..."
-              value={displaySearch}
-              onChange={handleSearchChange}
-              className="pl-9 pr-4 py-1.5 bg-zinc-100 dark:bg-zinc-800/50 border-none rounded-md text-sm w-64 focus:ring-1 focus:ring-zinc-300 dark:focus:ring-zinc-600 outline-none transition-all"
-            />
-          </div>
+          <>
+            <button
+              onClick={() => setMobileSearchOpen(true)}
+              className="md:hidden p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
+            >
+              <Search size={18} className="text-zinc-500" />
+            </button>
+            <div className="relative hidden md:block group">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
+              <input
+                type="text"
+                placeholder="Search..."
+                value={displaySearch}
+                onChange={handleSearchChange}
+                className="pl-9 pr-4 py-1.5 bg-zinc-100 dark:bg-zinc-800/50 border-none rounded-md text-sm w-64 focus:ring-1 focus:ring-zinc-300 dark:focus:ring-zinc-600 outline-none transition-all"
+              />
+            </div>
+          </>
         )}
       </div>
 
@@ -177,13 +204,16 @@ export const Header: React.FC = () => {
             )}
           </IconButton>
           {isNotificationsOpen && (
-            <div className="absolute right-0 mt-2 w-80 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100">
+            <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100">
               <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
                 <h3 className="text-sm font-semibold">
                   Notifications
                   {unreadCount > 0 && <span className="ml-1 text-zinc-400 font-normal">({unreadCount})</span>}
                 </h3>
-                <button onClick={() => setIsNotificationsOpen(false)}>
+                <button
+                  onClick={() => setIsNotificationsOpen(false)}
+                  className="p-2 -m-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                >
                   <X size={14} />
                 </button>
               </div>

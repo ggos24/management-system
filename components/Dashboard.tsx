@@ -319,7 +319,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
   const teamLabel = teamFilter === ALL_TEAMS ? 'All Teams' : teams.find((t) => t.id === teamFilter)?.name;
 
   return (
-    <div className="p-6 space-y-6 animate-fade-in bg-white dark:bg-black h-full overflow-y-auto custom-scrollbar font-sans">
+    <div className="p-3 md:p-6 space-y-6 animate-fade-in bg-white dark:bg-black h-full overflow-y-auto custom-scrollbar font-sans">
       {/* CSS custom properties for dark-mode-aware tooltip */}
       <style>{`
         :root {

@@ -29,6 +29,15 @@ body {
   letter-spacing: -0.025em;
 }
 
+/* Prevent iOS Safari auto-zoom on form inputs */
+@media screen and (max-width: 767px) {
+  input,
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

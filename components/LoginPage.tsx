@@ -145,7 +145,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -175,7 +175,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
                   setError(null);
                   setCurrentMode('reset-password');
                 }}
-                className="text-xs font-medium text-zinc-900 dark:text-white hover:underline"
+                className="text-xs font-medium text-zinc-900 dark:text-white hover:underline py-1"
               >
                 Forgot password?
               </button>

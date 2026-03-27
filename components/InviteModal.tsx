@@ -132,7 +132,7 @@ export const InviteModal: React.FC = () => {
             placeholder="John Doe"
           />
         </FormField>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
           <CustomSelect
             label="Role"
             options={[

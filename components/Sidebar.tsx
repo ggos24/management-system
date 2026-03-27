@@ -11,6 +11,7 @@ import {
   Trash2,
   HelpCircle,
   BookOpen,
+  X,
 } from 'lucide-react';
 import { Team, UserRole } from '../types';
 import { IconComponent } from './IconComponent';
@@ -91,8 +92,15 @@ const Sidebar: React.FC<SidebarProps> = ({
         className={`fixed md:static inset-y-0 left-0 z-40 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col transition-all duration-300 ${sidebarWidth} ${mobileClass} md:translate-x-0`}
       >
         <div
-          className={`p-4 flex items-center ${isCollapsed ? 'justify-center flex-col gap-4' : 'justify-between'} h-16`}
+          className={`p-4 flex items-center ${isCollapsed ? 'justify-center flex-col gap-4' : 'justify-between'} h-16 relative`}
         >
+          {/* Mobile close button */}
+          <button
+            onClick={() => setIsMobileOpen(false)}
+            className="md:hidden absolute top-4 right-4 p-2 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded text-zinc-500"
+          >
+            <X size={18} />
+          </button>
           {/* Only show branding when NOT collapsed */}
           {!isCollapsed && (
             <div className="flex items-center gap-3 overflow-hidden animate-in fade-in duration-200">
@@ -128,7 +136,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="space-y-0.5">
             <button
               onClick={() => onChangeView('my-workspace')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+              className={`w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
                 currentView === 'my-workspace' ? activeClass : inactiveClass
               } ${isCollapsed ? 'justify-center px-0' : ''}`}
               title="My Workspace"
@@ -149,7 +157,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
             <button
               onClick={() => onChangeView('dashboard')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+              className={`w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
                 currentView === 'dashboard' ? activeClass : inactiveClass
               } ${isCollapsed ? 'justify-center px-0' : ''}`}
               title="Dashboard"
@@ -163,7 +171,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             </button>
             <button
               onClick={() => onChangeView('schedule')}
-              className={`w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+              className={`w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
                 currentView === 'schedule' ? activeClass : inactiveClass
               } ${isCollapsed ? 'justify-center px-0' : ''}`}
               title="Schedule"
@@ -193,10 +201,10 @@ const Sidebar: React.FC<SidebarProps> = ({
               {!isCollapsed && isAdmin(userRole) && (
                 <button
                   onClick={onManageTeams}
-                  className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                  className="p-2.5 md:p-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
                   title="Manage Teams"
                 >
-                  <Settings size={12} />
+                  <Settings size={14} />
                 </button>
               )}
             </div>
@@ -214,7 +222,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                       onDragOver={handleDragOver}
                       onDrop={(e) => handleDrop(e, team.id)}
                       onClick={() => onChangeView(team.id)}
-                      className={`group w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                      className={`group w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
                         isActive ? activeClass : inactiveClass
                       } ${isCollapsed ? 'justify-center px-0' : ''}`}
                       title={team.name}
@@ -250,7 +258,7 @@ const Sidebar: React.FC<SidebarProps> = ({
         <div className="mt-auto p-2 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
           <button
             onClick={() => onChangeView('docs-kb')}
-            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
               currentView === 'docs-kb'
                 ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
                 : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
@@ -266,7 +274,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
           <button
             onClick={() => onChangeView('docs-help')}
-            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
               currentView === 'docs-help'
                 ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
                 : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
@@ -283,7 +291,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           <div className="h-px bg-zinc-200 dark:bg-zinc-800 mx-2 my-1" />
           <button
             onClick={() => onChangeView('bin')}
-            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
               currentView === 'bin'
                 ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
                 : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
@@ -306,7 +314,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
           <button
             onClick={onOpenSettings}
-            className={`w-full flex items-center gap-3 text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white text-sm font-medium transition-colors px-3 py-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${isCollapsed ? 'justify-center px-0' : ''}`}
+            className={`w-full flex items-center gap-3 text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${isCollapsed ? 'justify-center px-0' : ''}`}
             title="Settings"
           >
             <Settings size={18} />
@@ -318,7 +326,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
           <button
             onClick={onLogout}
-            className={`w-full flex items-center gap-3 text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400 text-sm font-medium transition-colors px-3 py-2 rounded-md hover:bg-red-50 dark:hover:bg-red-900/10 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${isCollapsed ? 'justify-center px-0' : ''}`}
+            className={`w-full flex items-center gap-3 text-zinc-500 hover:text-red-600 dark:text-zinc-400 dark:hover:text-red-400 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md hover:bg-red-50 dark:hover:bg-red-900/10 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${isCollapsed ? 'justify-center px-0' : ''}`}
             title="Logout"
           >
             <LogOut size={18} />

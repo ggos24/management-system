@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Member, Absence, Team, Shift, UserRole } from '../types';
 import {
   ChevronLeft,
@@ -92,6 +92,9 @@ const Schedule: React.FC<ScheduleProps> = ({
   // Filters
   const [filterPerson, setFilterPerson] = useState('all');
   const [filterAbsenceType, setFilterAbsenceType] = useState('all');
+
+  // Ref to track touch-initiated member for drag selection
+  const touchMemberRef = useRef<Member | null>(null);
 
   // Correctly get days in month
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -189,6 +192,31 @@ const Schedule: React.FC<ScheduleProps> = ({
 
     setDragStart(null);
     setDragEnd(null);
+  };
+
+  // Touch event handlers for mobile drag-select
+  const handleTouchStart = (e: React.TouchEvent, member: Member, day: number) => {
+    touchMemberRef.current = member;
+    handleMouseDown(member, day);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!isDragging || !dragStart || !touchMemberRef.current) return;
+    e.preventDefault();
+    const touch = e.touches[0];
+    const el = document.elementFromPoint(touch.clientX, touch.clientY);
+    if (!el) return;
+    const cell = el.closest('[data-day]') as HTMLElement | null;
+    if (cell && cell.dataset.day) {
+      const day = parseInt(cell.dataset.day, 10);
+      handleMouseEnter(touchMemberRef.current, day);
+    }
+  };
+
+  const handleTouchEnd = (_e: React.TouchEvent, member: Member, day: number) => {
+    const finalDay = dragEnd?.day ?? day;
+    handleMouseUp(member, finalDay);
+    touchMemberRef.current = null;
   };
 
   const handleSave = () => {
@@ -315,7 +343,7 @@ const Schedule: React.FC<ScheduleProps> = ({
   const showPendingTab = isAdmin(userRole);
 
   return (
-    <div className="p-6 h-full flex flex-col bg-white dark:bg-black relative">
+    <div className="p-3 md:p-6 h-full flex flex-col bg-white dark:bg-black relative">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 flex-shrink-0">
         <div>
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">Schedule</h1>
@@ -404,7 +432,7 @@ const Schedule: React.FC<ScheduleProps> = ({
         </div>
       ) : (
         <div className="bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 flex-1 flex flex-col overflow-hidden shadow-sm relative">
-          <div className="flex-1 overflow-auto custom-scrollbar relative">
+          <div className="flex-1 overflow-auto snap-x snap-mandatory md:snap-none custom-scrollbar relative">
             <div style={{ width: 'max-content', minWidth: '100%' }}>
               <div className="flex sticky top-0 z-30 bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 h-14">
                 <div className="sticky left-0 z-40 w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 p-3 text-[10px] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
@@ -561,9 +589,13 @@ const Schedule: React.FC<ScheduleProps> = ({
                           return (
                             <div
                               key={day}
+                              data-day={day}
                               onMouseDown={() => handleMouseDown(member, day)}
                               onMouseEnter={() => handleMouseEnter(member, day)}
                               onMouseUp={() => handleMouseUp(member, day)}
+                              onTouchStart={(e) => handleTouchStart(e, member, day)}
+                              onTouchMove={handleTouchMove}
+                              onTouchEnd={(e) => handleTouchEnd(e, member, day)}
                               className={`w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : ''}`}
                             >
                               {content}
