@@ -27,3 +27,6 @@ dist-ssr
 *.sln
 *.sw?
 *.pdf
+
+# Local scripts (contain secrets)
+scripts/
