@@ -409,6 +409,12 @@ export const SettingsModal: React.FC = () => {
                         Your absence request is approved or declined
                       </td>
                     </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-medium">Schedule updated</td>
+                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
+                        An admin adds or changes an absence or shift on your schedule
+                      </td>
+                    </tr>
                   </tbody>
                 </table>
               </div>

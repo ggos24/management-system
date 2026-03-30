@@ -18,7 +18,7 @@ import { Avatar } from './Avatar';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { CustomSelect } from './CustomSelect';
 import { calculateAbsenceStats } from '../lib/utils';
-import { isAdmin, isEditorOrAbove } from '../constants';
+import { isAdmin } from '../constants';
 import { Button, Label, Input, Badge } from './ui';
 import { AbsenceApprovalQueue } from './AbsenceApprovalQueue';
 
@@ -130,8 +130,8 @@ const Schedule: React.FC<ScheduleProps> = ({
   };
 
   const handleMouseDown = (member: Member, day: number) => {
-    // Editors+ can click any row; users can only click their own row (for absences)
-    if (!isEditorOrAbove(userRole) && member.id !== currentUserId) return;
+    // Admins can click any row; others can only click their own row (for absences)
+    if (!isAdmin(userRole) && member.id !== currentUserId) return;
     setIsDragging(true);
     setDragStart({ memberId: member.id, day });
     setDragEnd({ memberId: member.id, day });
@@ -184,8 +184,8 @@ const Schedule: React.FC<ScheduleProps> = ({
       setEndTime('17:00');
     }
 
-    // Determine which tab to show
-    setEditType(existingAbsence ? 'absence' : 'shift');
+    // Determine which tab to show (non-admins always get absence)
+    setEditType(!isAdmin(userRole) ? 'absence' : existingAbsence ? 'absence' : 'shift');
 
     // Reset decline mode
     setModalDeclineMode(false);
@@ -223,8 +223,10 @@ const Schedule: React.FC<ScheduleProps> = ({
   const handleSave = () => {
     if (!selectedCell) return;
 
-    // Only editors+ can save shifts
-    if (editType === 'shift' && !isEditorOrAbove(userRole)) return;
+    // Only admins can save shifts
+    if (editType === 'shift' && !isAdmin(userRole)) return;
+    // Non-admins can only save absences for themselves
+    if (editType === 'absence' && !isAdmin(userRole) && selectedCell.member.id !== currentUserId) return;
 
     if (editType === 'absence') {
       if (!rangeStartDate || !rangeEndDate) return;
@@ -265,7 +267,7 @@ const Schedule: React.FC<ScheduleProps> = ({
     if (editType === 'absence') {
       const existing = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
       if (existing) onDeleteAbsence(existing.id);
-    } else {
+    } else if (isAdmin(userRole)) {
       const start = new Date(rangeStartDate);
       const end = new Date(rangeEndDate);
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
@@ -846,7 +848,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                 )}
 
                 <div className="space-y-4">
-                  {isEditorOrAbove(userRole) ? (
+                  {isAdmin(userRole) ? (
                     <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded mb-4">
                       <button
                         onClick={() => setEditType('shift')}

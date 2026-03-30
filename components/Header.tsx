@@ -37,6 +37,7 @@ function getNotificationIcon(type: NotificationType) {
     case 'absence_submitted':
     case 'absence_decided':
     case 'absence_cancelled':
+    case 'schedule_updated':
       return <Calendar size={14} className="shrink-0" />;
     case 'member_invited':
       return <UserPlus size={14} className="shrink-0" />;
@@ -134,7 +135,12 @@ export const Header: React.FC = () => {
         const team = teams.find((t) => t.id === teamId);
         navigate(`/teams/${team ? teamSlug(team) : teamId}`);
       }
-    } else if (n.type === 'absence_submitted' || n.type === 'absence_decided' || n.type === 'absence_cancelled') {
+    } else if (
+      n.type === 'absence_submitted' ||
+      n.type === 'absence_decided' ||
+      n.type === 'absence_cancelled' ||
+      n.type === 'schedule_updated'
+    ) {
       navigate('/schedule');
     } else if (n.type === 'member_invited') {
       setIsSettingsModalOpen(true);

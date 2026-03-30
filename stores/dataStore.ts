@@ -620,13 +620,26 @@ export const useDataStore = create<DataState>((set, get) => ({
     const { members } = get();
     const memberName = members.find((m) => m.id === absence.memberId)?.name || 'Someone';
 
-    if (isNew) {
-      // New absence submitted → notify all admins
+    const currentUserId = getCurrentUserId();
+    const actorName = getCurrentUserName();
+    const isOwnAbsence = absence.memberId === currentUserId;
+
+    if (isNew && isOwnAbsence) {
+      // User submitted their own absence → notify all admins
       const adminIds = members.filter((m) => m.role === 'admin').map((m) => m.id);
       notifyMany(adminIds, 'absence_submitted', `${memberName} submitted a ${absence.type.replace('_', ' ')} request`, {
         absenceId: absence.id,
         memberId: absence.memberId,
       });
+    } else if (!isOwnAbsence) {
+      // Admin created/edited absence for another user → notify that user
+      const action = isNew ? 'added' : 'updated';
+      notify(
+        absence.memberId,
+        'schedule_updated',
+        `${actorName} ${action} a ${absence.type.replace('_', ' ')} on your schedule`,
+        { absenceId: absence.id, memberId: absence.memberId },
+      );
     }
   },
 
@@ -715,6 +728,15 @@ export const useDataStore = create<DataState>((set, get) => ({
       shifts: prev.find((s) => s.id === shift.id) ? prev.map((s) => (s.id === shift.id ? shift : s)) : [...prev, shift],
     });
     db.upsertShift(shift).catch(() => set({ shifts: prev }));
+
+    // Notify user when admin updates their shift
+    const currentUserId = getCurrentUserId();
+    if (shift.memberId !== currentUserId) {
+      const actorName = getCurrentUserName();
+      notify(shift.memberId, 'schedule_updated', `${actorName} updated your shift schedule`, {
+        memberId: shift.memberId,
+      });
+    }
   },
 
   deleteShift: (id) => {

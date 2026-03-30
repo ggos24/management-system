@@ -162,7 +162,8 @@ export type NotificationType =
   | 'absence_decided'
   | 'member_invited'
   | 'comment_mention'
-  | 'absence_cancelled';
+  | 'absence_cancelled'
+  | 'schedule_updated';
 
 export interface Notification {
   id: string;
