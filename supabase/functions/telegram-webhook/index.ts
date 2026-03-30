@@ -16,6 +16,15 @@ Deno.serve(async (req) => {
     return new Response('Method not allowed', { status: 405 });
   }
 
+  // Verify Telegram webhook secret (backwards-compatible: skipped if env var not set)
+  const secretToken = Deno.env.get('TELEGRAM_WEBHOOK_SECRET');
+  if (secretToken) {
+    const provided = req.headers.get('X-Telegram-Bot-Api-Secret-Token');
+    if (provided !== secretToken) {
+      return new Response('Forbidden', { status: 403 });
+    }
+  }
+
   try {
     const botToken = Deno.env.get('TELEGRAM_BOT_TOKEN');
     if (!botToken) {

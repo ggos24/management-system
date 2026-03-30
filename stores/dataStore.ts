@@ -455,7 +455,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       deletedTaskCount: snapshot.deletedTaskCount + 1,
     });
 
-    db.softDeleteTask(taskId, userId!).catch(() => {
+    if (!userId) return;
+    db.softDeleteTask(taskId, userId).catch(() => {
       set({
         tasks: snapshot.tasks,
         deletedTasks: snapshot.deletedTasks,
@@ -662,7 +663,8 @@ export const useDataStore = create<DataState>((set, get) => ({
           : a,
       ),
     });
-    db.updateAbsenceDecision(absenceId, 'approved', userId!).catch(() => set({ absences: prev }));
+    if (!userId) return;
+    db.updateAbsenceDecision(absenceId, 'approved', userId).catch(() => set({ absences: prev }));
 
     notify(
       absence.memberId,
@@ -692,7 +694,8 @@ export const useDataStore = create<DataState>((set, get) => ({
           : a,
       ),
     });
-    db.updateAbsenceDecision(absenceId, 'declined', userId!, reason).catch(() => set({ absences: prev }));
+    if (!userId) return;
+    db.updateAbsenceDecision(absenceId, 'declined', userId, reason).catch(() => set({ absences: prev }));
 
     notify(
       absence.memberId,
@@ -934,7 +937,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     set({
       teamProperties: {
         ...teamProperties,
-        [teamId]: teamProperties[teamId].map((p) => (p.id === property.id ? property : p)),
+        [teamId]: (teamProperties[teamId] || []).map((p) => (p.id === property.id ? property : p)),
       },
     });
     db.upsertCustomProperty(teamId, property).catch(() => {
@@ -947,7 +950,10 @@ export const useDataStore = create<DataState>((set, get) => ({
     const { teamProperties } = get();
     const prev = teamProperties;
     set({
-      teamProperties: { ...teamProperties, [teamId]: teamProperties[teamId].filter((p) => p.id !== propertyId) },
+      teamProperties: {
+        ...teamProperties,
+        [teamId]: (teamProperties[teamId] || []).filter((p) => p.id !== propertyId),
+      },
     });
     db.deleteCustomProperty(propertyId).catch(() => {
       set({ teamProperties: prev });

@@ -1,4 +1,4 @@
-import React, { useEffect, useCallback } from 'react';
+import React, { useEffect, useCallback, useRef } from 'react';
 import { X } from 'lucide-react';
 
 const sizeClasses = {
@@ -28,9 +28,28 @@ export const Modal: React.FC<ModalProps> = ({
   allowOverflow,
   size = 'lg',
 }) => {
+  const modalRef = useRef<HTMLDivElement>(null);
+
   const handleKeyDown = useCallback(
     (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
+
+      // Focus trap: cycle Tab/Shift+Tab within modal
+      if (e.key === 'Tab' && modalRef.current) {
+        const focusable = modalRef.current.querySelectorAll<HTMLElement>(
+          'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])',
+        );
+        if (focusable.length === 0) return;
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
+      }
     },
     [onClose],
   );
@@ -48,6 +67,9 @@ export const Modal: React.FC<ModalProps> = ({
       onClick={onClose}
     >
       <div
+        ref={modalRef}
+        role="dialog"
+        aria-modal="true"
         className={`bg-white dark:bg-zinc-900 w-full ${sizeClasses[size]} rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in duration-200 ${allowOverflow ? 'overflow-visible' : 'max-h-[90dvh] overflow-y-auto'}`}
         onClick={(e) => e.stopPropagation()}
       >
@@ -57,6 +79,7 @@ export const Modal: React.FC<ModalProps> = ({
             {headerActions}
             <button
               onClick={onClose}
+              aria-label="Close"
               className="focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 rounded"
             >
               <X size={20} className="text-zinc-400 hover:text-black dark:hover:text-white" />
