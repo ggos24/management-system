@@ -291,22 +291,6 @@ export const SettingsModal: React.FC = () => {
               </div>
             </div>
             <div className="space-y-2">
-              <Label variant="section">Main Team</Label>
-              <CustomSelect
-                value={currentUser.teamId || ''}
-                onChange={(teamId) => {
-                  updateMemberTeam(currentUser.id, teamId);
-                  setCurrentUser({ ...currentUser, teamId });
-                  toast.success('Team updated');
-                }}
-                placeholder="No team"
-                options={[
-                  { value: '', label: 'No team' },
-                  ...teams.filter((t) => !t.hidden && !t.archived).map((t) => ({ value: t.id, label: t.name })),
-                ]}
-              />
-            </div>
-            <div className="space-y-2">
               <Label variant="section">My Absences</Label>
               <AbsenceStatsCard stats={myAbsenceStats} />
             </div>
@@ -381,11 +365,15 @@ export const SettingsModal: React.FC = () => {
             <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
               {members.map((m) => {
                 const isMe = m.id === currentUser.id;
-                const canManage = isAdmin(currentUser.role) && !isMe;
+                const canManage = isAdmin(currentUser.role);
                 const roleOptions = [
                   { value: 'admin', label: 'Admin' },
                   { value: 'editor', label: 'Editor' },
                   { value: 'user', label: 'User' },
+                ];
+                const teamOptions = [
+                  { value: '', label: 'No team' },
+                  ...teams.filter((t) => !t.hidden && !t.archived).map((t) => ({ value: t.id, label: t.name })),
                 ];
                 const roleLabel = m.role === 'admin' ? 'Admin' : m.role === 'editor' ? 'Editor' : 'User';
                 return (
@@ -408,36 +396,65 @@ export const SettingsModal: React.FC = () => {
                         <>
                           <CustomSelect
                             compact
-                            value={m.role}
-                            onChange={(newRole) => {
-                              updateMemberRole(m.id, newRole as any);
-                              toast.success(`${m.name} is now ${newRole === 'admin' ? 'Admin' : newRole === 'editor' ? 'Editor' : 'User'}`);
+                            value={m.teamId || ''}
+                            onChange={(teamId) => {
+                              updateMemberTeam(m.id, teamId);
+                              if (isMe) setCurrentUser({ ...currentUser, teamId });
+                              const teamName = teams.find((t) => t.id === teamId)?.name || 'No team';
+                              toast.success(`${m.name} → ${teamName}`);
                             }}
-                            options={roleOptions}
-                            renderValue={(v) => (
-                              <span className="flex items-center gap-1 text-xs">
-                                {v === 'admin' ? 'Admin' : v === 'editor' ? 'Editor' : 'User'}
-                                <ChevronDown size={12} className="text-zinc-400" />
-                              </span>
-                            )}
-                            dropdownMinWidth={110}
+                            options={teamOptions}
+                            renderValue={(v) => {
+                              const t = teams.find((t) => t.id === v);
+                              return (
+                                <span className="flex items-center gap-1 text-xs">
+                                  {t?.name || 'No team'}
+                                  <ChevronDown size={12} className="text-zinc-400" />
+                                </span>
+                              );
+                            }}
+                            dropdownMinWidth={160}
                             className="w-auto"
                           />
-                          <button
-                            onClick={() => {
-                              if (confirm(`Remove ${m.name} from the team?`)) {
-                                removeMember(m.id, currentUser.id);
-                              }
-                            }}
-                            className="text-xs text-zinc-400 hover:text-red-500 transition-colors"
-                          >
-                            Remove
-                          </button>
+                          {isMe && (
+                            <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">{roleLabel}</span>
+                          )}
+                          {!isMe && (
+                            <>
+                              <CustomSelect
+                                compact
+                                value={m.role}
+                                onChange={(newRole) => {
+                                  updateMemberRole(m.id, newRole as any);
+                                  toast.success(
+                                    `${m.name} is now ${newRole === 'admin' ? 'Admin' : newRole === 'editor' ? 'Editor' : 'User'}`,
+                                  );
+                                }}
+                                options={roleOptions}
+                                renderValue={(v) => (
+                                  <span className="flex items-center gap-1 text-xs">
+                                    {v === 'admin' ? 'Admin' : v === 'editor' ? 'Editor' : 'User'}
+                                    <ChevronDown size={12} className="text-zinc-400" />
+                                  </span>
+                                )}
+                                dropdownMinWidth={110}
+                                className="w-auto"
+                              />
+                              <button
+                                onClick={() => {
+                                  if (confirm(`Remove ${m.name} from the team?`)) {
+                                    removeMember(m.id, currentUser.id);
+                                  }
+                                }}
+                                className="text-xs text-zinc-400 hover:text-red-500 transition-colors"
+                              >
+                                Remove
+                              </button>
+                            </>
+                          )}
                         </>
                       ) : (
-                        <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">
-                          {roleLabel}
-                        </span>
+                        <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">{roleLabel}</span>
                       )}
                     </div>
                   </div>

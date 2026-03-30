@@ -8,7 +8,6 @@ import { TaskModal } from '../components/TaskModal';
 import { SettingsModal } from '../components/SettingsModal';
 import { ManageTeamsModal } from '../components/ManageTeamsModal';
 import { InviteModal } from '../components/InviteModal';
-import { AiChatWidget } from '../components/AiChatWidget';
 import { Modal } from '../components/Modal';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { useTaskDeepLink } from '../hooks/useTaskDeepLink';
@@ -212,9 +211,6 @@ const AppLayout: React.FC = () => {
         >
           <p className="text-sm text-zinc-600 dark:text-zinc-400">Are you sure you want to log out of your account?</p>
         </Modal>
-
-        {/* AI Chat Widget */}
-        <AiChatWidget />
 
         <Toaster position="bottom-right" richColors closeButton />
       </div>

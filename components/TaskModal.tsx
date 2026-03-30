@@ -125,9 +125,6 @@ export const TaskModal: React.FC = () => {
     return groups;
   }, [taskModalData.teamId, teams, teamPlacements]);
 
-  // Track which foreign teams have been selected via placements (for new tasks)
-  const pendingLinkedTeamIdsRef = useRef(new Set<string>());
-
   // O(1) lookup: placement name → list of team IDs that have it
   const placementToTeamIds = useMemo(() => {
     const map = new Map<string, string[]>();
@@ -161,7 +158,7 @@ export const TaskModal: React.FC = () => {
         if (teamId === homeTeamId) continue;
         const isLinked = taskModalData.id
           ? taskTeamLinks.some((l) => l.taskId === taskModalData.id && l.teamId === teamId)
-          : pendingLinkedTeamIdsRef.current.has(teamId);
+          : true;
         if (isLinked) {
           keys.push(`${teamId}:${plainName}`);
           matched = true;
@@ -188,7 +185,6 @@ export const TaskModal: React.FC = () => {
       const teamId = key.substring(0, colonIdx);
       if (teamId !== homeTeamId) foreignTeamIds.add(teamId);
     }
-    pendingLinkedTeamIdsRef.current = foreignTeamIds;
     return [...foreignTeamIds];
   }, [selectedCompositeKeys, taskModalData.teamId]);
 
@@ -1111,29 +1107,27 @@ export const TaskModal: React.FC = () => {
                           <span className="text-xs font-semibold text-zinc-900 dark:text-white">{c.userName}</span>
                           <span className="text-[10px] text-zinc-400">{formatCommentTime(c.createdAt)}</span>
                           {c.updatedAt && <span className="text-[10px] text-zinc-400 italic">(edited)</span>}
-                          {currentUser &&
-                            (currentUser.id === c.userId ||
-                              currentUser.role === 'admin') && (
-                              <div className="opacity-0 group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
-                                {currentUser.id === c.userId && (
-                                  <button
-                                    onClick={() => {
-                                      setEditingCommentId(c.id);
-                                      setEditingCommentText(c.content);
-                                    }}
-                                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                  >
-                                    <Edit2 size={12} />
-                                  </button>
-                                )}
+                          {currentUser && (currentUser.id === c.userId || currentUser.role === 'admin') && (
+                            <div className="opacity-0 group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
+                              {currentUser.id === c.userId && (
                                 <button
-                                  onClick={() => handleDeleteComment(c.id)}
-                                  className="text-zinc-400 hover:text-red-500"
+                                  onClick={() => {
+                                    setEditingCommentId(c.id);
+                                    setEditingCommentText(c.content);
+                                  }}
+                                  className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                                 >
-                                  <Trash2 size={12} />
+                                  <Edit2 size={12} />
                                 </button>
-                              </div>
-                            )}
+                              )}
+                              <button
+                                onClick={() => handleDeleteComment(c.id)}
+                                className="text-zinc-400 hover:text-red-500"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          )}
                         </div>
                         {editingCommentId === c.id ? (
                           <div className="space-y-1.5">

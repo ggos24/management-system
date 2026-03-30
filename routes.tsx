@@ -100,9 +100,7 @@ const MyWorkspaceRoute: React.FC = () => {
     updateTask,
     teamStatuses,
     reorderStatuses,
-    archivedStatuses,
     statusCategories,
-    archiveStatus,
     duplicateStatus,
     setStatusCategory,
     teamProperties,
@@ -126,9 +124,7 @@ const MyWorkspaceRoute: React.FC = () => {
       updateTask: s.updateTask,
       teamStatuses: s.teamStatuses,
       reorderStatuses: s.reorderStatuses,
-      archivedStatuses: s.archivedStatuses,
       statusCategories: s.statusCategories,
-      archiveStatus: s.archiveStatus,
       duplicateStatus: s.duplicateStatus,
       setStatusCategory: s.setStatusCategory,
       teamProperties: s.teamProperties,
@@ -146,7 +142,7 @@ const MyWorkspaceRoute: React.FC = () => {
     })),
   );
   const searchQuery = useUiStore((s) => s.searchQuery);
-  const setIsAiChatOpen = useUiStore((s) => s.setIsAiChatOpen);
+
   const { openTaskModal } = useOutletContext<LayoutContext>();
 
   // My Workspace: union of all team placements (fallback to global)
@@ -167,13 +163,10 @@ const MyWorkspaceRoute: React.FC = () => {
       onAddTask={openTaskModal}
       searchQuery={searchQuery}
       onTaskClick={openTaskModal}
-      onOpenAiChat={() => setIsAiChatOpen(true)}
       onUpdateTask={updateTask}
       teamStatuses={teamStatuses}
       onUpdateTeamStatuses={reorderStatuses}
-      archivedStatuses={archivedStatuses}
       statusCategories={statusCategories}
-      onArchiveStatus={archiveStatus}
       onDuplicateStatus={duplicateStatus}
       onSetStatusCategory={setStatusCategory}
       customProperties={teamProperties['my-work'] || []}
@@ -189,6 +182,7 @@ const MyWorkspaceRoute: React.FC = () => {
       allTeams={teams}
       onLinkTaskToTeam={linkTaskToTeam}
       onDeleteTask={deleteTask}
+      allTeamProperties={teamProperties}
     />
   );
 };
@@ -204,9 +198,7 @@ const TeamWorkspaceRoute: React.FC = () => {
     updateTask,
     teamStatuses,
     reorderStatuses,
-    archivedStatuses,
     statusCategories,
-    archiveStatus,
     duplicateStatus,
     setStatusCategory,
     teamProperties,
@@ -230,9 +222,7 @@ const TeamWorkspaceRoute: React.FC = () => {
       updateTask: s.updateTask,
       teamStatuses: s.teamStatuses,
       reorderStatuses: s.reorderStatuses,
-      archivedStatuses: s.archivedStatuses,
       statusCategories: s.statusCategories,
-      archiveStatus: s.archiveStatus,
       duplicateStatus: s.duplicateStatus,
       setStatusCategory: s.setStatusCategory,
       teamProperties: s.teamProperties,
@@ -250,7 +240,7 @@ const TeamWorkspaceRoute: React.FC = () => {
     })),
   );
   const searchQuery = useUiStore((s) => s.searchQuery);
-  const setIsAiChatOpen = useUiStore((s) => s.setIsAiChatOpen);
+
   const { openTaskModal } = useOutletContext<LayoutContext>();
 
   const team = teamParam ? findTeamByParam(teams, teamParam) : undefined;
@@ -274,13 +264,10 @@ const TeamWorkspaceRoute: React.FC = () => {
       onAddTask={openTaskModal}
       searchQuery={searchQuery}
       onTaskClick={(task) => openTaskModal({ ...task, viewingTeamId: team.id })}
-      onOpenAiChat={() => setIsAiChatOpen(true)}
       onUpdateTask={updateTask}
       teamStatuses={teamStatuses}
       onUpdateTeamStatuses={reorderStatuses}
-      archivedStatuses={archivedStatuses}
       statusCategories={statusCategories}
-      onArchiveStatus={archiveStatus}
       onDuplicateStatus={duplicateStatus}
       onSetStatusCategory={setStatusCategory}
       customProperties={teamProperties[team.id] || []}
@@ -296,6 +283,7 @@ const TeamWorkspaceRoute: React.FC = () => {
       allTeams={teams}
       onLinkTaskToTeam={linkTaskToTeam}
       onDeleteTask={deleteTask}
+      allTeamProperties={teamProperties}
     />
   );
 };

@@ -70,7 +70,6 @@ interface DataState {
   statusCategories: Record<string, Record<string, string>>;
   teamTypes: Record<string, string[]>;
   teamProperties: Record<string, CustomProperty[]>;
-  archivedStatuses: Record<string, string[]>;
   permissions: Record<string, { canEdit: boolean; canDelete: boolean; canCreate: boolean }>;
   allPlacements: string[];
   teamPlacements: Record<string, string[]>;
@@ -91,7 +90,6 @@ interface DataState {
   setStatusCategories: (cats: Record<string, Record<string, string>>) => void;
   setTeamTypes: (types: Record<string, string[]>) => void;
   setTeamProperties: (props: Record<string, CustomProperty[]>) => void;
-  setArchivedStatuses: (statuses: Record<string, string[]>) => void;
   setPermissions: (perms: Record<string, { canEdit: boolean; canDelete: boolean; canCreate: boolean }>) => void;
   setAllPlacements: (placements: string[]) => void;
   setTeamPlacements: (tp: Record<string, string[]>) => void;
@@ -142,7 +140,6 @@ interface DataState {
   addStatus: (teamId: string, status: string) => void;
   deleteStatus: (teamId: string, status: string) => void;
   reorderStatuses: (teamId: string, newStatuses: string[]) => void;
-  archiveStatus: (teamId: string, status: string) => void;
   duplicateStatus: (teamId: string, status: string, withData: boolean) => void;
   setStatusCategory: (teamId: string, statusName: string, category: string) => void;
   addType: (teamId: string, type: string) => void;
@@ -192,7 +189,6 @@ export const useDataStore = create<DataState>((set, get) => ({
   statusCategories: {},
   teamTypes: {},
   teamProperties: {},
-  archivedStatuses: {},
   permissions: {},
   allPlacements: [],
   teamPlacements: {},
@@ -213,7 +209,6 @@ export const useDataStore = create<DataState>((set, get) => ({
   setStatusCategories: (cats: Record<string, Record<string, string>>) => set({ statusCategories: cats }),
   setTeamTypes: (types) => set({ teamTypes: types }),
   setTeamProperties: (props) => set({ teamProperties: props }),
-  setArchivedStatuses: (statuses) => set({ archivedStatuses: statuses }),
   setPermissions: (perms) => set({ permissions: perms }),
   setAllPlacements: (placements) => set({ allPlacements: placements }),
   setTeamPlacements: (tp) => set({ teamPlacements: tp }),
@@ -298,8 +293,12 @@ export const useDataStore = create<DataState>((set, get) => ({
     const defaultStatus = 'Backlog';
     if (!statuses.includes('Backlog')) {
       const newStatuses = ['Backlog', ...statuses];
-      set({ teamStatuses: { ...get().teamStatuses, [teamId]: newStatuses } });
-      db.syncTeamStatuses(teamId, newStatuses, statusCategories[teamId]).catch(console.error);
+      const newCats = { ...(statusCategories[teamId] || {}), Backlog: 'backlog' };
+      set({
+        teamStatuses: { ...get().teamStatuses, [teamId]: newStatuses },
+        statusCategories: { ...get().statusCategories, [teamId]: newCats },
+      });
+      db.syncTeamStatuses(teamId, newStatuses, newCats).catch(console.error);
     }
     const addedBy = getCurrentUserId() || undefined;
     const optimisticLink: TaskTeamLink = {
@@ -571,12 +570,10 @@ export const useDataStore = create<DataState>((set, get) => ({
     if (isNew) {
       // New absence submitted → notify all admins
       const adminIds = members.filter((m) => m.role === 'admin').map((m) => m.id);
-      notifyMany(
-        adminIds,
-        'absence_submitted',
-        `${memberName} submitted a ${absence.type.replace('_', ' ')} request`,
-        { absenceId: absence.id, memberId: absence.memberId },
-      );
+      notifyMany(adminIds, 'absence_submitted', `${memberName} submitted a ${absence.type.replace('_', ' ')} request`, {
+        absenceId: absence.id,
+        memberId: absence.memberId,
+      });
     }
   },
 
@@ -676,15 +673,17 @@ export const useDataStore = create<DataState>((set, get) => ({
   // Team actions
   addTeam: (team) => {
     set({ teams: [...get().teams, team] });
-    const { teamStatuses, teamTypes } = get();
+    const { teamStatuses, statusCategories, teamTypes } = get();
+    const defaultCats = { Backlog: 'backlog' };
     set({
       teamStatuses: { ...teamStatuses, [team.id]: ['Backlog', 'To Do', 'In Progress', 'Done'] },
+      statusCategories: { ...statusCategories, [team.id]: defaultCats },
       teamTypes: { ...teamTypes, [team.id]: ['General'] },
     });
 
     db.upsertTeam(team)
       .then(() => {
-        db.syncTeamStatuses(team.id, ['Backlog', 'To Do', 'In Progress', 'Done']);
+        db.syncTeamStatuses(team.id, ['Backlog', 'To Do', 'In Progress', 'Done'], defaultCats);
         db.syncTeamContentTypes(team.id, ['General']);
       })
       .catch(() => toast.error('Failed to create team'));
@@ -764,16 +763,6 @@ export const useDataStore = create<DataState>((set, get) => ({
     );
   },
 
-  archiveStatus: (teamId, status) => {
-    const { archivedStatuses } = get();
-    const currentArchived = archivedStatuses[teamId] || [];
-    if (currentArchived.includes(status)) {
-      set({ archivedStatuses: { ...archivedStatuses, [teamId]: currentArchived.filter((s) => s !== status) } });
-    } else {
-      set({ archivedStatuses: { ...archivedStatuses, [teamId]: [...currentArchived, status] } });
-    }
-  },
-
   duplicateStatus: (teamId, status, withData) => {
     const { teamStatuses, tasks } = get();
     const currentStatuses = teamStatuses[teamId] || teamStatuses['default'] || [];
@@ -811,7 +800,19 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   setStatusCategory: (teamId, statusName, category) => {
     const { statusCategories } = get();
-    const teamCats = { ...(statusCategories[teamId] || {}), [statusName]: category };
+    const teamCats = { ...(statusCategories[teamId] || {}) };
+
+    // Only one status per non-active category — reset previous holder
+    if (category !== 'active') {
+      for (const [name, cat] of Object.entries(teamCats)) {
+        if (cat === category && name !== statusName) {
+          teamCats[name] = 'active';
+          db.updateStatusCategory(teamId, name, 'active').catch(console.error);
+        }
+      }
+    }
+
+    teamCats[statusName] = category;
     set({ statusCategories: { ...statusCategories, [teamId]: teamCats } });
     db.updateStatusCategory(teamId, statusName, category).catch(() => toast.error('Failed to update status category'));
   },

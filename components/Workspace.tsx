@@ -29,7 +29,6 @@ import {
   MapPin,
   Copy,
   Archive,
-  FolderArchive,
   Type,
   List as ListIcon,
   Users,
@@ -38,6 +37,7 @@ import {
   ArrowRight,
   Tags as TagsIcon,
   Link2,
+  Inbox,
 } from 'lucide-react';
 import { generateContentIdeas } from '../services/geminiService';
 import { Modal } from './Modal';
@@ -46,7 +46,7 @@ import { CustomSelect } from './CustomSelect';
 import { TagSelect, getTagColorClasses } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
-import { Button, Badge, Divider } from './ui';
+import { Button, Divider } from './ui';
 
 // Known service favicon URLs (Google's favicon API returns generic icons for subdomains)
 const KNOWN_FAVICONS: { match: (hostname: string, pathname: string) => boolean; icon: string }[] = [
@@ -100,13 +100,14 @@ const ColumnMenu: React.FC<{
   onRename: () => void;
   onDuplicateEmpty: () => void;
   onDuplicateWithData: () => void;
-  onArchive: () => void;
   onDelete: () => void;
   onToggleDone: () => void;
+  onToggleBacklog: () => void;
   onToggleArchiveCategory: () => void;
-  isArchived: boolean;
   isDone: boolean;
+  isBacklog: boolean;
   isArchiveCategory: boolean;
+  canEditCategories: boolean;
   triggerKey: string;
   triggerRefs: React.RefObject<Record<string, HTMLButtonElement | null>>;
 }> = ({
@@ -115,13 +116,14 @@ const ColumnMenu: React.FC<{
   onRename,
   onDuplicateEmpty,
   onDuplicateWithData,
-  onArchive,
   onDelete,
   onToggleDone,
+  onToggleBacklog,
   onToggleArchiveCategory,
-  isArchived,
   isDone,
+  isBacklog,
   isArchiveCategory,
+  canEditCategories,
   triggerKey,
   triggerRefs,
 }) => {
@@ -175,25 +177,29 @@ const ColumnMenu: React.FC<{
       >
         <Copy size={12} /> Duplicate (With Data)
       </button>
-      <Divider className="my-1" />
-      <button
-        onClick={onToggleDone}
-        className={`text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 ${isDone ? 'text-emerald-600 dark:text-emerald-400' : ''}`}
-      >
-        <CheckCircle size={12} /> {isDone ? 'Unmark as Done' : 'Mark as Done'}
-      </button>
-      <button
-        onClick={onToggleArchiveCategory}
-        className={`text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 ${isArchiveCategory ? 'text-zinc-500 dark:text-zinc-400' : ''}`}
-      >
-        <Archive size={12} /> {isArchiveCategory ? 'Unmark as Archive' : 'Mark as Archive'}
-      </button>
-      <button
-        onClick={onArchive}
-        className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-yellow-600 dark:text-yellow-400"
-      >
-        <Archive size={12} /> {isArchived ? 'Unarchive' : 'Archive'}
-      </button>
+      {canEditCategories && (
+        <>
+          <Divider className="my-1" />
+          <button
+            onClick={onToggleDone}
+            className={`text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 ${isDone ? 'text-emerald-600 dark:text-emerald-400' : ''}`}
+          >
+            <CheckCircle size={12} /> {isDone ? 'Unmark as Done' : 'Mark as Done'}
+          </button>
+          <button
+            onClick={onToggleBacklog}
+            className={`text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 ${isBacklog ? 'text-blue-600 dark:text-blue-400' : ''}`}
+          >
+            <Inbox size={12} /> {isBacklog ? 'Unmark as Backlog' : 'Mark as Backlog'}
+          </button>
+          <button
+            onClick={onToggleArchiveCategory}
+            className={`text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 ${isArchiveCategory ? 'text-zinc-500 dark:text-zinc-400' : ''}`}
+          >
+            <Archive size={12} /> {isArchiveCategory ? 'Unmark as Archive' : 'Mark as Archive'}
+          </button>
+        </>
+      )}
       <button
         onClick={onDelete}
         className="text-left px-3 py-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-red-600"
@@ -215,13 +221,11 @@ interface WorkspaceProps {
   onAddTask: (preset?: Partial<Task>) => void;
   searchQuery: string;
   onTaskClick: (task: Task) => void;
-  onOpenAiChat: () => void;
+
   onUpdateTask: (task: Task) => void;
   teamStatuses: Record<string, string[]>;
   onUpdateTeamStatuses: (teamId: string, newStatuses: string[]) => void;
-  archivedStatuses: Record<string, string[]>;
   statusCategories: Record<string, Record<string, string>>;
-  onArchiveStatus: (teamId: string, status: string) => void;
   onDuplicateStatus: (teamId: string, status: string, withData: boolean) => void;
   onSetStatusCategory: (teamId: string, statusName: string, category: string) => void;
   customProperties?: CustomProperty[];
@@ -237,6 +241,7 @@ interface WorkspaceProps {
   allTeams?: { id: string; name: string }[];
   onLinkTaskToTeam?: (taskId: string, teamId: string) => void;
   onDeleteTask?: (taskId: string) => void;
+  allTeamProperties?: Record<string, CustomProperty[]>;
 }
 
 type ViewMode = 'board' | 'table' | 'calendar';
@@ -251,13 +256,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
   onAddTask,
   searchQuery,
   onTaskClick,
-  onOpenAiChat,
   onUpdateTask,
   teamStatuses,
   onUpdateTeamStatuses,
-  archivedStatuses,
   statusCategories,
-  onArchiveStatus,
   onDuplicateStatus,
   onSetStatusCategory,
   customProperties = [],
@@ -273,9 +275,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
   allTeams = [],
   onLinkTaskToTeam,
   onDeleteTask,
+  allTeamProperties = {},
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
-  const [showArchivedStatuses, setShowArchivedStatuses] = useState(false);
 
   // Column sorting state (tasks within groups)
   const [sortColumn, setSortColumn] = useState<string | null>(null);
@@ -430,7 +432,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           t.contentInfo?.designerIds?.includes(currentUserId) ||
           taskHasPersonInCustomFields(t, currentUserId);
         const cat = statusCategories[t.teamId]?.[t.status] || 'active';
-        return isInvolved && cat === 'active';
+        return isInvolved && (cat === 'active' || cat === 'backlog');
       });
       const uniqueStatuses = Array.from(new Set(myTasks.map((t) => t.status)));
 
@@ -446,11 +448,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
   }, [teamStatuses, teamFilter, tasks, currentUserId, taskHasPersonInCustomFields, statusCategories]);
 
   const columns = useMemo(() => {
-    // Filter out archived unless showArchivedStatuses is true
-    const archived = archivedStatuses[teamFilter] || [];
-    const visible = currentStatusList.filter((s) => (showArchivedStatuses ? true : !archived.includes(s)));
-    return visible.map((s) => ({ id: s, label: s }));
-  }, [currentStatusList, archivedStatuses, teamFilter, showArchivedStatuses]);
+    return currentStatusList.map((s) => ({ id: s, label: s }));
+  }, [currentStatusList]);
 
   // Inline Editing State
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
@@ -526,7 +525,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           taskHasPersonInCustomFields(t, currentUserId);
         // Exclude tasks whose status is marked as Done or Archive in their home team
         const taskCategory = statusCategories[t.teamId]?.[t.status] || 'active';
-        matchTeam = isInvolved && taskCategory === 'active';
+        matchTeam = isInvolved && (taskCategory === 'active' || taskCategory === 'backlog');
       } else {
         matchTeam = teamFilter === 'all' || t.teamId === teamFilter || linkedTaskIdsForTeam.has(t.id);
       }
@@ -605,6 +604,28 @@ const Workspace: React.FC<WorkspaceProps> = ({
     (ids: string[]) => ids.map((id) => memberMap.get(id)).filter(Boolean) as Member[],
     [memberMap],
   );
+
+  // Team-grouped data for my-work view
+  const myWorkTeamGroups = useMemo(() => {
+    if (teamFilter !== 'my-work') return [];
+    const grouped: Record<string, Task[]> = {};
+    for (const t of filteredTasks) {
+      if (!grouped[t.teamId]) grouped[t.teamId] = [];
+      grouped[t.teamId].push(t);
+    }
+    return Object.entries(grouped)
+      .map(([teamId, teamTasks]) => {
+        const team = allTeams.find((te) => te.id === teamId);
+        const uniqueStatuses = Array.from(new Set(teamTasks.map((ta) => ta.status)));
+        return {
+          teamId,
+          teamName: team?.name || 'Unknown Team',
+          statuses: uniqueStatuses.map((s) => ({ id: s, label: s })),
+          tasks: teamTasks,
+        };
+      })
+      .sort((a, b) => a.teamName.localeCompare(b.teamName));
+  }, [teamFilter, filteredTasks, allTeams]);
 
   // Column Management
   const updateParentStatuses = (newStatuses: string[]) => {
@@ -813,7 +834,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const toggleGroupSelection = (statusId: string) => {
-    const groupIds = filteredTasks.filter((t) => t.status === statusId).map((t) => t.id);
+    const groupIds = filteredTasks.filter((t) => getTaskStatusInTeam(t) === statusId).map((t) => t.id);
     setSelectedTaskIds((prev) => {
       const allSelected = groupIds.length > 0 && groupIds.every((id) => prev.has(id));
       const next = new Set(prev);
@@ -1113,301 +1134,517 @@ const Workspace: React.FC<WorkspaceProps> = ({
             <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Tasks assigned to you will appear here</p>
           </div>
         )}
-        {viewMode === 'board' && filteredTasks.length > 0 && displayColumns.length > 0 && (
-          <div className="flex gap-6 overflow-x-auto pb-4 h-full">
-            {displayColumns.map((col) => {
-              const isCollapsed = collapsedSections[col.id];
-              const isArchived = archivedStatuses[teamFilter]?.includes(col.id);
-              const statusCategory = statusCategories[teamFilter]?.[col.id] || 'active';
-              const isDoneStatus = statusCategory === 'completed';
-              const isIgnoredStatus = statusCategory === 'ignored';
-              return (
-                <div
-                  key={col.id}
-                  onDrop={(e) => handleDropStatus(e, col.id)}
-                  onDragOver={handleDragOver}
-                  className={`flex flex-col h-full transition-all ${isCollapsed ? 'w-12' : 'min-w-[300px] max-w-[300px]'}`}
-                >
-                  <div className="flex items-center justify-between px-1 mb-3 pb-2 group/header">
-                    {isCollapsed ? (
-                      <div
-                        className="flex flex-col items-center gap-4 h-full py-4 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
-                        onClick={() => toggleSection(col.id)}
-                      >
-                        <span
-                          className={`text-[10px] font-semibold px-1.5 rounded ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
-                        >
-                          {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
-                        </span>
-                        <div
-                          className={`writing-mode-vertical text-xs font-semibold tracking-wider whitespace-nowrap rotate-180 ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-500'}`}
-                          style={{ writingMode: 'vertical-rl' }}
-                        >
-                          {col.label}
-                        </div>
-                        <ChevronDown size={14} className="text-zinc-400" />
-                      </div>
-                    ) : (
-                      <>
-                        <div className="flex-1">
-                          {editingColumnId === col.id ? (
-                            <input
-                              autoFocus
-                              className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-xs font-semibold w-full outline-none"
-                              value={tempColumnName}
-                              onChange={(e) => setTempColumnName(e.target.value)}
-                              onBlur={handleSaveRename}
-                              onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
-                            />
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              {teamFilter !== 'my-work' && (
-                                <>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleMoveStatus(col.id, 'up');
-                                    }}
-                                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                    title="Move left"
-                                  >
-                                    <ChevronLeft size={14} />
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleMoveStatus(col.id, 'down');
-                                    }}
-                                    className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                    title="Move right"
-                                  >
-                                    <ChevronRight size={14} />
-                                  </button>
-                                </>
-                              )}
-                              <span
-                                className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
-                              >
-                                {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
-                              </span>
-                              <span
-                                onClick={() => handleStartRename(col.id, col.label)}
-                                className={`font-semibold text-xs ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
-                              >
-                                {col.label} {isArchived && '(Archived)'}
-                              </span>
-                              {(teamFilter === 'my-work' || teamFilter === 'all') &&
-                                (() => {
-                                  const sectionTasks = filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id);
-                                  const teamIds = [...new Set(sectionTasks.map((t) => t.teamId))];
-                                  const teamNames = teamIds
-                                    .map((id) => allTeams.find((t) => t.id === id)?.name)
-                                    .filter(Boolean);
-                                  return teamNames.length > 0 ? (
-                                    <span className="text-[10px] font-normal text-zinc-400 dark:text-zinc-500">
-                                      {teamNames.join(', ')}
-                                    </span>
-                                  ) : null;
-                                })()}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  toggleSection(col.id);
-                                }}
-                                className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                              >
-                                {collapsedSections[col.id] ? <EyeOff size={14} /> : <Eye size={14} />}
-                              </button>
-                            </div>
-                          )}
-                        </div>
-
-                        {teamFilter !== 'my-work' && (
-                          <div className="relative">
-                            <div className="opacity-0 group-hover/header:opacity-100 flex items-center transition-opacity">
-                              <button
-                                ref={(el) => {
-                                  columnMenuTriggerRefs.current[`board-${col.id}`] = el;
-                                }}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setActiveColumnMenu(activeColumnMenu === col.id ? null : col.id);
-                                }}
-                                className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-1"
-                              >
-                                <MoreHorizontal size={14} />
-                              </button>
-                              {teamFilter !== 'my-work' && (
-                                <button
-                                  onClick={() => onAddTask({ status: col.id })}
-                                  className="text-zinc-400 hover:text-black dark:hover:text-white transition-colors p-1"
-                                >
-                                  <Plus size={14} />
-                                </button>
-                              )}
-                            </div>
-
-                            <ColumnMenu
-                              isOpen={activeColumnMenu === col.id}
-                              onClose={() => setActiveColumnMenu(null)}
-                              triggerKey={`board-${col.id}`}
-                              triggerRefs={columnMenuTriggerRefs}
-                              onRename={() => handleStartRename(col.id, col.label)}
-                              onDuplicateEmpty={() => {
-                                onDuplicateStatus(teamFilter, col.id, false);
-                                setActiveColumnMenu(null);
-                              }}
-                              onDuplicateWithData={() => {
-                                onDuplicateStatus(teamFilter, col.id, true);
-                                setActiveColumnMenu(null);
-                              }}
-                              onToggleDone={() => {
-                                const current = statusCategories[teamFilter]?.[col.id] || 'active';
-                                onSetStatusCategory(
-                                  teamFilter,
-                                  col.id,
-                                  current === 'completed' ? 'active' : 'completed',
-                                );
-                                setActiveColumnMenu(null);
-                              }}
-                              onArchive={() => {
-                                onArchiveStatus(teamFilter, col.id);
-                                setActiveColumnMenu(null);
-                              }}
-                              onDelete={() => handleDeleteColumn(col.id)}
-                              isArchived={!!isArchived}
-                              isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
-                              isArchiveCategory={statusCategories[teamFilter]?.[col.id] === 'ignored'}
-                              onToggleArchiveCategory={() => {
-                                const current = statusCategories[teamFilter]?.[col.id] || 'active';
-                                onSetStatusCategory(teamFilter, col.id, current === 'ignored' ? 'active' : 'ignored');
-                                setActiveColumnMenu(null);
-                              }}
-                            />
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-
-                  {!isCollapsed && (
+        {viewMode === 'board' &&
+          filteredTasks.length > 0 &&
+          displayColumns.length > 0 &&
+          (teamFilter === 'my-work' ? (
+            <div className="flex flex-col gap-6 overflow-auto pb-4 h-full">
+              {myWorkTeamGroups.map((group) => {
+                const isTeamCollapsed = collapsedSections[`team::${group.teamId}`];
+                return (
+                  <div key={group.teamId}>
                     <div
-                      className={`flex-1 flex flex-col min-h-0 rounded-lg p-1 ${isArchived ? 'bg-yellow-50/30 dark:bg-yellow-900/10 border border-dashed border-yellow-200 dark:border-yellow-900/30' : 'bg-zinc-50/50 dark:bg-zinc-900/30'}`}
+                      className="flex items-center gap-2 py-2 px-1 cursor-pointer select-none border-b border-zinc-200 dark:border-zinc-800 mb-3"
+                      onClick={() => toggleSection(`team::${group.teamId}`)}
                     >
-                      <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
-                        {sortTasks(filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id)).map((task) => {
-                          const assignees = getMembersByIds(task.assigneeIds);
+                      <ChevronRight
+                        size={16}
+                        className={`text-zinc-400 transition-transform ${isTeamCollapsed ? '' : 'rotate-90'}`}
+                      />
+                      <span className="text-base font-bold text-zinc-900 dark:text-white">{group.teamName}</span>
+                      <span className="text-xs px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
+                        {group.tasks.length}
+                      </span>
+                    </div>
+                    {!isTeamCollapsed && (
+                      <div className="flex gap-6 overflow-x-auto pb-4">
+                        {group.statuses.map((status) => {
+                          const col = status;
+                          const statusCollapseKey = `${col.id}::${group.teamId}`;
+                          const isCollapsed = collapsedSections[statusCollapseKey];
+                          const statusCategory = statusCategories[group.teamId]?.[col.id] || 'active';
+                          const isDoneStatus = statusCategory === 'completed';
+                          const isBacklogStatus = statusCategory === 'backlog';
+                          const isIgnoredStatus = statusCategory === 'ignored';
+                          const colTasks = group.tasks.filter((t) => t.status === col.id);
                           return (
                             <div
-                              key={task.id}
-                              onClick={() => onTaskClick(task)}
-                              draggable
-                              onDragStart={(e) => handleDragStart(e, task.id, col.id)}
-                              className="bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group cursor-grab active:cursor-grabbing relative"
+                              key={statusCollapseKey}
+                              className={`flex flex-col h-full transition-all ${isCollapsed ? 'w-12' : 'min-w-[300px] max-w-[300px]'}`}
                             >
-                              <div className="flex justify-between items-start mb-2">
-                                <div className="flex gap-1 flex-wrap">
-                                  {task.contentInfo?.type && <Badge>{task.contentInfo.type}</Badge>}
-                                  <span
-                                    className={`inline-flex items-center gap-1 text-[10px] font-medium capitalize px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority] || ''}`}
+                              <div className="flex items-center justify-between px-1 mb-3 pb-2 group/header">
+                                {isCollapsed ? (
+                                  <div
+                                    className="flex flex-col items-center gap-4 h-full py-4 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
+                                    onClick={() => toggleSection(statusCollapseKey)}
                                   >
                                     <span
-                                      className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
-                                    />
-                                    {task.priority}
-                                  </span>
-                                </div>
-                                <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
-                                  <GripVertical size={14} />
-                                </div>
-                              </div>
-                              <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden flex items-center gap-1.5">
-                                {isLinkedCopy(task) && <Link2 size={12} className="text-blue-500 flex-shrink-0" />}
-                                <span>{task.title}</span>
-                              </h3>
-
-                              <div className="flex flex-wrap gap-1 mb-3">
-                                {task.placements.slice(0, 3).map((placement) => (
-                                  <span
-                                    key={placement}
-                                    className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
-                                  >
-                                    {placement}
-                                  </span>
-                                ))}
-                                {task.placements.length > 3 && (
-                                  <span className="text-[10px] font-medium text-zinc-400 px-1">
-                                    +{task.placements.length - 3}
-                                  </span>
+                                      className={`text-[10px] font-semibold px-1.5 rounded ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isBacklogStatus ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : isIgnoredStatus ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
+                                    >
+                                      {colTasks.length}
+                                    </span>
+                                    <div
+                                      className={`writing-mode-vertical text-xs font-semibold tracking-wider whitespace-nowrap rotate-180 ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isBacklogStatus ? 'text-blue-600 dark:text-blue-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-500'}`}
+                                      style={{ writingMode: 'vertical-rl' }}
+                                    >
+                                      {col.label}
+                                    </div>
+                                    <ChevronDown size={14} className="text-zinc-400" />
+                                  </div>
+                                ) : (
+                                  <div className="flex-1">
+                                    <div className="flex items-center gap-2">
+                                      <span
+                                        className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isIgnoredStatus ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isBacklogStatus ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
+                                      >
+                                        {colTasks.length}
+                                      </span>
+                                      <span
+                                        className={`font-semibold text-xs flex items-center gap-1 ${isIgnoredStatus ? 'text-amber-600 dark:text-amber-400' : isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isBacklogStatus ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-900 dark:text-white'}`}
+                                      >
+                                        {isIgnoredStatus && <Archive size={12} />}
+                                        {isDoneStatus && <CheckCircle size={12} />}
+                                        {isBacklogStatus && <Inbox size={12} />}
+                                        {col.label}
+                                      </span>
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          toggleSection(statusCollapseKey);
+                                        }}
+                                        className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                      >
+                                        {collapsedSections[statusCollapseKey] ? (
+                                          <EyeOff size={14} />
+                                        ) : (
+                                          <Eye size={14} />
+                                        )}
+                                      </button>
+                                    </div>
+                                  </div>
                                 )}
                               </div>
-
-                              <div className="flex items-center justify-between pt-2">
-                                {(() => {
-                                  const urgency = getDeadlineUrgency(task.dueDate);
-                                  return (
-                                    <div className={`flex items-center gap-1.5 text-[10px] ${urgency.text}`}>
-                                      {urgency.dot ? (
-                                        <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
-                                      ) : (
-                                        <CalendarIcon size={12} />
-                                      )}
-                                      <span>
-                                        {new Date(task.dueDate).toLocaleDateString('en-US', {
-                                          month: 'short',
-                                          day: 'numeric',
-                                        })}
-                                      </span>
-                                    </div>
-                                  );
-                                })()}
-                                <div className="flex -space-x-1.5">
-                                  {assignees.length > 0 ? (
-                                    assignees
-                                      .slice(0, 3)
-                                      .map((a) => (
-                                        <Avatar
-                                          key={a.id}
-                                          src={a.avatar}
-                                          alt={a.name}
-                                          size="sm"
-                                          className="!w-5 !h-5 !border-white dark:!border-zinc-900"
-                                        />
-                                      ))
-                                  ) : (
-                                    <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
-                                      <User size={10} />
-                                    </div>
-                                  )}
-                                  {assignees.length > 3 && (
-                                    <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[10px] border border-white dark:border-zinc-900">
-                                      +{assignees.length - 3}
-                                    </div>
-                                  )}
+                              {!isCollapsed && (
+                                <div
+                                  className={`flex-1 flex flex-col min-h-0 rounded-lg p-1 ${isIgnoredStatus ? 'bg-amber-50/30 dark:bg-amber-950/10 border border-dashed border-amber-300 dark:border-amber-800' : isBacklogStatus ? 'bg-blue-50/30 dark:bg-blue-950/10 border border-dashed border-blue-300 dark:border-blue-800' : 'bg-zinc-50/50 dark:bg-zinc-900/30'}`}
+                                >
+                                  <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                                    {sortTasks(colTasks).map((task) => {
+                                      const assignees = getMembersByIds(task.assigneeIds);
+                                      return (
+                                        <div
+                                          key={task.id}
+                                          onClick={() => onTaskClick(task)}
+                                          draggable
+                                          onDragStart={(e) => handleDragStart(e, task.id, col.id)}
+                                          className="bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group cursor-grab active:cursor-grabbing relative"
+                                        >
+                                          <div className="flex justify-between items-start mb-2">
+                                            <div className="flex gap-1 flex-wrap">
+                                              {task.contentInfo?.type && (
+                                                <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded">
+                                                  {task.contentInfo.type}
+                                                </span>
+                                              )}
+                                              <span
+                                                className={`inline-flex items-center gap-1 text-[10px] font-medium capitalize px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority] || ''}`}
+                                              >
+                                                <span
+                                                  className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
+                                                />
+                                                {task.priority}
+                                              </span>
+                                            </div>
+                                            <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
+                                              <GripVertical size={14} />
+                                            </div>
+                                          </div>
+                                          <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden flex items-center gap-1.5">
+                                            {isLinkedCopy(task) && (
+                                              <Link2 size={12} className="text-blue-500 flex-shrink-0" />
+                                            )}
+                                            <span>{task.title}</span>
+                                          </h3>
+                                          <div className="flex flex-wrap gap-1 mb-3">
+                                            {task.placements.slice(0, 2).map((placement) => (
+                                              <span
+                                                key={placement}
+                                                className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
+                                              >
+                                                {placement}
+                                              </span>
+                                            ))}
+                                            {task.placements.length > 2 && (
+                                              <span className="text-[10px] font-medium text-zinc-400 px-1">
+                                                +{task.placements.length - 2}
+                                              </span>
+                                            )}
+                                          </div>
+                                          <div className="flex items-center justify-between pt-2">
+                                            {(() => {
+                                              const urgency = getDeadlineUrgency(task.dueDate);
+                                              return (
+                                                <div
+                                                  className={`flex items-center gap-1.5 text-[10px] ${urgency.text}`}
+                                                >
+                                                  {urgency.dot ? (
+                                                    <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
+                                                  ) : (
+                                                    <CalendarIcon size={12} />
+                                                  )}
+                                                  <span>
+                                                    {new Date(task.dueDate).toLocaleDateString('en-US', {
+                                                      month: 'short',
+                                                      day: 'numeric',
+                                                    })}
+                                                  </span>
+                                                </div>
+                                              );
+                                            })()}
+                                            <div className="flex -space-x-1.5">
+                                              {assignees.length > 0 ? (
+                                                assignees
+                                                  .slice(0, 3)
+                                                  .map((a) => (
+                                                    <Avatar
+                                                      key={a.id}
+                                                      src={a.avatar}
+                                                      alt={a.name}
+                                                      size="sm"
+                                                      className="!w-5 !h-5 !border-white dark:!border-zinc-900"
+                                                    />
+                                                  ))
+                                              ) : (
+                                                <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
+                                                  <User size={10} />
+                                                </div>
+                                              )}
+                                              {assignees.length > 3 && (
+                                                <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[10px] border border-white dark:border-zinc-900">
+                                                  +{assignees.length - 3}
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
                                 </div>
-                              </div>
+                              )}
                             </div>
                           );
                         })}
                       </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="flex gap-6 overflow-x-auto pb-4 h-full">
+              {displayColumns.map((col) => {
+                const isCollapsed = collapsedSections[col.id];
+                const statusCategory = statusCategories[teamFilter]?.[col.id] || 'active';
+                const isDoneStatus = statusCategory === 'completed';
+                const isBacklogStatus = statusCategory === 'backlog';
+                const isIgnoredStatus = statusCategory === 'ignored';
+                return (
+                  <div
+                    key={col.id}
+                    onDrop={(e) => handleDropStatus(e, col.id)}
+                    onDragOver={handleDragOver}
+                    className={`flex flex-col h-full transition-all ${isCollapsed ? 'w-12' : 'min-w-[300px] max-w-[300px]'}`}
+                  >
+                    <div className="flex items-center justify-between px-1 mb-3 pb-2 group/header">
+                      {isCollapsed ? (
+                        <div
+                          className="flex flex-col items-center gap-4 h-full py-4 cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
+                          onClick={() => toggleSection(col.id)}
+                        >
+                          <span
+                            className={`text-[10px] font-semibold px-1.5 rounded ${isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isBacklogStatus ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : isIgnoredStatus ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
+                          >
+                            {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
+                          </span>
+                          <div
+                            className={`writing-mode-vertical text-xs font-semibold tracking-wider whitespace-nowrap rotate-180 ${isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isBacklogStatus ? 'text-blue-600 dark:text-blue-400' : isIgnoredStatus ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-500'}`}
+                            style={{ writingMode: 'vertical-rl' }}
+                          >
+                            {col.label}
+                          </div>
+                          <ChevronDown size={14} className="text-zinc-400" />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex-1">
+                            {editingColumnId === col.id ? (
+                              <input
+                                autoFocus
+                                className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 text-xs font-semibold w-full outline-none"
+                                value={tempColumnName}
+                                onChange={(e) => setTempColumnName(e.target.value)}
+                                onBlur={handleSaveRename}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSaveRename()}
+                              />
+                            ) : (
+                              <div className="flex items-center gap-2">
+                                {teamFilter !== 'my-work' && (
+                                  <>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMoveStatus(col.id, 'up');
+                                      }}
+                                      className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                      title="Move left"
+                                    >
+                                      <ChevronLeft size={14} />
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleMoveStatus(col.id, 'down');
+                                      }}
+                                      className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                      title="Move right"
+                                    >
+                                      <ChevronRight size={14} />
+                                    </button>
+                                  </>
+                                )}
+                                <span
+                                  className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${isIgnoredStatus ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : isDoneStatus ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isBacklogStatus ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'}`}
+                                >
+                                  {filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id).length}
+                                </span>
+                                <span
+                                  onClick={() => handleStartRename(col.id, col.label)}
+                                  className={`font-semibold text-xs flex items-center gap-1 ${isIgnoredStatus ? 'text-amber-600 dark:text-amber-400' : isDoneStatus ? 'text-emerald-600 dark:text-emerald-400' : isBacklogStatus ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
+                                >
+                                  {isIgnoredStatus && <Archive size={12} />}
+                                  {isDoneStatus && <CheckCircle size={12} />}
+                                  {isBacklogStatus && <Inbox size={12} />}
+                                  {col.label}
+                                </span>
+                                {(teamFilter === 'my-work' || teamFilter === 'all') &&
+                                  (() => {
+                                    const sectionTasks = filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id);
+                                    const teamIds = [...new Set(sectionTasks.map((t) => t.teamId))];
+                                    const teamNames = teamIds
+                                      .map((id) => allTeams.find((t) => t.id === id)?.name)
+                                      .filter(Boolean);
+                                    return teamNames.length > 0 ? (
+                                      <span className="text-[10px] font-normal text-zinc-400 dark:text-zinc-500">
+                                        {teamNames.join(', ')}
+                                      </span>
+                                    ) : null;
+                                  })()}
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleSection(col.id);
+                                  }}
+                                  className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                >
+                                  {collapsedSections[col.id] ? <EyeOff size={14} /> : <Eye size={14} />}
+                                </button>
+                              </div>
+                            )}
+                          </div>
+
+                          {teamFilter !== 'my-work' && (
+                            <div className="relative">
+                              <div className="opacity-0 group-hover/header:opacity-100 flex items-center transition-opacity">
+                                <button
+                                  ref={(el) => {
+                                    columnMenuTriggerRefs.current[`board-${col.id}`] = el;
+                                  }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveColumnMenu(activeColumnMenu === col.id ? null : col.id);
+                                  }}
+                                  className="text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-1"
+                                >
+                                  <MoreHorizontal size={14} />
+                                </button>
+                                {teamFilter !== 'my-work' && (
+                                  <button
+                                    onClick={() => onAddTask({ status: col.id })}
+                                    className="text-zinc-400 hover:text-black dark:hover:text-white transition-colors p-1"
+                                  >
+                                    <Plus size={14} />
+                                  </button>
+                                )}
+                              </div>
+
+                              <ColumnMenu
+                                isOpen={activeColumnMenu === col.id}
+                                onClose={() => setActiveColumnMenu(null)}
+                                triggerKey={`board-${col.id}`}
+                                triggerRefs={columnMenuTriggerRefs}
+                                onRename={() => handleStartRename(col.id, col.label)}
+                                onDuplicateEmpty={() => {
+                                  onDuplicateStatus(teamFilter, col.id, false);
+                                  setActiveColumnMenu(null);
+                                }}
+                                onDuplicateWithData={() => {
+                                  onDuplicateStatus(teamFilter, col.id, true);
+                                  setActiveColumnMenu(null);
+                                }}
+                                onToggleDone={() => {
+                                  const current = statusCategories[teamFilter]?.[col.id] || 'active';
+                                  onSetStatusCategory(
+                                    teamFilter,
+                                    col.id,
+                                    current === 'completed' ? 'active' : 'completed',
+                                  );
+                                  setActiveColumnMenu(null);
+                                }}
+                                onDelete={() => handleDeleteColumn(col.id)}
+                                isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
+                                isBacklog={statusCategories[teamFilter]?.[col.id] === 'backlog'}
+                                onToggleBacklog={() => {
+                                  const current = statusCategories[teamFilter]?.[col.id] || 'active';
+                                  onSetStatusCategory(teamFilter, col.id, current === 'backlog' ? 'active' : 'backlog');
+                                  setActiveColumnMenu(null);
+                                }}
+                                isArchiveCategory={statusCategories[teamFilter]?.[col.id] === 'ignored'}
+                                canEditCategories={!!userRole && isEditorOrAbove(userRole)}
+                                onToggleArchiveCategory={() => {
+                                  const current = statusCategories[teamFilter]?.[col.id] || 'active';
+                                  onSetStatusCategory(teamFilter, col.id, current === 'ignored' ? 'active' : 'ignored');
+                                  setActiveColumnMenu(null);
+                                }}
+                              />
+                            </div>
+                          )}
+                        </>
+                      )}
                     </div>
-                  )}
+
+                    {!isCollapsed && (
+                      <div
+                        className={`flex-1 flex flex-col min-h-0 rounded-lg p-1 ${isIgnoredStatus ? 'bg-amber-50/30 dark:bg-amber-950/10 border border-dashed border-amber-300 dark:border-amber-800' : isBacklogStatus ? 'bg-blue-50/30 dark:bg-blue-950/10 border border-dashed border-blue-300 dark:border-blue-800' : 'bg-zinc-50/50 dark:bg-zinc-900/30'}`}
+                      >
+                        <div className="flex-1 overflow-y-auto space-y-2 pr-1 custom-scrollbar">
+                          {sortTasks(filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id)).map((task) => {
+                            const assignees = getMembersByIds(task.assigneeIds);
+                            return (
+                              <div
+                                key={task.id}
+                                onClick={() => onTaskClick(task)}
+                                draggable
+                                onDragStart={(e) => handleDragStart(e, task.id, col.id)}
+                                className="bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group cursor-grab active:cursor-grabbing relative"
+                              >
+                                <div className="flex justify-between items-start mb-2">
+                                  <div className="flex gap-1 flex-wrap">
+                                    {task.contentInfo?.type && (
+                                      <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded">
+                                        {task.contentInfo.type}
+                                      </span>
+                                    )}
+                                    <span
+                                      className={`inline-flex items-center gap-1 text-[10px] font-medium capitalize px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority] || ''}`}
+                                    >
+                                      <span
+                                        className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
+                                      />
+                                      {task.priority}
+                                    </span>
+                                  </div>
+                                  <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
+                                    <GripVertical size={14} />
+                                  </div>
+                                </div>
+                                <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden flex items-center gap-1.5">
+                                  {isLinkedCopy(task) && <Link2 size={12} className="text-blue-500 flex-shrink-0" />}
+                                  <span>{task.title}</span>
+                                </h3>
+
+                                <div className="flex flex-wrap gap-1 mb-3">
+                                  {task.placements.slice(0, 2).map((placement) => (
+                                    <span
+                                      key={placement}
+                                      className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
+                                    >
+                                      {placement}
+                                    </span>
+                                  ))}
+                                  {task.placements.length > 2 && (
+                                    <span className="text-[10px] font-medium text-zinc-400 px-1">
+                                      +{task.placements.length - 2}
+                                    </span>
+                                  )}
+                                </div>
+
+                                <div className="flex items-center justify-between pt-2">
+                                  {(() => {
+                                    const urgency = getDeadlineUrgency(task.dueDate);
+                                    return (
+                                      <div className={`flex items-center gap-1.5 text-[10px] ${urgency.text}`}>
+                                        {urgency.dot ? (
+                                          <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
+                                        ) : (
+                                          <CalendarIcon size={12} />
+                                        )}
+                                        <span>
+                                          {new Date(task.dueDate).toLocaleDateString('en-US', {
+                                            month: 'short',
+                                            day: 'numeric',
+                                          })}
+                                        </span>
+                                      </div>
+                                    );
+                                  })()}
+                                  <div className="flex -space-x-1.5">
+                                    {assignees.length > 0 ? (
+                                      assignees
+                                        .slice(0, 3)
+                                        .map((a) => (
+                                          <Avatar
+                                            key={a.id}
+                                            src={a.avatar}
+                                            alt={a.name}
+                                            size="sm"
+                                            className="!w-5 !h-5 !border-white dark:!border-zinc-900"
+                                          />
+                                        ))
+                                    ) : (
+                                      <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
+                                        <User size={10} />
+                                      </div>
+                                    )}
+                                    {assignees.length > 3 && (
+                                      <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[10px] border border-white dark:border-zinc-900">
+                                        +{assignees.length - 3}
+                                      </div>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+              {/* Only show "Add Status" if not searching and not My Work */}
+              {!searchQuery && teamFilter !== 'my-work' && (
+                <div className="min-w-[300px]">
+                  <button
+                    onClick={handleAddColumn}
+                    className="w-full h-12 flex items-center justify-center gap-2 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
+                  >
+                    <Plus size={16} /> Add Status
+                  </button>
                 </div>
-              );
-            })}
-            {/* Only show "Add Status" if not searching and not My Work */}
-            {!searchQuery && teamFilter !== 'my-work' && (
-              <div className="min-w-[300px]">
-                <button
-                  onClick={handleAddColumn}
-                  className="w-full h-12 flex items-center justify-center gap-2 border-2 border-dashed border-zinc-200 dark:border-zinc-800 rounded-lg text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors"
-                >
-                  <Plus size={16} /> Add Status
-                </button>
-              </div>
-            )}
-          </div>
-        )}
+              )}
+            </div>
+          ))}
 
         {viewMode === 'table' && (
           <div className="h-full overflow-auto custom-scrollbar space-y-8 pr-2 pb-10">
@@ -1420,20 +1657,73 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 <p className="text-xs text-zinc-400 dark:text-zinc-500 mt-1">Tasks assigned to you will appear here</p>
               </div>
             )}
-            {displayColumns.map((col) => {
-              const colTasks = filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id);
-              const isCollapsed = collapsedSections[col.id];
-              const isArchived = archivedStatuses[teamFilter]?.includes(col.id);
+            {/* Table status sections — renders for all teamFilters */}
+            {(teamFilter === 'my-work'
+              ? myWorkTeamGroups.flatMap((group) => {
+                  const isTeamCollapsed = collapsedSections[`team::${group.teamId}`];
+                  const header = {
+                    type: 'team-header' as const,
+                    key: `header::${group.teamId}`,
+                    group,
+                    isTeamCollapsed,
+                  };
+                  if (isTeamCollapsed) return [header];
+                  return [
+                    header,
+                    ...group.statuses.map((s) => ({
+                      type: 'status' as const,
+                      key: `${s.id}::${group.teamId}`,
+                      col: s,
+                      colTasks: group.tasks.filter((t) => t.status === s.id),
+                      teamId: group.teamId,
+                      indent: true,
+                      resolvedProps: allTeamProperties[group.teamId] || [],
+                    })),
+                  ];
+                })
+              : displayColumns.map((col) => ({
+                  type: 'status' as const,
+                  key: col.id,
+                  col,
+                  colTasks: filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id),
+                  teamId: teamFilter,
+                  indent: false,
+                  resolvedProps: customProperties,
+                }))
+            ).map((item) => {
+              if ('group' in item) {
+                // Team header
+                return (
+                  <div
+                    key={item.key}
+                    className="flex items-center gap-2 sticky top-0 bg-white dark:bg-black z-20 py-2 cursor-pointer select-none border-b border-zinc-200 dark:border-zinc-800"
+                    onClick={() => toggleSection(`team::${item.group.teamId}`)}
+                  >
+                    <ChevronRight
+                      size={16}
+                      className={`text-zinc-400 transition-transform ${item.isTeamCollapsed ? '' : 'rotate-90'}`}
+                    />
+                    <span className="text-base font-bold text-zinc-900 dark:text-white">{item.group.teamName}</span>
+                    <span className="text-xs px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
+                      {item.group.tasks.length}
+                    </span>
+                  </div>
+                );
+              }
 
-              const isDoneTable = statusCategories[teamFilter]?.[col.id] === 'completed';
-              const isIgnoredTable = statusCategories[teamFilter]?.[col.id] === 'ignored';
+              const { col, colTasks, teamId, indent, resolvedProps } = item;
+              const colKey = item.key;
+              const isCollapsed = collapsedSections[colKey];
+              const isDoneTable = statusCategories[teamId]?.[col.id] === 'completed';
+              const isBacklogTable = statusCategories[teamId]?.[col.id] === 'backlog';
+              const isIgnoredTable = statusCategories[teamId]?.[col.id] === 'ignored';
 
               return (
                 <div
-                  key={col.id}
-                  className={`space-y-2 group/section relative ${isArchived ? 'opacity-70' : ''}`}
-                  onDrop={(e) => handleDropStatus(e, col.id)}
-                  onDragOver={handleDragOver}
+                  key={colKey}
+                  className={`space-y-2 group/section relative ${indent ? 'ml-4' : ''}`}
+                  onDrop={indent ? undefined : (e) => handleDropStatus(e, col.id)}
+                  onDragOver={indent ? undefined : handleDragOver}
                 >
                   <div className="flex items-center gap-2 sticky top-0 bg-white dark:bg-black z-10 py-2 group/header">
                     {!statusSort && teamFilter !== 'my-work' && (
@@ -1455,7 +1745,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       </div>
                     )}
                     <span
-                      className={`text-xs px-2 py-0.5 rounded font-medium ${isDoneTable ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isIgnoredTable ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-500 dark:text-zinc-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
+                      className={`text-xs px-2 py-0.5 rounded font-medium ${isIgnoredTable ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : isDoneTable ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isBacklogTable ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
                     >
                       {colTasks.length}
                     </span>
@@ -1473,11 +1763,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       <>
                         <h3
                           onClick={() => handleStartRename(col.id, col.label)}
-                          className={`text-sm font-semibold ${isDoneTable ? 'text-emerald-600 dark:text-emerald-400' : isIgnoredTable ? 'text-zinc-400 dark:text-zinc-500' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'cursor-pointer hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
+                          className={`text-sm font-semibold flex items-center gap-1.5 ${isIgnoredTable ? 'text-amber-600 dark:text-amber-400' : isDoneTable ? 'text-emerald-600 dark:text-emerald-400' : isBacklogTable ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-900 dark:text-white'} ${teamFilter !== 'my-work' ? 'cursor-pointer hover:underline decoration-zinc-400 decoration-dashed underline-offset-4' : ''}`}
                         >
-                          {col.label} {isArchived && '(Archived)'}
+                          {isIgnoredTable && <Archive size={14} />}
+                          {isDoneTable && <CheckCircle size={14} />}
+                          {isBacklogTable && <Inbox size={14} />}
+                          {col.label}
                         </h3>
-                        {(teamFilter === 'my-work' || teamFilter === 'all') &&
+                        {!indent &&
+                          (teamFilter === 'my-work' || teamFilter === 'all') &&
                           (() => {
                             const teamIds = [...new Set(colTasks.map((t) => t.teamId))];
                             const teamNames = teamIds
@@ -1492,7 +1786,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       </>
                     )}
                     <button
-                      onClick={() => toggleSection(col.id)}
+                      onClick={() => toggleSection(colKey)}
                       className="p-1 rounded hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-400 hover:text-zinc-600 transition-all"
                       title={isCollapsed ? 'Show section' : 'Hide section'}
                     >
@@ -1521,29 +1815,31 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           triggerRefs={columnMenuTriggerRefs}
                           onRename={() => handleStartRename(col.id, col.label)}
                           onDuplicateEmpty={() => {
-                            onDuplicateStatus(teamFilter, col.id, false);
+                            onDuplicateStatus(teamId, col.id, false);
                             setActiveColumnMenu(null);
                           }}
                           onDuplicateWithData={() => {
-                            onDuplicateStatus(teamFilter, col.id, true);
+                            onDuplicateStatus(teamId, col.id, true);
                             setActiveColumnMenu(null);
                           }}
                           onToggleDone={() => {
-                            const current = statusCategories[teamFilter]?.[col.id] || 'active';
-                            onSetStatusCategory(teamFilter, col.id, current === 'completed' ? 'active' : 'completed');
-                            setActiveColumnMenu(null);
-                          }}
-                          onArchive={() => {
-                            onArchiveStatus(teamFilter, col.id);
+                            const current = statusCategories[teamId]?.[col.id] || 'active';
+                            onSetStatusCategory(teamId, col.id, current === 'completed' ? 'active' : 'completed');
                             setActiveColumnMenu(null);
                           }}
                           onDelete={() => handleDeleteColumn(col.id)}
-                          isArchived={!!isArchived}
-                          isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
-                          isArchiveCategory={statusCategories[teamFilter]?.[col.id] === 'ignored'}
+                          isDone={statusCategories[teamId]?.[col.id] === 'completed'}
+                          isBacklog={statusCategories[teamId]?.[col.id] === 'backlog'}
+                          onToggleBacklog={() => {
+                            const current = statusCategories[teamId]?.[col.id] || 'active';
+                            onSetStatusCategory(teamId, col.id, current === 'backlog' ? 'active' : 'backlog');
+                            setActiveColumnMenu(null);
+                          }}
+                          isArchiveCategory={statusCategories[teamId]?.[col.id] === 'ignored'}
+                          canEditCategories={!!userRole && isEditorOrAbove(userRole)}
                           onToggleArchiveCategory={() => {
-                            const current = statusCategories[teamFilter]?.[col.id] || 'active';
-                            onSetStatusCategory(teamFilter, col.id, current === 'ignored' ? 'active' : 'ignored');
+                            const current = statusCategories[teamId]?.[col.id] || 'active';
+                            onSetStatusCategory(teamId, col.id, current === 'ignored' ? 'active' : 'ignored');
                             setActiveColumnMenu(null);
                           }}
                         />
@@ -1554,7 +1850,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   {!isCollapsed && (
                     <>
                       {/* Mobile card list */}
-                      <div className={`md:hidden space-y-2 ${isArchived ? 'opacity-60' : ''}`}>
+                      <div className={`md:hidden space-y-2 `}>
                         {sortTasks(colTasks).length > 0 ? (
                           sortTasks(colTasks).map((task) => {
                             const assignees = members.filter((m) => task.assigneeIds.includes(m.id));
@@ -1591,7 +1887,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     </div>
                                   )}
                                   {task.contentInfo?.type && (
-                                    <span className="truncate max-w-[80px]">{task.contentInfo.type}</span>
+                                    <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded truncate max-w-[80px]">
+                                      {task.contentInfo.type}
+                                    </span>
                                   )}
                                   {task.dueDate && urgency && (
                                     <span className={`flex items-center gap-1 ${urgency.text}`}>
@@ -1621,39 +1919,39 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
                       {/* Desktop table */}
                       <div
-                        className={`hidden md:block overflow-visible border border-zinc-200 dark:border-zinc-800 rounded-lg cursor-default ${isArchived ? 'bg-yellow-50/10' : ''}`}
+                        className={`hidden md:block rounded-lg cursor-default ${indent ? 'overflow-clip' : 'overflow-visible'} ${isIgnoredTable ? 'border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/10' : isDoneTable ? 'border border-dashed border-emerald-300 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10' : isBacklogTable ? 'border border-dashed border-blue-300 dark:border-blue-800 bg-blue-50/30 dark:bg-blue-950/10' : 'border border-zinc-200 dark:border-zinc-800'}`}
                       >
                         <table className="w-full text-left text-sm border-collapse min-w-[1100px] table-fixed">
                           <thead
-                            className={`border-b ${isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : isIgnoredTable ? 'bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
+                            className={`border-b ${isIgnoredTable ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40' : isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : isBacklogTable ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/40' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
                           >
                             <tr>
-                              <th className="p-3 w-10">
-                                <input
-                                  type="checkbox"
-                                  ref={(el) => {
-                                    if (el) {
-                                      const someSelected = colTasks.some((t) => selectedTaskIds.has(t.id));
-                                      const allSelected =
-                                        colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id));
-                                      el.indeterminate = someSelected && !allSelected;
-                                    }
-                                  }}
-                                  checked={colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id))}
-                                  onChange={() => toggleGroupSelection(col.id)}
-                                  className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                  onClick={(e) => e.stopPropagation()}
-                                />
-                              </th>
+                              {!indent && (
+                                <th className="p-3 w-10">
+                                  <input
+                                    type="checkbox"
+                                    ref={(el) => {
+                                      if (el) {
+                                        const someSelected = colTasks.some((t) => selectedTaskIds.has(t.id));
+                                        const allSelected =
+                                          colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id));
+                                        el.indeterminate = someSelected && !allSelected;
+                                      }
+                                    }}
+                                    checked={colTasks.length > 0 && colTasks.every((t) => selectedTaskIds.has(t.id))}
+                                    onChange={() => toggleGroupSelection(col.id)}
+                                    className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                    onClick={(e) => e.stopPropagation()}
+                                  />
+                                </th>
+                              )}
                               {orderedTableColumns.map((tc) => {
                                 const isProp = tc.key.startsWith('prop:');
-                                const prop = isProp
-                                  ? customProperties.find((p) => p.id === tc.key.slice(5))
-                                  : undefined;
+                                const prop = isProp ? resolvedProps.find((p) => p.id === tc.key.slice(5)) : undefined;
                                 return (
                                   <th
                                     key={tc.key}
-                                    className={`p-3 font-medium text-xs ${tc.className} cursor-pointer select-none transition-colors ${isProp ? 'group/prop relative' : ''} ${isDoneTable ? 'text-emerald-500 dark:text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
+                                    className={`p-3 font-medium text-xs ${tc.className} cursor-pointer select-none transition-colors ${isProp ? 'group/prop relative' : ''} ${isIgnoredTable ? 'text-amber-500 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-300' : isDoneTable ? 'text-emerald-500 dark:text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300' : isBacklogTable ? 'text-blue-500 dark:text-blue-500 hover:text-blue-700 dark:hover:text-blue-300' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
                                     onClick={() => handleHeaderSort(tc.key)}
                                   >
                                     {isProp && editingColumnId === prop?.id ? (
@@ -1732,12 +2030,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 return (
                                   <tr
                                     key={task.id}
-                                    draggable={!sortColumn}
-                                    onDragStart={(e) => handleDragStart(e, task.id, col.id)}
-                                    onDragOver={(e) => !sortColumn && handleTaskDragOver(e, task.id)}
-                                    onDragLeave={handleTaskDragLeave}
-                                    onDrop={(e) => handleDropOnTask(e, task.id, col.id)}
-                                    className={`hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group ${!sortColumn ? 'cursor-grab active:cursor-grabbing' : ''} relative ${selectedTaskIds.has(task.id) ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
+                                    draggable={!indent && !sortColumn}
+                                    onDragStart={indent ? undefined : (e) => handleDragStart(e, task.id, col.id)}
+                                    onDragOver={
+                                      indent ? undefined : (e) => !sortColumn && handleTaskDragOver(e, task.id)
+                                    }
+                                    onDragLeave={indent ? undefined : handleTaskDragLeave}
+                                    onDrop={indent ? undefined : (e) => handleDropOnTask(e, task.id, col.id)}
+                                    className={`hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group ${!indent && !sortColumn ? 'cursor-grab active:cursor-grabbing' : ''} relative ${selectedTaskIds.has(task.id) ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
                                     style={
                                       isDragOver && !sortColumn
                                         ? {
@@ -1750,19 +2050,21 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     }
                                     onClick={() => onTaskClick(task)}
                                   >
-                                    <td className="p-3 w-10" onClick={(e) => e.stopPropagation()}>
-                                      <input
-                                        type="checkbox"
-                                        checked={selectedTaskIds.has(task.id)}
-                                        onChange={(e) =>
-                                          toggleTaskSelection(
-                                            task.id,
-                                            e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey,
-                                          )
-                                        }
-                                        className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                      />
-                                    </td>
+                                    {!indent && (
+                                      <td className="p-3 w-10" onClick={(e) => e.stopPropagation()}>
+                                        <input
+                                          type="checkbox"
+                                          checked={selectedTaskIds.has(task.id)}
+                                          onChange={(e) =>
+                                            toggleTaskSelection(
+                                              task.id,
+                                              e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey,
+                                            )
+                                          }
+                                          className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                        />
+                                      </td>
+                                    )}
                                     {/* Data-driven cells */}
                                     {orderedTableColumns.map((tc) => {
                                       switch (tc.key) {
@@ -1773,7 +2075,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 truncate"
                                             >
                                               <div className="flex items-center gap-2">
-                                                {!sortColumn && (
+                                                {!indent && !sortColumn && (
                                                   <GripVertical
                                                     size={12}
                                                     className="text-zinc-300 opacity-0 group-hover:opacity-100 flex-shrink-0"
@@ -1788,18 +2090,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                           );
                                         case 'type':
                                           return (
-                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                              <CustomSelect
-                                                compact
-                                                options={teamTypes[task.teamId] || teamTypes['default'] || ['General']}
-                                                value={task.contentInfo?.type || ''}
-                                                onChange={(val) =>
-                                                  onUpdateTask({
-                                                    ...task,
-                                                    contentInfo: { ...task.contentInfo!, type: val },
-                                                  })
-                                                }
-                                              />
+                                            <td key={tc.key} className="p-3">
+                                              {task.contentInfo?.type ? (
+                                                <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded w-fit">
+                                                  {task.contentInfo.type}
+                                                </span>
+                                              ) : (
+                                                <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
+                                              )}
                                             </td>
                                           );
                                         case 'assignee':
@@ -1996,7 +2294,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                             <td key={tc.key} className="p-3">
                                               {task.placements.length > 0 ? (
                                                 <div className="flex flex-col gap-1">
-                                                  {task.placements.slice(0, 3).map((p, i) => (
+                                                  {task.placements.slice(0, 2).map((p, i) => (
                                                     <span
                                                       key={`${p}-${i}`}
                                                       className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded w-fit"
@@ -2004,9 +2302,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                       {p}
                                                     </span>
                                                   ))}
-                                                  {task.placements.length > 3 && (
+                                                  {task.placements.length > 2 && (
                                                     <span className="text-[11px] text-zinc-400">
-                                                      +{task.placements.length - 3}
+                                                      +{task.placements.length - 2}
                                                     </span>
                                                   )}
                                                 </div>
@@ -2019,7 +2317,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                           // Custom properties
                                           if (tc.key.startsWith('prop:')) {
                                             const propId = tc.key.slice(5);
-                                            const prop = customProperties.find((p) => p.id === propId);
+                                            const prop = resolvedProps.find((p) => p.id === propId);
                                             const fieldValues = getTaskFieldsInTeam(task);
                                             const val = fieldValues[propId];
                                             if (prop?.type === 'person' && val) {
@@ -2092,7 +2390,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             ) : (
                               <tr>
                                 <td
-                                  colSpan={orderedTableColumns.length + 2}
+                                  colSpan={orderedTableColumns.length + (indent ? 1 : 2)}
                                   className="p-4 text-center text-xs text-zinc-400 italic"
                                 >
                                   No tasks in this step
@@ -2106,7 +2404,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 onClick={() => onAddTask({ status: col.id })}
                               >
                                 <td
-                                  colSpan={orderedTableColumns.length + 2}
+                                  colSpan={orderedTableColumns.length + (indent ? 1 : 2)}
                                   className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium"
                                 >
                                   <span className="flex items-center gap-2">
@@ -2121,7 +2419,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       {activePropertyMenu?.startsWith(`${col.id}:`) &&
                         (() => {
                           const propId = activePropertyMenu.split(':')[1];
-                          const prop = customProperties.find((p) => p.id === propId);
+                          const prop = resolvedProps.find((p) => p.id === propId);
                           if (!prop) return null;
                           return (
                             <div
@@ -2290,7 +2588,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         )}
 
         {/* Floating Bulk Action Bar */}
-        {viewMode === 'table' && selectedCount > 0 && (
+        {viewMode === 'table' && selectedCount > 0 && teamFilter !== 'my-work' && (
           <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200">
             <div className="flex items-center gap-3 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-full px-5 py-2.5 shadow-2xl text-sm font-medium">
               <span className="flex items-center gap-1.5">
