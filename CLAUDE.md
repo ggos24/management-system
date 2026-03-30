@@ -2,17 +2,18 @@
 
 ## Project Overview
 
-Notion-style team management & content pipeline tool for media companies. React 19 SPA backed by Supabase (Postgres + Auth + Edge Functions + Storage + Realtime). Features Kanban boards, table views, calendar scheduling, analytics dashboards, AI chat (Gemini), in-app + Telegram notifications, and role-based access (admin/user).
+Notion-style team management & content pipeline tool for media companies. React 19 SPA backed by Supabase (Postgres + Auth + Edge Functions + Storage + Realtime). Features Kanban boards, table views, calendar scheduling, analytics dashboards, in-app + Telegram notifications, docs/knowledge base, and role-based access (admin/editor/user).
 
 ## Tech Stack
 
 | Layer     | Tech                                                                            |
 | --------- | ------------------------------------------------------------------------------- |
 | Framework | React 19, TypeScript 5.8, Vite 6                                                |
+| Routing   | React Router 7 (`createBrowserRouter`, path-based routes)                       |
 | Styling   | Tailwind CSS v4 (new `@theme`/`@variant`/`@utility` API), class-based dark mode |
 | State     | Zustand 5 (3 stores: `authStore`, `dataStore`, `uiStore`)                       |
 | Backend   | Supabase (Postgres, Auth, Realtime, Storage, Edge Functions)                    |
-| AI        | Google Gemini (`@google/genai`, model: `gemini-3-flash-preview`)                |
+| Rich Text | Tiptap (ProseMirror-based, used in docs editor)                                 |
 | Charts    | Recharts                                                                        |
 | Icons     | lucide-react                                                                    |
 | Toasts    | sonner                                                                          |
@@ -36,45 +37,52 @@ npm run format       # Format all files with Prettier
 
 ```
 /                        Root = source root
-├── App.tsx              Main app component (auth init, routing, layout)
+├── App.tsx              Thin wrapper: renders RouterProvider
+├── routes.tsx           All route definitions (createBrowserRouter)
 ├── index.tsx            Entry point (ReactDOM.createRoot)
 ├── app.css              Global styles (Tailwind v4 config, custom theme)
 ├── types.ts             All TypeScript interfaces/types (single file)
 ├── constants.ts         Status/priority colors, helper functions
-├── components/          React components (flat structure)
+├── layouts/
+│   └── AppLayout.tsx    Main authenticated layout (sidebar, header, modals, Outlet)
+├── components/          React components (flat structure, ~34 files)
 │   ├── ui/              Shared primitives (Button, Input, Label, Badge, Card, FormField, Divider)
 │   │   └── index.ts     Barrel export
+│   ├── Workspace.tsx    Kanban board + table + calendar (~2800 lines, largest)
 │   ├── Dashboard.tsx    Analytics with Recharts
-│   ├── Workspace.tsx    Kanban board + table + calendar (largest: ~1600 lines)
 │   ├── Schedule.tsx     Team availability & shift calendar
+│   ├── DocsView.tsx     Docs/knowledge-base browser
+│   ├── DocsEditor.tsx   Tiptap rich text editor for docs
+│   ├── Bin.tsx          Deleted tasks view
 │   ├── LoginPage.tsx    Auth: login, set-password, reset-password
+│   ├── AuthGuard.tsx    Route protection (redirects unauthenticated)
+│   ├── ErrorBoundary.tsx  React error boundary wrapper
 │   ├── Header.tsx       Top bar: search, theme toggle, notifications
 │   ├── Sidebar.tsx      Navigation with drag-reorder teams
 │   ├── Modal.tsx        Reusable modal shell
-│   ├── TaskModal.tsx    Task create/edit
-│   ├── SettingsModal.tsx  Profile, Telegram, members, logs
-│   ├── ManageTeamsModal.tsx  Team CRUD
-│   ├── InviteModal.tsx  Invite users (calls edge function)
-│   └── ...              Other shared components (Avatar, CustomSelect, etc.)
+│   ├── TaskModal.tsx    Task create/edit (lazy-loaded)
+│   ├── SettingsModal.tsx  Profile, Telegram, members, logs (lazy-loaded)
+│   ├── ManageTeamsModal.tsx  Team CRUD (lazy-loaded)
+│   ├── InviteModal.tsx  Invite users via edge function (lazy-loaded)
+│   └── ...              Other: Avatar, CustomSelect, MultiSelect, TagSelect, SimpleDatePicker, etc.
 ├── stores/              Zustand stores
 │   ├── authStore.ts     Session, current user, auth state
-│   ├── dataStore.ts     All domain data + CRUD actions (~630 lines)
+│   ├── dataStore.ts     All domain data + CRUD actions (~1200 lines)
 │   └── uiStore.ts       UI state, modals, dark mode, notifications
 ├── hooks/               Custom hooks
 │   ├── useAuth.ts       Auth initialization
 │   ├── useRealtimeSync.ts  Supabase Realtime subscriptions
-│   └── useAiChat.ts     AI chat logic
-├── services/
-│   └── geminiService.ts  Gemini AI integration
+│   ├── useTaskDeepLink.ts  React Router task deep link handler
+│   └── useHashRedirect.ts  Legacy hash URL → path redirect
 ├── lib/
 │   ├── supabase.ts      Supabase client (single instance)
-│   ├── database.ts      All DB queries (~660 lines, mapper functions)
+│   ├── database.ts      All DB queries (~1150 lines, mapper functions)
 │   ├── cn.ts            clsx + tailwind-merge utility
-│   ├── utils.ts         Absence stats calculator
+│   ├── utils.ts         Absence stats, team slug helpers
 │   └── fetchWithRetry.ts  Retry wrapper (available, not currently used)
 ├── supabase/
 │   ├── functions/       Edge functions (Deno): invite-user, send-telegram, telegram-webhook
-│   └── migrations/      8 SQL migrations
+│   └── migrations/      27 SQL migrations
 └── test/
     ├── setup.ts         Testing Library/jest-dom setup
     └── smoke.test.tsx   Basic import verification tests
@@ -84,7 +92,16 @@ npm run format       # Format all files with Prettier
 
 ### Routing
 
-Hash-based SPA routing — no React Router. `currentView` in `uiStore` drives rendering. Deep links: `#teamId?task=taskId`.
+React Router 7 with `createBrowserRouter` in `routes.tsx`. Path-based URLs:
+
+- `/dashboard`, `/workspace`, `/schedule`, `/bin`
+- `/teams/:teamId` (slug or UUID)
+- `/docs/help`, `/docs/kb`
+- Deep links: `/teams/<slug>?task=<taskId>`
+
+Route-level code splitting via `React.lazy()` for Dashboard, Workspace, Schedule, Bin, DocsView. Modals (TaskModal, SettingsModal, ManageTeamsModal, InviteModal) are also lazy-loaded in `AppLayout.tsx`.
+
+Legacy `#hash` URLs are auto-redirected by `useHashRedirect` hook.
 
 ### Data Flow
 
@@ -108,7 +125,16 @@ Component ← Store state ← Realtime subscription (full refetch) ← Supabase
 
 ### Notifications
 
-Fire-and-forget pattern. `notify()` inserts DB notification AND sends Telegram via edge function. Self-notifications are filtered out. Non-blocking `.catch(console.error)`.
+Fire-and-forget pattern. `notify()` inserts DB notification AND sends Telegram via edge function. `notifyMany()` for batch notifications. Self-notifications are filtered out. Non-blocking `.catch(console.error)`.
+
+### Permissions
+
+Three roles: `admin`, `editor`, `user`. Helper functions in `constants.ts`:
+
+- `isAdmin(role)` — admin only
+- `isEditorOrAbove(role)` — admin or editor
+
+Schedule management (shifts, absences for others) is admin-only. Non-admins can only submit absence requests for themselves.
 
 ## Naming Conventions
 
@@ -145,7 +171,6 @@ Fire-and-forget pattern. `notify()` inserts DB notification AND sends Telegram v
 ```
 VITE_SUPABASE_URL=        # Supabase project URL
 VITE_SUPABASE_ANON_KEY=   # Supabase anon key
-VITE_GEMINI_API_KEY=      # Google Gemini API key (optional)
 ```
 
 Typed in `vite-env.d.ts`. Example in `.env.example`.
@@ -154,7 +179,7 @@ Typed in `vite-env.d.ts`. Example in `.env.example`.
 
 ### Key Tables
 
-`profiles`, `teams`, `tasks`, `task_assignees`, `placements`, `task_placements`, `team_statuses`, `team_content_types`, `custom_properties`, `absences`, `shifts`, `permissions`, `activity_log`, `notifications`, `telegram_links`
+`profiles`, `teams`, `tasks`, `task_assignees`, `task_team_links`, `placements`, `task_placements`, `team_statuses`, `team_content_types`, `custom_properties`, `absences`, `shifts`, `permissions`, `activity_log`, `notifications`, `telegram_links`, `task_comments`, `docs`, `user_team_orders`
 
 ### RLS Policy Model
 
@@ -162,6 +187,7 @@ Typed in `vite-env.d.ts`. Example in `.env.example`.
 - Mutations: team-scoped for regular users, unrestricted for admins
 - Admin check: `is_admin()` helper function
 - Profile updates: users own profile, admins any
+- Per-user data (e.g. `user_team_orders`): `user_id = (SELECT id FROM profiles WHERE auth_user_id = auth.uid())`
 
 ### Edge Functions (Deno)
 
@@ -181,6 +207,16 @@ Subscribed tables: `tasks`, `profiles`, `absences`, `shifts`, `notifications`. S
 - **Exports**: Named exports for components. `export default` only on page-level components (Dashboard, Workspace, Schedule, LoginPage).
 - **No barrel exports** at component root — import directly from file, except `components/ui/index.ts`.
 
+## Build & Code Splitting
+
+Vite builds with manual chunk splitting configured in `vite.config.ts`:
+
+- `vendor-recharts` — Recharts library
+- `vendor-supabase` — Supabase client
+- `vendor-tiptap` — Tiptap editor extensions
+
+Route components and modals are lazy-loaded via `React.lazy()` to keep all chunks under 500KB.
+
 ## Testing
 
 Minimal test coverage. Vitest with jsdom and Testing Library. Run with `npm run test:run`. Current tests are smoke-level only (import verification in `test/smoke.test.tsx`).
@@ -192,6 +228,13 @@ Minimal test coverage. Vitest with jsdom and Testing Library. Run with `npm run 
 1. Create `components/YourComponent.tsx` with `React.FC<Props>` and named export
 2. Use UI primitives from `components/ui/` instead of inline Tailwind for buttons, inputs, labels, badges, cards, dividers
 3. Always include dark mode variants (`dark:bg-zinc-900`, `dark:text-white`, etc.)
+
+### Adding a New Route/View
+
+1. Create component in `components/` with `React.lazy()` wrapper in `routes.tsx`
+2. Add route definition in `routes.tsx` under the `AppLayout` children
+3. Add sidebar entry in `Sidebar.tsx`
+4. Navigate via `useNavigate()` from React Router
 
 ### Adding a New Store Action
 
@@ -208,11 +251,6 @@ Minimal test coverage. Vitest with jsdom and Testing Library. Run with `npm run 
 
 1. Create migration in `supabase/migrations/`
 2. Add RLS policies (SELECT for authenticated, mutations based on role)
-3. Add mapper and fetch/upsert functions to `lib/database.ts`
-4. Add Realtime subscription in `hooks/useRealtimeSync.ts` if needed
-
-### Adding a New View
-
-1. Add view ID to the routing logic in `App.tsx`
-2. Add sidebar entry in `Sidebar.tsx`
-3. Navigate via `setCurrentView(viewId)` from `uiStore`
+3. Use `(SELECT id FROM profiles WHERE auth_user_id = auth.uid())` for user-scoped RLS — NOT `auth.uid()` directly (profiles.id differs from auth.uid)
+4. Add mapper and fetch/upsert functions to `lib/database.ts`
+5. Add Realtime subscription in `hooks/useRealtimeSync.ts` if needed

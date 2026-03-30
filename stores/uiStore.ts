@@ -21,7 +21,6 @@ interface UiState {
   isManageTeamsModalOpen: boolean;
   isInviteModalOpen: boolean;
   isShareOpen: boolean;
-  isAiChatOpen: boolean;
   activeSettingsTab: string;
 
   // Team management UI
@@ -36,11 +35,6 @@ interface UiState {
   inviteForm: { email: string; name: string; role: string; jobTitle: string; teamId: string };
   inviteLoading: boolean;
   inviteError: string | null;
-
-  // AI Chat
-  aiChatMessages: { role: 'user' | 'ai'; text: string }[];
-  aiChatInput: string;
-  aiChatLoading: boolean;
 
   // Actions
   toggleTheme: () => void;
@@ -59,7 +53,6 @@ interface UiState {
   setIsManageTeamsModalOpen: (open: boolean) => void;
   setIsInviteModalOpen: (open: boolean) => void;
   setIsShareOpen: (open: boolean) => void;
-  setIsAiChatOpen: (open: boolean) => void;
   setActiveSettingsTab: (tab: string) => void;
 
   setNewTeamName: (name: string) => void;
@@ -72,11 +65,6 @@ interface UiState {
   setInviteForm: (form: { email: string; name: string; role: string; jobTitle: string; teamId: string }) => void;
   setInviteLoading: (loading: boolean) => void;
   setInviteError: (error: string | null) => void;
-
-  setAiChatMessages: (msgs: { role: 'user' | 'ai'; text: string }[]) => void;
-  addAiChatMessage: (msg: { role: 'user' | 'ai'; text: string }) => void;
-  setAiChatInput: (input: string) => void;
-  setAiChatLoading: (loading: boolean) => void;
 }
 
 const getInitialDarkMode = () => {
@@ -106,7 +94,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   isManageTeamsModalOpen: false,
   isInviteModalOpen: false,
   isShareOpen: false,
-  isAiChatOpen: false,
   activeSettingsTab: 'My Profile',
 
   newTeamName: '',
@@ -119,10 +106,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   inviteForm: { email: '', name: '', role: 'user', jobTitle: '', teamId: '' },
   inviteLoading: false,
   inviteError: null,
-
-  aiChatMessages: [],
-  aiChatInput: '',
-  aiChatLoading: false,
 
   // Actions
   toggleTheme: () => {
@@ -171,7 +154,6 @@ export const useUiStore = create<UiState>((set, get) => ({
   setIsManageTeamsModalOpen: (open) => set({ isManageTeamsModalOpen: open }),
   setIsInviteModalOpen: (open) => set({ isInviteModalOpen: open }),
   setIsShareOpen: (open) => set({ isShareOpen: open }),
-  setIsAiChatOpen: (open) => set({ isAiChatOpen: open }),
   setActiveSettingsTab: (tab) => set({ activeSettingsTab: tab }),
 
   setNewTeamName: (name) => set({ newTeamName: name }),
@@ -184,9 +166,4 @@ export const useUiStore = create<UiState>((set, get) => ({
   setInviteForm: (form) => set({ inviteForm: form }),
   setInviteLoading: (loading) => set({ inviteLoading: loading }),
   setInviteError: (error) => set({ inviteError: error }),
-
-  setAiChatMessages: (msgs) => set({ aiChatMessages: msgs }),
-  addAiChatMessage: (msg) => set({ aiChatMessages: [...get().aiChatMessages, msg] }),
-  setAiChatInput: (input) => set({ aiChatInput: input }),
-  setAiChatLoading: (loading) => set({ aiChatLoading: loading }),
 }));
