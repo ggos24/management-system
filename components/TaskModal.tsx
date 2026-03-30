@@ -279,8 +279,8 @@ export const TaskModal: React.FC = () => {
           mentionedIds,
           currentUser.name,
           taskModalData.title || 'Untitled',
-          taskModalData.id,
-          taskModalData.teamId,
+          taskModalData.id!,
+          taskModalData.teamId!,
         );
       }
     } catch {
@@ -722,7 +722,7 @@ export const TaskModal: React.FC = () => {
                     setTaskModalData({ ...taskModalData, placements: plainNames });
                   }}
                   onToggleWithGroup={(compositeValue, isSelected, group) => {
-                    const placementName = compositeValue.substring(compositeValue.indexOf(':') + 1);
+                    const _placementName = compositeValue.substring(compositeValue.indexOf(':') + 1);
                     // Derive new placements from composite keys
                     const newKeys = isSelected
                       ? [...selectedCompositeKeys, compositeValue]

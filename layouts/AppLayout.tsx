@@ -4,10 +4,14 @@ import { Toaster } from 'sonner';
 import { useShallow } from 'zustand/react/shallow';
 import Sidebar from '../components/Sidebar';
 import { Header } from '../components/Header';
-import { TaskModal } from '../components/TaskModal';
-import { SettingsModal } from '../components/SettingsModal';
-import { ManageTeamsModal } from '../components/ManageTeamsModal';
-import { InviteModal } from '../components/InviteModal';
+const TaskModal = React.lazy(() => import('../components/TaskModal').then((m) => ({ default: m.TaskModal })));
+const SettingsModal = React.lazy(() =>
+  import('../components/SettingsModal').then((m) => ({ default: m.SettingsModal })),
+);
+const ManageTeamsModal = React.lazy(() =>
+  import('../components/ManageTeamsModal').then((m) => ({ default: m.ManageTeamsModal })),
+);
+const InviteModal = React.lazy(() => import('../components/InviteModal').then((m) => ({ default: m.InviteModal })));
 import { Modal } from '../components/Modal';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { useTaskDeepLink } from '../hooks/useTaskDeepLink';
@@ -181,10 +185,12 @@ const AppLayout: React.FC = () => {
         </div>
 
         {/* Modals */}
-        <TaskModal />
-        <SettingsModal />
-        <ManageTeamsModal />
-        <InviteModal />
+        <React.Suspense fallback={null}>
+          <TaskModal />
+          <SettingsModal />
+          <ManageTeamsModal />
+          <InviteModal />
+        </React.Suspense>
 
         {/* Logout Confirmation Modal */}
         <Modal

@@ -122,7 +122,7 @@ export const DocsEditor: React.FC<DocsEditorProps> = ({ content, onChange }) => 
         }
       }
       if (url) {
-        editor.chain().focus().setImage({ src: url }).run();
+        (editor.chain().focus() as any).setImage({ src: url }).run();
       }
       e.target.value = '';
     },
@@ -238,7 +238,7 @@ export const DocsEditor: React.FC<DocsEditorProps> = ({ content, onChange }) => 
       </div>
 
       {/* Bubble menu on text selection */}
-      <BubbleMenu editor={editor} tippyOptions={{ duration: 100 }}>
+      <BubbleMenu editor={editor}>
         <div className="flex items-center gap-0.5 bg-zinc-900 dark:bg-zinc-100 rounded-lg p-1 shadow-lg">
           <button
             onMouseDown={(e) => {

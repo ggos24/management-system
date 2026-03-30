@@ -13,7 +13,6 @@ import {
   Filter,
   ChevronLeft,
   ChevronRight,
-  Hash,
   X,
   ChevronDown,
   CheckCircle,
@@ -22,10 +21,7 @@ import {
   Eye,
   EyeOff,
   GripVertical,
-  FileText,
-  Paperclip,
   ChevronUp,
-  Link as LinkIcon,
   MapPin,
   Copy,
   Archive,
@@ -39,11 +35,10 @@ import {
   Link2,
   Inbox,
 } from 'lucide-react';
-import { generateContentIdeas } from '../services/geminiService';
 import { Modal } from './Modal';
 import { MultiSelect } from './MultiSelect';
 import { CustomSelect } from './CustomSelect';
-import { TagSelect, getTagColorClasses } from './TagSelect';
+import { TagSelect } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
 import { Button, Divider } from './ui';
@@ -266,14 +261,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
   onAddProperty,
   onUpdateProperty,
   onDeleteProperty,
-  onReorderProperties,
+  onReorderProperties: _onReorderProperties,
   userRole,
   onReorderTask,
   allPlacements = [],
-  teamTypes = {},
+  teamTypes: _teamTypes = {},
   taskTeamLinks = [],
   allTeams = [],
-  onLinkTaskToTeam,
+  onLinkTaskToTeam: _onLinkTaskToTeam,
   onDeleteTask,
   allTeamProperties = {},
 }) => {
@@ -330,7 +325,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       { key: 'links', label: 'Links', className: 'w-32' },
       { key: 'placements', label: 'Placements', className: 'w-32' },
     ];
-  }, [teamFilter, customProperties]);
+  }, [teamFilter, customProperties, teamName]);
 
   const columnOrderKey = `table-col-order-${teamFilter}`;
   const [columnOrder, setColumnOrder] = useState<string[]>(() => {
@@ -711,21 +706,6 @@ const Workspace: React.FC<WorkspaceProps> = ({
     const newStatuses = [...currentStatusList];
     [newStatuses[idx], newStatuses[targetIdx]] = [newStatuses[targetIdx], newStatuses[idx]];
     updateParentStatuses(newStatuses);
-  };
-
-  // Status group sort handler
-  const handleStatusSort = (mode: string) => {
-    if (statusSort === mode) {
-      if (statusSortDirection === 'asc') {
-        setStatusSortDirection('desc');
-      } else {
-        setStatusSort(null);
-        setStatusSortDirection('asc');
-      }
-    } else {
-      setStatusSort(mode);
-      setStatusSortDirection('asc');
-    }
   };
 
   // Column sort handler

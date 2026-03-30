@@ -20,6 +20,15 @@ export default defineConfig({
         manualChunks: {
           'vendor-recharts': ['recharts'],
           'vendor-supabase': ['@supabase/supabase-js'],
+          'vendor-tiptap': [
+            '@tiptap/react',
+            '@tiptap/starter-kit',
+            '@tiptap/extension-link',
+            '@tiptap/extension-table',
+            '@tiptap/extension-table-row',
+            '@tiptap/extension-table-cell',
+            '@tiptap/extension-table-header',
+          ],
         },
       },
     },

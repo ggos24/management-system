@@ -12,7 +12,6 @@ import {
   NotificationType,
   UserRole,
 } from '../types';
-import { isAdmin } from '../constants';
 import * as db from '../lib/database';
 import { useAuthStore } from './authStore';
 import { supabase } from '../lib/supabase';

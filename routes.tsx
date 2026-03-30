@@ -9,8 +9,9 @@ import { useDataStore } from './stores/dataStore';
 import { useUiStore } from './stores/uiStore';
 import { findTeamByParam } from './lib/utils';
 
-import { Task, DocSection } from './types';
+import { DocSection } from './types';
 import { isAdmin } from './constants';
+import type { TaskModalData } from './stores/uiStore';
 
 const Dashboard = React.lazy(() => import('./components/Dashboard'));
 const Workspace = React.lazy(() => import('./components/Workspace'));
@@ -20,7 +21,7 @@ const DocsView = React.lazy(() => import('./components/DocsView').then((m) => ({
 
 // Outlet context type used by route wrappers
 interface LayoutContext {
-  openTaskModal: (taskOrPreset?: Partial<Task>) => void;
+  openTaskModal: (taskOrPreset?: TaskModalData) => void;
   currentView: string;
 }
 

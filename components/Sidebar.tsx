@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { Team, UserRole } from '../types';
 import { IconComponent } from './IconComponent';
-import { isEditorOrAbove, isAdmin } from '../constants';
+import { isAdmin } from '../constants';
 
 interface SidebarProps {
   currentView: string;
