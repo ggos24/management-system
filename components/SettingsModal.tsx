@@ -356,6 +356,102 @@ export const SettingsModal: React.FC = () => {
                 </div>
               )}
             </div>
+
+            <div className="space-y-2">
+              <Label variant="section">Your Notifications</Label>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                These are the notifications you receive in-app and via Telegram (if linked).
+              </p>
+              <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-zinc-50 dark:bg-zinc-800/50 text-left">
+                      <th className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">Notification</th>
+                      <th className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">When you receive it</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                    <tr>
+                      <td className="px-3 py-2 font-medium">Task assigned</td>
+                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">You are assigned to a task</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-medium">Task unassigned</td>
+                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">You are removed from a task</td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-medium">Status changed</td>
+                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
+                        A task you're assigned to changes status
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-medium">Task updated</td>
+                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
+                        Title, priority, due date, or fields change on your task
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-medium">Task deleted</td>
+                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
+                        A task you're assigned to is moved to bin
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-medium">Comment mention</td>
+                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
+                        Someone @mentions you in a task comment
+                      </td>
+                    </tr>
+                    <tr>
+                      <td className="px-3 py-2 font-medium">Absence decision</td>
+                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
+                        Your absence request is approved or declined
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            {isAdmin(currentUser.role) && (
+              <div className="space-y-2">
+                <Label variant="section">Admin Notifications</Label>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  Additional notifications you receive as an admin.
+                </p>
+                <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-zinc-50 dark:bg-zinc-800/50 text-left">
+                        <th className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">Notification</th>
+                        <th className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">When you receive it</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                      <tr>
+                        <td className="px-3 py-2 font-medium">Absence submitted</td>
+                        <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
+                          Any team member submits an absence request
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-2 font-medium">Absence cancelled</td>
+                        <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
+                          Any team member cancels their absence request
+                        </td>
+                      </tr>
+                      <tr>
+                        <td className="px-3 py-2 font-medium">Member invited</td>
+                        <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
+                          Another admin invites a new member
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
         );
       }

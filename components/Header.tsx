@@ -137,7 +137,8 @@ export const Header: React.FC = () => {
     } else if (n.type === 'absence_submitted' || n.type === 'absence_decided' || n.type === 'absence_cancelled') {
       navigate('/schedule');
     } else if (n.type === 'member_invited') {
-      navigate('/dashboard');
+      setIsSettingsModalOpen(true);
+      useUiStore.getState().setActiveSettingsTab('Team Members');
     }
 
     setIsNotificationsOpen(false);

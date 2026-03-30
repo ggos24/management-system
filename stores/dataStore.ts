@@ -77,6 +77,7 @@ interface DataState {
   taskTeamLinks: TaskTeamLink[];
   deletedTasks: Task[];
   deletedTaskCount: number;
+  userTeamOrders: Record<string, number>;
 
   // Setters
   setTaskTeamLinks: (links: TaskTeamLink[]) => void;
@@ -196,11 +197,18 @@ export const useDataStore = create<DataState>((set, get) => ({
   taskTeamLinks: [],
   deletedTasks: [],
   deletedTaskCount: 0,
+  userTeamOrders: {},
 
   // Setters
   setTaskTeamLinks: (links) => set({ taskTeamLinks: links }),
   setTasks: (tasks) => set({ tasks }),
-  setTeams: (teams) => set({ teams }),
+  setTeams: (teams) => {
+    const orders = get().userTeamOrders;
+    if (Object.keys(orders).length > 0) {
+      teams.sort((a, b) => (orders[a.id] ?? 9999) - (orders[b.id] ?? 9999));
+    }
+    set({ teams });
+  },
   setMembers: (members) => set({ members }),
   setAbsences: (absences) => set({ absences }),
   setShifts: (shifts) => set({ shifts }),
@@ -421,12 +429,15 @@ export const useDataStore = create<DataState>((set, get) => ({
         changes.push('fields');
 
       if (changes.length > 0 && updatedTask.assigneeIds.length > 0) {
-        notifyMany(
-          updatedTask.assigneeIds,
-          'task_updated',
-          `${actorName} updated ${changes.join(', ')} on "${updatedTask.title}"`,
-          { taskId: updatedTask.id, teamId: updatedTask.teamId, priority: updatedTask.priority },
-        );
+        const updateRecipients = updatedTask.assigneeIds.filter((id) => !newAssignees.includes(id));
+        if (updateRecipients.length > 0) {
+          notifyMany(
+            updateRecipients,
+            'task_updated',
+            `${actorName} updated ${changes.join(', ')} on "${updatedTask.title}"`,
+            { taskId: updatedTask.id, teamId: updatedTask.teamId, priority: updatedTask.priority },
+          );
+        }
       }
     }
   },
@@ -543,14 +554,56 @@ export const useDataStore = create<DataState>((set, get) => ({
       })
       .catch(() => toast.error('Failed to save task'));
 
-    // Notify assignees when a new task is created with assignees
-    if (isNew && newTask.assigneeIds.length > 0) {
-      const actorName = getCurrentUserName();
-      notifyMany(newTask.assigneeIds, 'task_assigned', `${actorName} assigned you to "${newTask.title}"`, {
-        taskId: newTask.id,
-        teamId: newTask.teamId,
-        priority: newTask.priority,
-      });
+    const actorName = getCurrentUserName();
+
+    if (isNew) {
+      // Notify assignees when a new task is created
+      if (newTask.assigneeIds.length > 0) {
+        notifyMany(newTask.assigneeIds, 'task_assigned', `${actorName} assigned you to "${newTask.title}"`, {
+          taskId: newTask.id,
+          teamId: newTask.teamId,
+          priority: newTask.priority,
+        });
+      }
+    } else if (existingTask) {
+      // Notify about changes on existing task (mirrors updateTask logic)
+      const newAssignees = newTask.assigneeIds.filter((id) => !existingTask.assigneeIds.includes(id));
+      if (newAssignees.length > 0) {
+        notifyMany(newAssignees, 'task_assigned', `${actorName} assigned you to "${newTask.title}"`, {
+          taskId: newTask.id,
+          teamId: newTask.teamId,
+          priority: newTask.priority,
+        });
+      }
+
+      const removedAssignees = existingTask.assigneeIds.filter((id) => !newTask.assigneeIds.includes(id));
+      if (removedAssignees.length > 0) {
+        notifyMany(removedAssignees, 'task_unassigned', `${actorName} removed you from "${newTask.title}"`, {
+          taskId: newTask.id,
+          teamId: newTask.teamId,
+        });
+      }
+
+      const changes: string[] = [];
+      if (existingTask.title !== newTask.title) changes.push('title');
+      if (existingTask.priority !== newTask.priority) changes.push('priority');
+      if (existingTask.dueDate !== newTask.dueDate) changes.push('due date');
+      if (existingTask.description !== newTask.description) changes.push('description');
+      if (JSON.stringify(existingTask.placements) !== JSON.stringify(newTask.placements)) changes.push('placements');
+      if (JSON.stringify(existingTask.customFieldValues) !== JSON.stringify(newTask.customFieldValues))
+        changes.push('fields');
+
+      if (changes.length > 0 && newTask.assigneeIds.length > 0) {
+        const updateRecipients = newTask.assigneeIds.filter((id) => !newAssignees.includes(id));
+        if (updateRecipients.length > 0) {
+          notifyMany(
+            updateRecipients,
+            'task_updated',
+            `${actorName} updated ${changes.join(', ')} on "${newTask.title}"`,
+            { taskId: newTask.id, teamId: newTask.teamId, priority: newTask.priority },
+          );
+        }
+      }
     }
   },
 
@@ -732,8 +785,19 @@ export const useDataStore = create<DataState>((set, get) => ({
     const newTeams = [...teams];
     const [reorderedItem] = newTeams.splice(draggedIndex, 1);
     newTeams.splice(targetIndex, 0, reorderedItem);
-    set({ teams: newTeams });
-    db.updateTeamSortOrders(newTeams).catch(() => toast.error('Failed to reorder teams'));
+
+    const newOrders: Record<string, number> = {};
+    const orderRows = newTeams.map((t, i) => {
+      newOrders[t.id] = i;
+      return { teamId: t.id, sortOrder: i };
+    });
+
+    set({ teams: newTeams, userTeamOrders: newOrders });
+
+    const userId = getCurrentUserId();
+    if (userId) {
+      db.upsertUserTeamOrders(userId, orderRows).catch(() => toast.error('Failed to reorder teams'));
+    }
   },
 
   // Status/Type actions
@@ -1054,15 +1118,25 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchDeletedTaskCount(), // 12
       db.fetchTaskTeamLinks(), // 13
       db.fetchTeamPlacements(), // 14
+      db.fetchUserTeamOrders(profileResult.id), // 15
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
       result.status === 'fulfilled' ? result.value : fallback;
 
     const teamStatusData = getValue(results[6], { statuses: {}, categories: {} });
+    const userOrders = getValue(results[15], {} as Record<string, number>);
+
+    // Sort teams by user's custom order, falling back to default sort_order
+    const teams = getValue(results[0], []);
+    const hasUserOrder = Object.keys(userOrders).length > 0;
+    if (hasUserOrder) {
+      teams.sort((a, b) => (userOrders[a.id] ?? 9999) - (userOrders[b.id] ?? 9999));
+    }
 
     set({
-      teams: getValue(results[0], []),
+      teams,
+      userTeamOrders: userOrders,
       tasks: getValue(results[1], []),
       members: getValue(results[2], []),
       absences: getValue(results[3], []),

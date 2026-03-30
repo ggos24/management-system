@@ -9,7 +9,6 @@ import {
   User,
   Filter,
   Clock,
-  XCircle,
   Check,
   X,
   AlertCircle,
@@ -120,7 +119,9 @@ const Schedule: React.FC<ScheduleProps> = ({
 
   const getAbsenceForDay = (memberId: string, day: number) => {
     const dateStr = getDateStr(day);
-    return absences.find((a) => a.memberId === memberId && dateStr >= a.startDate && dateStr <= a.endDate);
+    return absences.find(
+      (a) => a.memberId === memberId && a.status !== 'declined' && dateStr >= a.startDate && dateStr <= a.endDate,
+    );
   };
 
   const getShiftForDay = (memberId: string, day: number) => {
@@ -546,9 +547,6 @@ const Schedule: React.FC<ScheduleProps> = ({
                             if (absence.status === 'pending') {
                               statusClass = 'opacity-60 border-dashed border-2 border-current';
                               statusIcon = <Clock size={8} className="absolute top-0.5 right-0.5" />;
-                            } else if (absence.status === 'declined') {
-                              statusClass = 'opacity-30 line-through';
-                              statusIcon = <XCircle size={8} className="absolute top-0.5 right-0.5" />;
                             }
 
                             content = (

@@ -611,6 +611,31 @@ export async function updateTeamSortOrders(teams: Team[]) {
   if (error) throw error;
 }
 
+// === Per-user team ordering ===
+
+export async function fetchUserTeamOrders(userId: string): Promise<Record<string, number>> {
+  const { data, error } = await supabase
+    .from('user_team_orders')
+    .select('team_id, sort_order')
+    .eq('user_id', userId)
+    .order('sort_order');
+  if (error) throw error;
+  const result: Record<string, number> = {};
+  for (const row of data || []) {
+    result[row.team_id] = row.sort_order;
+  }
+  return result;
+}
+
+export async function upsertUserTeamOrders(userId: string, orders: { teamId: string; sortOrder: number }[]) {
+  if (orders.length === 0) return;
+  const { error } = await supabase.from('user_team_orders').upsert(
+    orders.map((o) => ({ user_id: userId, team_id: o.teamId, sort_order: o.sortOrder })),
+    { onConflict: 'user_id,team_id' },
+  );
+  if (error) throw error;
+}
+
 // === Member mutations ===
 
 export async function upsertMember(member: Member) {
