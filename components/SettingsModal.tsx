@@ -1,10 +1,24 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Send, Loader2, CheckCircle2, Unlink, Pencil, Check, X, ChevronDown, Plus, Trash2, Globe } from 'lucide-react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  Send,
+  Loader2,
+  CheckCircle2,
+  Unlink,
+  Pencil,
+  Check,
+  X,
+  ChevronDown,
+  Plus,
+  Trash2,
+  Globe,
+  Search,
+} from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
 import { AbsenceStatsCard } from './AbsenceStatsCard';
 import { CustomSelect } from './CustomSelect';
+import { DateRangeFilter } from './DateRangeFilter';
 import { calculateAbsenceStats } from '../lib/utils';
 import {
   uploadAvatar,
@@ -13,11 +27,138 @@ import {
   deleteTelegramLink,
   TelegramLink,
 } from '../lib/database';
-import { Label } from './ui';
+import { Label, Badge, Input } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { isEditorOrAbove, isAdmin } from '../constants';
+import type { LogEntry, Member } from '../types';
+
+type BadgeColor = 'zinc' | 'emerald' | 'red' | 'blue' | 'amber' | 'purple';
+
+function getActionColor(action: string): BadgeColor {
+  if (/created|added|invited|approved|restored/i.test(action)) return 'emerald';
+  if (/deleted|removed|declined|emptied/i.test(action)) return 'red';
+  if (/updated|changed|moved/i.test(action)) return 'blue';
+  if (/permission/i.test(action)) return 'amber';
+  if (/integration/i.test(action)) return 'purple';
+  return 'zinc';
+}
+
+const ENTITY_TYPE_OPTIONS = [
+  { value: 'all', label: 'All Types' },
+  { value: 'task', label: 'Task' },
+  { value: 'team', label: 'Team' },
+  { value: 'member', label: 'Member' },
+  { value: 'schedule', label: 'Schedule' },
+  { value: 'integration', label: 'Integration' },
+  { value: 'permission', label: 'Permission' },
+];
+
+const LogsHistoryTab: React.FC<{ logs: LogEntry[]; members: Member[] }> = ({ logs, members }) => {
+  const [searchText, setSearchText] = useState('');
+  const [filterEntity, setFilterEntity] = useState('all');
+  const [filterUser, setFilterUser] = useState('all');
+  const [dateStart, setDateStart] = useState('');
+  const [dateEnd, setDateEnd] = useState('');
+  const searchRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [localSearch, setLocalSearch] = useState('');
+
+  const handleSearchChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    setLocalSearch(val);
+    clearTimeout(searchRef.current);
+    searchRef.current = setTimeout(() => setSearchText(val), 300);
+  }, []);
+
+  const userOptions = useMemo(
+    () => [{ value: 'all', label: 'All Users' }, ...members.map((m) => ({ value: m.id, label: m.name }))],
+    [members],
+  );
+
+  const filteredLogs = useMemo(() => {
+    return logs.filter((log) => {
+      if (filterUser !== 'all' && log.userId !== filterUser) return false;
+      if (filterEntity !== 'all' && (log.entityType || '') !== filterEntity) return false;
+      if (searchText) {
+        const q = searchText.toLowerCase();
+        if (!log.action.toLowerCase().includes(q) && !log.details.toLowerCase().includes(q)) return false;
+      }
+      if (dateStart || dateEnd) {
+        const logDate = log.timestamp.slice(0, 10);
+        if (dateStart && logDate < dateStart) return false;
+        if (dateEnd && logDate > dateEnd) return false;
+      }
+      return true;
+    });
+  }, [logs, filterUser, filterEntity, searchText, dateStart, dateEnd]);
+
+  return (
+    <div className="space-y-3 h-full overflow-hidden flex flex-col">
+      <Label variant="section" className="flex-shrink-0">
+        Activity Logs
+      </Label>
+
+      {/* Search */}
+      <div className="relative flex-shrink-0">
+        <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+        <input
+          type="text"
+          placeholder="Search logs..."
+          value={localSearch}
+          onChange={handleSearchChange}
+          className="w-full h-8 pl-8 pr-3 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+        />
+      </div>
+
+      {/* Filters */}
+      <div className="grid grid-cols-3 gap-2 flex-shrink-0">
+        <DateRangeFilter
+          startDate={dateStart}
+          endDate={dateEnd}
+          onChange={(s, e) => {
+            setDateStart(s);
+            setDateEnd(e);
+          }}
+        />
+        <CustomSelect value={filterEntity} onChange={setFilterEntity} options={ENTITY_TYPE_OPTIONS} />
+        <CustomSelect value={filterUser} onChange={setFilterUser} options={userOptions} />
+      </div>
+
+      {/* Result count */}
+      <div className="text-[11px] text-zinc-400 flex-shrink-0">
+        Showing {filteredLogs.length} of {logs.length} logs
+      </div>
+
+      {/* Log list */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar border border-zinc-200 dark:border-zinc-700 rounded-lg">
+        {filteredLogs.length === 0 ? (
+          <div className="flex items-center justify-center h-32 text-sm text-zinc-400">No matching logs</div>
+        ) : (
+          filteredLogs.map((log) => {
+            const user = members.find((m) => m.id === log.userId);
+            return (
+              <div
+                key={log.id}
+                className="p-3 border-b border-zinc-100 dark:border-zinc-800 last:border-0 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
+              >
+                <div className="flex items-center gap-2 mb-1">
+                  <Badge color={getActionColor(log.action)}>{log.action}</Badge>
+                  <span className="text-[10px] text-zinc-400">{new Date(log.timestamp).toLocaleString()}</span>
+                </div>
+                <p className="text-sm text-zinc-800 dark:text-zinc-200">{log.details}</p>
+                <div className="flex items-center gap-1.5 mt-2">
+                  <Avatar src={user?.avatar} size="xs" />
+                  <span className="text-xs text-zinc-500">{user?.name || 'Unknown User'}</span>
+                </div>
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+};
 
 export const SettingsModal: React.FC = () => {
   const { isSettingsModalOpen, setIsSettingsModalOpen, activeSettingsTab, setActiveSettingsTab, setIsInviteModalOpen } =
@@ -574,36 +715,7 @@ export const SettingsModal: React.FC = () => {
           </div>
         );
       case 'Logs History':
-        return (
-          <div className="space-y-4 h-full overflow-hidden flex flex-col">
-            <Label variant="section" className="flex-shrink-0">
-              Activity Logs
-            </Label>
-            <div className="flex-1 overflow-y-auto custom-scrollbar border border-zinc-200 dark:border-zinc-700 rounded-lg">
-              {logs.map((log) => {
-                const user = members.find((m) => m.id === log.userId);
-                return (
-                  <div
-                    key={log.id}
-                    className="p-3 border-b border-zinc-100 dark:border-zinc-800 last:border-0 hover:bg-zinc-50 dark:hover:bg-zinc-800/50"
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-xs font-semibold bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded">
-                        {log.action}
-                      </span>
-                      <span className="text-[10px] text-zinc-400">{new Date(log.timestamp).toLocaleString()}</span>
-                    </div>
-                    <p className="text-sm text-zinc-800 dark:text-zinc-200">{log.details}</p>
-                    <div className="flex items-center gap-1.5 mt-2">
-                      <Avatar src={user?.avatar} size="xs" />
-                      <span className="text-xs text-zinc-500">{user?.name || 'Unknown User'}</span>
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        );
+        return <LogsHistoryTab logs={logs} members={members} />;
       case 'Content': {
         const currentTypes = selectedContentTeamId ? teamTypes[selectedContentTeamId] || [] : [];
         const currentPlacements = selectedContentTeamId ? teamPlacements[selectedContentTeamId] || [] : [];

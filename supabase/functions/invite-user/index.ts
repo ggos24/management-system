@@ -156,6 +156,7 @@ Deno.serve(async (req) => {
       action: 'Member Invited',
       details: `Invited ${name} (${email}) to the workspace`,
       timestamp: new Date().toISOString(),
+      entity_type: 'member',
     });
 
     // Notify admins about the new team member (exclude inviter and new user)

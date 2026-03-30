@@ -107,6 +107,7 @@ export interface LogEntry {
   details: string;
   userId: string;
   timestamp: string;
+  entityType?: string; // 'task' | 'team' | 'member' | 'schedule' | 'integration' | 'permission' | 'content'
 }
 
 export interface TaskComment {

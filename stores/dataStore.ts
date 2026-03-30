@@ -26,6 +26,22 @@ function getCurrentUserName(): string {
   return useAuthStore.getState().currentUser?.name ?? 'Someone';
 }
 
+function logAction(action: string, details: string, entityType: string) {
+  const userId = getCurrentUserId();
+  if (!userId) return;
+  const entry: LogEntry = {
+    id: crypto.randomUUID(),
+    action,
+    details,
+    userId,
+    entityType,
+    timestamp: new Date().toISOString(),
+  };
+  const { logs } = useDataStore.getState();
+  useDataStore.setState({ logs: [entry, ...logs] });
+  db.insertLog(entry).catch(() => {});
+}
+
 const PRIORITY_EMOJI: Record<string, string> = { high: '🔴', medium: '🟡', low: '🟢' };
 
 function sendTelegram(recipientIds: string[], message: string, entityData?: Record<string, any>) {
@@ -370,6 +386,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     if (task && task.status === newStatus) return; // Same status, no-op
     set({ tasks: prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)) });
     db.updateTaskStatus(taskId, newStatus).catch(() => set({ tasks: prev }));
+    if (task) logAction('Task Status Changed', `Moved "${task.title}" to ${newStatus}`, 'task');
 
     // Notify all task assignees about status change
     if (task && task.assigneeIds.length > 0) {
@@ -454,6 +471,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       deletedTasks: [deletedTask, ...snapshot.deletedTasks],
       deletedTaskCount: snapshot.deletedTaskCount + 1,
     });
+
+    logAction('Task Deleted', `Deleted task "${task.title}"`, 'task');
 
     if (!userId) return;
     db.softDeleteTask(taskId, userId).catch(() => {
@@ -553,6 +572,12 @@ export const useDataStore = create<DataState>((set, get) => ({
         db.syncTaskPlacements(newTask.id, newTask.placements);
       })
       .catch(() => toast.error('Failed to save task'));
+
+    if (isNew) {
+      logAction('Task Created', `Created task "${newTask.title}"`, 'task');
+    } else {
+      logAction('Task Updated', `Updated task "${newTask.title}"`, 'task');
+    }
 
     const actorName = getCurrentUserName();
 
@@ -666,6 +691,10 @@ export const useDataStore = create<DataState>((set, get) => ({
     if (!userId) return;
     db.updateAbsenceDecision(absenceId, 'approved', userId).catch(() => set({ absences: prev }));
 
+    const { members: m1 } = get();
+    const approvedName = m1.find((m) => m.id === absence.memberId)?.name || 'someone';
+    logAction('Absence Approved', `Approved ${absence.type.replace('_', ' ')} for ${approvedName}`, 'schedule');
+
     notify(
       absence.memberId,
       'absence_decided',
@@ -696,6 +725,10 @@ export const useDataStore = create<DataState>((set, get) => ({
     });
     if (!userId) return;
     db.updateAbsenceDecision(absenceId, 'declined', userId, reason).catch(() => set({ absences: prev }));
+
+    const { members: m2 } = get();
+    const declinedName = m2.find((m) => m.id === absence.memberId)?.name || 'someone';
+    logAction('Absence Declined', `Declined ${absence.type.replace('_', ' ')} for ${declinedName}`, 'schedule');
 
     notify(
       absence.memberId,
@@ -764,12 +797,15 @@ export const useDataStore = create<DataState>((set, get) => ({
         db.syncTeamContentTypes(team.id, ['General']);
       })
       .catch(() => toast.error('Failed to create team'));
+    logAction('Team Created', `Created team "${team.name}"`, 'team');
   },
 
   deleteTeam: (id) => {
     const prev = get().teams;
+    const teamName = prev.find((t) => t.id === id)?.name || 'Unknown';
     set({ teams: prev.filter((t) => t.id !== id) });
     db.deleteTeam(id).catch(() => set({ teams: prev }));
+    logAction('Team Deleted', `Deleted team "${teamName}"`, 'team');
   },
 
   archiveTeam: (id) => {
@@ -784,6 +820,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     set({ teams: updatedTeams });
     const team = updatedTeams.find((t) => t.id === id);
     if (team) db.upsertTeam(team).catch(() => toast.error('Failed to save team changes'));
+    logAction('Team Updated', `Updated team "${newName}"`, 'team');
   },
 
   toggleTeamVisibility: (id) => {
@@ -978,32 +1015,28 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   // Permission actions
   togglePermission: (userId, type) => {
-    const { permissions } = get();
+    const { permissions, members } = get();
     const prev = permissions;
+    const newVal = !permissions[userId]?.[type];
     const newPerms = {
       ...permissions,
-      [userId]: { ...permissions[userId], [type]: !permissions[userId]?.[type] },
+      [userId]: { ...permissions[userId], [type]: newVal },
     };
     set({ permissions: newPerms });
     db.upsertPermission(userId, newPerms[userId]).catch(() => set({ permissions: prev }));
+    const memberName = members.find((m) => m.id === userId)?.name || 'Unknown';
+    const permLabel = type.replace('can', '').toLowerCase();
+    logAction('Permission Changed', `${newVal ? 'Granted' : 'Revoked'} ${permLabel} for ${memberName}`, 'permission');
   },
 
   // Member actions
-  removeMember: (id, currentUserId) => {
-    const { members, logs } = get();
+  removeMember: (id, _currentUserId) => {
+    const { members } = get();
     const memberName = members.find((m) => m.id === id)?.name || 'Unknown';
     const prev = members;
     set({ members: members.filter((m) => m.id !== id) });
     db.deleteMember(id).catch(() => set({ members: prev }));
-
-    const logEntry = {
-      action: 'Member Removed',
-      details: `Removed ${memberName} from the workspace`,
-      userId: currentUserId,
-      timestamp: new Date().toISOString(),
-    };
-    set({ logs: [{ id: crypto.randomUUID(), ...logEntry }, ...logs] });
-    db.insertLog(logEntry).catch(() => {});
+    logAction('Member Removed', `Removed ${memberName} from the workspace`, 'member');
   },
 
   updateMemberAvatar: (memberId, newAvatar) => {
@@ -1046,21 +1079,17 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   // Integration actions
-  toggleIntegration: (key, currentUserId) => {
-    const { integrations, logs } = get();
+  toggleIntegration: (key, _currentUserId) => {
+    const { integrations } = get();
     const newState = !integrations[key];
     const newIntegrations = { ...integrations, [key]: newState };
     set({ integrations: newIntegrations });
     db.updateIntegrations(newIntegrations).catch(() => toast.error('Failed to update integration'));
-
-    const logEntry = {
-      action: 'Integration Update',
-      details: `${newState ? 'Connected' : 'Disconnected'} ${key.charAt(0).toUpperCase() + key.slice(1)}`,
-      userId: currentUserId,
-      timestamp: new Date().toISOString(),
-    };
-    set({ logs: [{ id: crypto.randomUUID(), ...logEntry }, ...logs] });
-    db.insertLog(logEntry).catch(() => {});
+    logAction(
+      'Integration Update',
+      `${newState ? 'Connected' : 'Disconnected'} ${key.charAt(0).toUpperCase() + key.slice(1)}`,
+      'integration',
+    );
   },
 
   // Bin actions
@@ -1084,10 +1113,12 @@ export const useDataStore = create<DataState>((set, get) => ({
       });
       toast.error('Failed to restore task');
     });
+    if (task) logAction('Task Restored', `Restored task "${task.title}"`, 'task');
   },
 
   permanentlyDeleteTask: (taskId) => {
     const snapshot = get();
+    const task = snapshot.deletedTasks.find((t) => t.id === taskId);
     set({
       deletedTasks: snapshot.deletedTasks.filter((t) => t.id !== taskId),
       deletedTaskCount: Math.max(0, snapshot.deletedTaskCount - 1),
@@ -1096,6 +1127,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       set({ deletedTasks: snapshot.deletedTasks, deletedTaskCount: snapshot.deletedTaskCount });
       toast.error('Failed to permanently delete task');
     });
+    if (task) logAction('Task Permanently Deleted', `Permanently deleted "${task.title}"`, 'task');
   },
 
   emptyBin: () => {
@@ -1106,6 +1138,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       set({ deletedTasks: prev, deletedTaskCount: prev.length });
       toast.error('Failed to empty bin');
     });
+    logAction('Bin Emptied', `Emptied bin (${prev.length} tasks)`, 'task');
   },
 
   loadDeletedTasks: async () => {

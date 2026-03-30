@@ -301,11 +301,11 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
     <div className="relative" ref={triggerRef}>
       <button
         onClick={handleTriggerClick}
-        className="flex items-center gap-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[32px] px-2.5 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors text-sm text-zinc-900 dark:text-zinc-100"
+        className="w-full flex items-center gap-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[32px] px-2.5 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors text-sm text-zinc-900 dark:text-zinc-100"
       >
-        <Calendar size={14} className="text-zinc-500" />
-        <span>{displayLabel}</span>
-        <ChevronDown size={12} className="text-zinc-400 ml-0.5" />
+        <Calendar size={14} className="text-zinc-500 flex-shrink-0" />
+        <span className="flex-1 text-left">{displayLabel}</span>
+        <ChevronDown size={12} className="text-zinc-400 flex-shrink-0" />
       </button>
 
       {isOpen &&

@@ -99,6 +99,7 @@ function mapLog(row: any): LogEntry {
     details: row.details || '',
     userId: row.user_id || '',
     timestamp: row.timestamp,
+    entityType: row.entity_type || '',
   };
 }
 
@@ -163,7 +164,7 @@ export async function fetchLogs(): Promise<LogEntry[]> {
     .from('activity_log')
     .select('*')
     .order('timestamp', { ascending: false })
-    .limit(200);
+    .limit(500);
   if (error) throw error;
   return (data || []).map(mapLog);
 }
@@ -676,12 +677,13 @@ export async function upsertPermission(
 // === Log mutations ===
 
 export async function insertLog(log: Omit<LogEntry, 'id'>) {
-  const row = {
+  const row: Record<string, unknown> = {
     user_id: log.userId,
     action: log.action,
     details: log.details,
     timestamp: log.timestamp || new Date().toISOString(),
   };
+  if (log.entityType) row.entity_type = log.entityType;
   const { data, error } = await supabase.from('activity_log').insert(row).select().single();
   return { data, error };
 }
