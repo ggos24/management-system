@@ -151,6 +151,7 @@ interface DataState {
   toggleTeamVisibility: (id: string) => void;
   toggleTeamAdminOnly: (id: string) => void;
   reorderTeams: (draggedId: string, targetId: string) => void;
+  reorderTeamMembers: (teamId: string, draggedMemberId: string, targetMemberId: string) => void;
 
   // Status/Type actions
   addStatus: (teamId: string, status: string) => void;
@@ -859,6 +860,27 @@ export const useDataStore = create<DataState>((set, get) => ({
     if (userId) {
       db.upsertUserTeamOrders(userId, orderRows).catch(() => toast.error('Failed to reorder teams'));
     }
+  },
+
+  reorderTeamMembers: (teamId: string, draggedMemberId: string, targetMemberId: string) => {
+    const { members } = get();
+    const teamMembers = members.filter((m) => m.teamId === teamId);
+    const otherMembers = members.filter((m) => m.teamId !== teamId);
+
+    const draggedIndex = teamMembers.findIndex((m) => m.id === draggedMemberId);
+    const targetIndex = teamMembers.findIndex((m) => m.id === targetMemberId);
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const reordered = [...teamMembers];
+    const [item] = reordered.splice(draggedIndex, 1);
+    reordered.splice(targetIndex, 0, item);
+
+    const orderRows = reordered.map((m, i) => ({ memberId: m.id, sortOrder: i }));
+    const updatedTeamMembers = reordered.map((m, i) => ({ ...m, scheduleSortOrder: i }));
+
+    set({ members: [...otherMembers, ...updatedTeamMembers] });
+
+    db.updateMemberScheduleOrders(orderRows).catch(() => toast.error('Failed to reorder members'));
   },
 
   // Status/Type actions

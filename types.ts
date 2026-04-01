@@ -11,6 +11,7 @@ export interface User {
   jobTitle: string; // Job title e.g. "Senior Editor"
   avatar: string;
   teamId: string;
+  scheduleSortOrder?: number;
 }
 
 export interface Team {

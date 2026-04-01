@@ -25,6 +25,7 @@ function mapProfile(row: any): Member {
     avatar: row.avatar || '',
     teamId: row.team_id || '',
     status: row.status || 'active',
+    scheduleSortOrder: row.schedule_sort_order ?? 0,
   };
 }
 
@@ -106,7 +107,9 @@ function mapLog(row: any): LogEntry {
 // === Fetch Functions ===
 
 export async function fetchMembers(): Promise<Member[]> {
-  const { data, error } = await supabase.from('profiles').select('id, name, role, job_title, avatar, team_id, status');
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('id, name, role, job_title, avatar, team_id, status, schedule_sort_order');
   if (error) throw error;
   return (data || []).map(mapProfile);
 }
@@ -635,6 +638,13 @@ export async function upsertUserTeamOrders(userId: string, orders: { teamId: str
     { onConflict: 'user_id,team_id' },
   );
   if (error) throw error;
+}
+
+export async function updateMemberScheduleOrders(orders: { memberId: string; sortOrder: number }[]) {
+  if (orders.length === 0) return;
+  await Promise.all(
+    orders.map((o) => supabase.from('profiles').update({ schedule_sort_order: o.sortOrder }).eq('id', o.memberId)),
+  );
 }
 
 // === Member mutations ===

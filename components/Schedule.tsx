@@ -12,6 +12,7 @@ import {
   Check,
   X,
   AlertCircle,
+  GripVertical,
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
@@ -21,6 +22,7 @@ import { calculateAbsenceStats } from '../lib/utils';
 import { isAdmin } from '../constants';
 import { Button, Label, Input, Badge } from './ui';
 import { AbsenceApprovalQueue } from './AbsenceApprovalQueue';
+import { useScheduleDragReorder } from '../hooks/useScheduleDragReorder';
 
 interface ScheduleProps {
   members: Member[];
@@ -36,6 +38,8 @@ interface ScheduleProps {
   onCancelAbsence: (id: string) => void;
   onUpdateShift: (shift: Shift) => void;
   onDeleteShift: (id: string) => void;
+  onReorderTeams: (draggedId: string, targetId: string) => void;
+  onReorderMembers: (teamId: string, draggedId: string, targetId: string) => void;
 }
 
 const Schedule: React.FC<ScheduleProps> = ({
@@ -52,7 +56,22 @@ const Schedule: React.FC<ScheduleProps> = ({
   onCancelAbsence,
   onUpdateShift,
   onDeleteShift,
+  onReorderTeams,
+  onReorderMembers,
 }) => {
+  const isAdminUser = isAdmin(userRole);
+
+  const {
+    dragState,
+    handleTeamDragStart,
+    handleTeamDragOver,
+    handleTeamDrop,
+    handleMemberDragStart,
+    handleMemberDragOver,
+    handleMemberDrop,
+    handleDragEnd,
+  } = useScheduleDragReorder({ isAdminUser, onReorderTeams, onReorderMembers });
+
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedCell, setSelectedCell] = useState<{
     member: Member;
@@ -286,7 +305,9 @@ const Schedule: React.FC<ScheduleProps> = ({
     const teamIds = new Set(teams.map((t) => t.id));
     const groups = teams
       .map((team) => {
-        let teamMembers = members.filter((m) => m.teamId === team.id);
+        let teamMembers = members
+          .filter((m) => m.teamId === team.id)
+          .sort((a, b) => (a.scheduleSortOrder ?? 0) - (b.scheduleSortOrder ?? 0));
         if (filterPerson !== 'all') {
           teamMembers = teamMembers.filter((m) => m.id === filterPerson);
         }
@@ -464,148 +485,182 @@ const Schedule: React.FC<ScheduleProps> = ({
                 })}
               </div>
 
-              {membersByTeam.map((group) => (
-                <div key={group.team.id}>
-                  <div className="flex border-b border-zinc-200 dark:border-zinc-800">
+              {membersByTeam.map((group) => {
+                const isCurrentUserTeam = group.members.some((m) => m.id === currentUserId);
+                const isTeamDragOver = dragState.dragType === 'team' && dragState.dragOverId === group.team.id;
+                return (
+                  <div key={group.team.id} onDragEnd={handleDragEnd}>
                     <div
-                      className="sticky left-0 z-20 w-64 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur-sm border-r border-zinc-200 dark:border-zinc-800 px-3 py-1.5 flex items-center gap-2 cursor-pointer hover:bg-zinc-200/95 dark:hover:bg-zinc-700/95 transition-colors shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]"
-                      onClick={() => toggleTeamCollapse(group.team.id)}
+                      className={`flex border-b border-zinc-200 dark:border-zinc-800 ${isTeamDragOver ? 'border-t-2 border-t-blue-400 dark:border-t-blue-500' : ''}`}
+                      draggable={isAdminUser}
+                      onDragStart={(e) => handleTeamDragStart(e, group.team.id)}
+                      onDragOver={(e) => handleTeamDragOver(e, group.team.id)}
+                      onDrop={(e) => handleTeamDrop(e, group.team.id)}
                     >
-                      <ChevronDown
-                        size={14}
-                        className={`text-zinc-500 transition-transform duration-200 ${collapsedTeams[group.team.id] ? '-rotate-90' : ''}`}
-                      />
-                      <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider">
-                        {group.team.name}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0 bg-zinc-50/50 dark:bg-zinc-900/50"></div>
-                  </div>
-
-                  {!collapsedTeams[group.team.id] &&
-                    group.members.map((member) => (
                       <div
-                        key={member.id}
-                        className="flex border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors h-14"
+                        className={`group sticky left-0 z-20 w-64 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur-sm border-r border-zinc-200 dark:border-zinc-800 px-3 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-zinc-200/95 dark:hover:bg-zinc-700/95 transition-colors shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] ${isCurrentUserTeam ? 'border-l-2 border-l-blue-400 dark:border-l-blue-500' : ''}`}
+                        onClick={() => toggleTeamCollapse(group.team.id)}
                       >
-                        <div
-                          className="sticky left-0 z-10 w-64 bg-white dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 p-2 flex items-center gap-3 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800"
-                          onClick={() => setSelectedMemberStats(member)}
-                        >
-                          <Avatar src={member.avatar} size="md" />
-                          <div className="min-w-0">
-                            <p className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate group-hover:underline">
-                              {member.name}
-                            </p>
-                            <p className="text-[11px] text-zinc-400 truncate">{member.jobTitle}</p>
+                        <ChevronDown
+                          size={14}
+                          className={`text-zinc-500 transition-transform duration-200 ${collapsedTeams[group.team.id] ? '-rotate-90' : ''}`}
+                        />
+                        <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider">
+                          {group.team.name}
+                        </span>
+                        {isAdminUser && (
+                          <div className="ml-auto opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-zinc-500 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing flex-shrink-0 transition-opacity">
+                            <GripVertical size={12} />
                           </div>
-                        </div>
-                        {days.map((day) => {
-                          const absence = getAbsenceForDay(member.id, day);
-                          const shift = getShiftForDay(member.id, day);
-                          const isToday =
-                            day === new Date().getDate() &&
-                            currentDate.getMonth() === new Date().getMonth() &&
-                            currentDate.getFullYear() === new Date().getFullYear();
-
-                          let content = null;
-                          let cellClass = 'hover:bg-zinc-100 dark:hover:bg-zinc-800';
-
-                          const inSelection =
-                            dragStart &&
-                            dragStart.memberId === member.id &&
-                            day >= Math.min(dragStart.day, dragEnd?.day || day) &&
-                            day <= Math.max(dragStart.day, dragEnd?.day || day);
-
-                          if (absence) {
-                            let bgClass = '';
-                            let text = '';
-                            switch (absence.type) {
-                              case 'holiday':
-                                bgClass =
-                                  'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300';
-                                text = 'HOLS';
-                                break;
-                              case 'sick':
-                                bgClass = 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400';
-                                text = 'SICK';
-                                break;
-                              case 'business_trip':
-                                bgClass = 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400';
-                                text = 'TRIP';
-                                break;
-                              case 'day_off':
-                                bgClass = 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300';
-                                text = 'OFF';
-                                break;
-                              default:
-                                bgClass = 'bg-zinc-100';
-                                text = 'OUT';
-                            }
-
-                            // Visual status indicators
-                            let statusClass = '';
-                            let statusIcon: React.ReactNode = null;
-                            if (absence.status === 'pending') {
-                              statusClass = 'opacity-60 border-dashed border-2 border-current';
-                              statusIcon = <Clock size={8} className="absolute top-0.5 right-0.5" />;
-                            }
-
-                            content = (
-                              <div
-                                className={`w-full h-full flex items-center justify-center ${bgClass} ${statusClass} text-[10px] font-semibold tracking-tight select-none relative`}
-                              >
-                                {text}
-                                {statusIcon}
-                              </div>
-                            );
-                            cellClass = '';
-                          } else if (shift) {
-                            const shiftAllDay =
-                              shift.startTime.startsWith('00:00') && shift.endTime.startsWith('23:59');
-                            content = (
-                              <div
-                                className={`flex flex-col items-center justify-center h-full w-full select-none ${isToday ? 'bg-red-50/20 dark:bg-red-900/10' : 'bg-zinc-100 dark:bg-zinc-800'}`}
-                              >
-                                {shiftAllDay ? (
-                                  <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
-                                    All day
-                                  </span>
-                                ) : (
-                                  <>
-                                    <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
-                                      {shift.startTime.slice(0, 5)}
-                                    </span>
-                                    <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-0.5"></div>
-                                    <span className="text-[10px] text-zinc-500 leading-none">
-                                      {shift.endTime.slice(0, 5)}
-                                    </span>
-                                  </>
-                                )}
-                              </div>
-                            );
-                          }
-
-                          return (
-                            <div
-                              key={day}
-                              data-day={day}
-                              onMouseDown={() => handleMouseDown(member, day)}
-                              onMouseEnter={() => handleMouseEnter(member, day)}
-                              onMouseUp={() => handleMouseUp(member, day)}
-                              onTouchStart={(e) => handleTouchStart(e, member, day)}
-                              onTouchMove={handleTouchMove}
-                              onTouchEnd={(e) => handleTouchEnd(e, member, day)}
-                              className={`w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : ''}`}
-                            >
-                              {content}
-                            </div>
-                          );
-                        })}
+                        )}
                       </div>
-                    ))}
-                </div>
-              ))}
+                      <div className="flex-1 min-w-0 bg-zinc-50/50 dark:bg-zinc-900/50"></div>
+                    </div>
+
+                    {!collapsedTeams[group.team.id] &&
+                      group.members.map((member) => {
+                        const isCurrentUser = member.id === currentUserId;
+                        const isMemberDragOver = dragState.dragType === 'member' && dragState.dragOverId === member.id;
+                        return (
+                          <div
+                            key={member.id}
+                            className={`flex border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors h-10 ${isCurrentUser ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''} ${isMemberDragOver ? 'border-t-2 border-t-blue-400 dark:border-t-blue-500' : ''}`}
+                            onDragOver={(e) => handleMemberDragOver(e, member.id)}
+                            onDrop={(e) => handleMemberDrop(e, member.id)}
+                            onDragEnd={handleDragEnd}
+                          >
+                            <div
+                              className={`group sticky left-0 z-10 w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-2 flex items-center gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 ${isCurrentUser ? 'bg-blue-50/60 dark:bg-blue-950/30' : 'bg-white dark:bg-zinc-900'}`}
+                              onClick={() => setSelectedMemberStats(member)}
+                            >
+                              <Avatar src={member.avatar} size="sm" />
+                              <div className="min-w-0 flex-1">
+                                <p className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate">
+                                  {member.name}
+                                </p>
+                                <p className="text-[11px] text-zinc-400 truncate">{member.jobTitle}</p>
+                              </div>
+                              {isAdminUser && (
+                                <div
+                                  className="opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-zinc-500 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing flex-shrink-0 ml-auto transition-opacity"
+                                  draggable
+                                  onDragStart={(e) => {
+                                    e.stopPropagation();
+                                    handleMemberDragStart(e, group.team.id, member.id);
+                                  }}
+                                >
+                                  <GripVertical size={12} />
+                                </div>
+                              )}
+                            </div>
+                            {days.map((day) => {
+                              const absence = getAbsenceForDay(member.id, day);
+                              const shift = getShiftForDay(member.id, day);
+                              const isToday =
+                                day === new Date().getDate() &&
+                                currentDate.getMonth() === new Date().getMonth() &&
+                                currentDate.getFullYear() === new Date().getFullYear();
+
+                              let content = null;
+                              let cellClass = 'hover:bg-zinc-100 dark:hover:bg-zinc-800';
+
+                              const inSelection =
+                                dragStart &&
+                                dragStart.memberId === member.id &&
+                                day >= Math.min(dragStart.day, dragEnd?.day || day) &&
+                                day <= Math.max(dragStart.day, dragEnd?.day || day);
+
+                              if (absence) {
+                                let bgClass = '';
+                                let text = '';
+                                switch (absence.type) {
+                                  case 'holiday':
+                                    bgClass =
+                                      'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300';
+                                    text = 'HOLS';
+                                    break;
+                                  case 'sick':
+                                    bgClass = 'bg-red-100 dark:bg-red-900/40 text-red-600 dark:text-red-400';
+                                    text = 'SICK';
+                                    break;
+                                  case 'business_trip':
+                                    bgClass = 'bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400';
+                                    text = 'TRIP';
+                                    break;
+                                  case 'day_off':
+                                    bgClass = 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300';
+                                    text = 'OFF';
+                                    break;
+                                  default:
+                                    bgClass = 'bg-zinc-100';
+                                    text = 'OUT';
+                                }
+
+                                // Visual status indicators
+                                let statusClass = '';
+                                let statusIcon: React.ReactNode = null;
+                                if (absence.status === 'pending') {
+                                  statusClass = 'opacity-60 border-dashed border-2 border-current';
+                                  statusIcon = <Clock size={8} className="absolute top-0.5 right-0.5" />;
+                                }
+
+                                content = (
+                                  <div
+                                    className={`w-full h-full flex items-center justify-center ${bgClass} ${statusClass} text-[10px] font-semibold tracking-tight select-none relative`}
+                                  >
+                                    {text}
+                                    {statusIcon}
+                                  </div>
+                                );
+                                cellClass = '';
+                              } else if (shift) {
+                                const shiftAllDay =
+                                  shift.startTime.startsWith('00:00') && shift.endTime.startsWith('23:59');
+                                content = (
+                                  <div
+                                    className={`flex flex-col items-center justify-center h-full w-full select-none ${isToday ? 'bg-red-50/20 dark:bg-red-900/10' : 'bg-zinc-100 dark:bg-zinc-800'}`}
+                                  >
+                                    {shiftAllDay ? (
+                                      <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
+                                        All day
+                                      </span>
+                                    ) : (
+                                      <>
+                                        <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
+                                          {shift.startTime.slice(0, 5)}
+                                        </span>
+                                        <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-0.5"></div>
+                                        <span className="text-[10px] text-zinc-500 leading-none">
+                                          {shift.endTime.slice(0, 5)}
+                                        </span>
+                                      </>
+                                    )}
+                                  </div>
+                                );
+                              }
+
+                              return (
+                                <div
+                                  key={day}
+                                  data-day={day}
+                                  onMouseDown={() => handleMouseDown(member, day)}
+                                  onMouseEnter={() => handleMouseEnter(member, day)}
+                                  onMouseUp={() => handleMouseUp(member, day)}
+                                  onTouchStart={(e) => handleTouchStart(e, member, day)}
+                                  onTouchMove={handleTouchMove}
+                                  onTouchEnd={(e) => handleTouchEnd(e, member, day)}
+                                  className={`w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : ''}`}
+                                >
+                                  {content}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+                  </div>
+                );
+              })}
             </div>
           </div>
         </div>
