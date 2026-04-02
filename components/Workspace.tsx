@@ -301,7 +301,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // --- Data-driven table columns with persistent ordering ---
   const allTableColumns = useMemo(() => {
     const base: { key: string; label: string; className: string }[] = [
-      { key: 'title', label: 'Title', className: 'w-[20%]' },
+      { key: 'title', label: 'Title', className: 'min-w-[200px]' },
       { key: 'type', label: 'Type', className: 'w-28' },
       {
         key: 'assignee',
@@ -1627,7 +1627,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           ))}
 
         {viewMode === 'table' && (
-          <div className="h-full overflow-auto custom-scrollbar space-y-8 pr-2 pb-10">
+          <div className="h-full overflow-auto custom-scrollbar space-y-8 pb-10">
             {filteredTasks.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center">
                 <div className="text-zinc-300 dark:text-zinc-600 mb-3">
@@ -1899,9 +1899,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
                       {/* Desktop table */}
                       <div
-                        className={`hidden md:block rounded-lg cursor-default ${indent ? 'overflow-clip' : 'overflow-visible'} ${isIgnoredTable ? 'border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/10' : isDoneTable ? 'border border-dashed border-emerald-300 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10' : isBacklogTable ? 'border border-dashed border-blue-300 dark:border-blue-800 bg-blue-50/30 dark:bg-blue-950/10' : 'border border-zinc-200 dark:border-zinc-800'}`}
+                        className={`hidden md:block rounded-lg cursor-default overflow-x-auto ${isIgnoredTable ? 'border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/10' : isDoneTable ? 'border border-dashed border-emerald-300 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10' : isBacklogTable ? 'border border-dashed border-blue-300 dark:border-blue-800 bg-blue-50/30 dark:bg-blue-950/10' : 'border border-zinc-200 dark:border-zinc-800'}`}
                       >
-                        <table className="w-full text-left text-sm border-collapse min-w-[1100px] table-fixed">
+                        <table className="w-full text-left text-sm border-collapse min-w-[1100px]">
                           <thead
                             className={`border-b ${isIgnoredTable ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40' : isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : isBacklogTable ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/40' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
                           >
@@ -2052,9 +2052,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                           return (
                                             <td
                                               key={tc.key}
-                                              className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 truncate"
+                                              className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 max-w-[280px]"
                                             >
-                                              <div className="flex items-center gap-2">
+                                              <div className="flex items-center gap-2 overflow-hidden">
                                                 {!indent && !sortColumn && (
                                                   <GripVertical
                                                     size={12}
