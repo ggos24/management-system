@@ -617,11 +617,15 @@ export async function updateTeamSortOrders(teams: Team[]) {
 
 // === Per-user team ordering ===
 
-export async function fetchUserTeamOrders(userId: string): Promise<Record<string, number>> {
+export async function fetchUserTeamOrders(
+  userId: string,
+  context: 'sidebar' | 'schedule' = 'sidebar',
+): Promise<Record<string, number>> {
   const { data, error } = await supabase
     .from('user_team_orders')
     .select('team_id, sort_order')
     .eq('user_id', userId)
+    .eq('context', context)
     .order('sort_order');
   if (error) throw error;
   const result: Record<string, number> = {};
@@ -631,11 +635,15 @@ export async function fetchUserTeamOrders(userId: string): Promise<Record<string
   return result;
 }
 
-export async function upsertUserTeamOrders(userId: string, orders: { teamId: string; sortOrder: number }[]) {
+export async function upsertUserTeamOrders(
+  userId: string,
+  orders: { teamId: string; sortOrder: number }[],
+  context: 'sidebar' | 'schedule' = 'sidebar',
+) {
   if (orders.length === 0) return;
   const { error } = await supabase.from('user_team_orders').upsert(
-    orders.map((o) => ({ user_id: userId, team_id: o.teamId, sort_order: o.sortOrder })),
-    { onConflict: 'user_id,team_id' },
+    orders.map((o) => ({ user_id: userId, team_id: o.teamId, sort_order: o.sortOrder, context })),
+    { onConflict: 'user_id,team_id,context' },
   );
   if (error) throw error;
 }

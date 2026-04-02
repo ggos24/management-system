@@ -92,7 +92,8 @@ interface DataState {
   taskTeamLinks: TaskTeamLink[];
   deletedTasks: Task[];
   deletedTaskCount: number;
-  userTeamOrders: Record<string, number>;
+  sidebarTeamOrders: Record<string, number>;
+  scheduleTeamOrders: Record<string, number>;
 
   // Setters
   setTaskTeamLinks: (links: TaskTeamLink[]) => void;
@@ -150,7 +151,8 @@ interface DataState {
   saveTeamEdit: (id: string, newName: string, newIcon: string) => void;
   toggleTeamVisibility: (id: string) => void;
   toggleTeamAdminOnly: (id: string) => void;
-  reorderTeams: (draggedId: string, targetId: string) => void;
+  reorderSidebarTeams: (draggedId: string, targetId: string) => void;
+  reorderScheduleTeams: (draggedId: string, targetId: string) => void;
   reorderTeamMembers: (teamId: string, draggedMemberId: string, targetMemberId: string) => void;
 
   // Status/Type actions
@@ -213,13 +215,14 @@ export const useDataStore = create<DataState>((set, get) => ({
   taskTeamLinks: [],
   deletedTasks: [],
   deletedTaskCount: 0,
-  userTeamOrders: {},
+  sidebarTeamOrders: {},
+  scheduleTeamOrders: {},
 
   // Setters
   setTaskTeamLinks: (links) => set({ taskTeamLinks: links }),
   setTasks: (tasks) => set({ tasks }),
   setTeams: (teams) => {
-    const orders = get().userTeamOrders;
+    const orders = get().sidebarTeamOrders;
     if (Object.keys(orders).length > 0) {
       teams.sort((a, b) => (orders[a.id] ?? 9999) - (orders[b.id] ?? 9999));
     }
@@ -838,7 +841,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     if (team) db.upsertTeam(team).catch(() => toast.error('Failed to update team'));
   },
 
-  reorderTeams: (draggedId, targetId) => {
+  reorderSidebarTeams: (draggedId, targetId) => {
     const { teams } = get();
     const draggedIndex = teams.findIndex((t) => t.id === draggedId);
     const targetIndex = teams.findIndex((t) => t.id === targetId);
@@ -854,11 +857,41 @@ export const useDataStore = create<DataState>((set, get) => ({
       return { teamId: t.id, sortOrder: i };
     });
 
-    set({ teams: newTeams, userTeamOrders: newOrders });
+    set({ teams: newTeams, sidebarTeamOrders: newOrders });
 
     const userId = getCurrentUserId();
     if (userId) {
-      db.upsertUserTeamOrders(userId, orderRows).catch(() => toast.error('Failed to reorder teams'));
+      db.upsertUserTeamOrders(userId, orderRows, 'sidebar').catch(() => toast.error('Failed to reorder teams'));
+    }
+  },
+
+  reorderScheduleTeams: (draggedId, targetId) => {
+    const { scheduleTeamOrders, teams } = get();
+    // Build a schedule-sorted copy to find indices
+    const scheduleTeams = [...teams];
+    if (Object.keys(scheduleTeamOrders).length > 0) {
+      scheduleTeams.sort((a, b) => (scheduleTeamOrders[a.id] ?? 9999) - (scheduleTeamOrders[b.id] ?? 9999));
+    }
+
+    const draggedIndex = scheduleTeams.findIndex((t) => t.id === draggedId);
+    const targetIndex = scheduleTeams.findIndex((t) => t.id === targetId);
+    if (draggedIndex === -1 || targetIndex === -1) return;
+
+    const reordered = [...scheduleTeams];
+    const [item] = reordered.splice(draggedIndex, 1);
+    reordered.splice(targetIndex, 0, item);
+
+    const newOrders: Record<string, number> = {};
+    const orderRows = reordered.map((t, i) => {
+      newOrders[t.id] = i;
+      return { teamId: t.id, sortOrder: i };
+    });
+
+    set({ scheduleTeamOrders: newOrders });
+
+    const userId = getCurrentUserId();
+    if (userId) {
+      db.upsertUserTeamOrders(userId, orderRows, 'schedule').catch(() => toast.error('Failed to reorder teams'));
     }
   },
 
@@ -1200,25 +1233,28 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchDeletedTaskCount(), // 12
       db.fetchTaskTeamLinks(), // 13
       db.fetchTeamPlacements(), // 14
-      db.fetchUserTeamOrders(profileResult.id), // 15
+      db.fetchUserTeamOrders(profileResult.id, 'sidebar'), // 15
+      db.fetchUserTeamOrders(profileResult.id, 'schedule'), // 16
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
       result.status === 'fulfilled' ? result.value : fallback;
 
     const teamStatusData = getValue(results[6], { statuses: {}, categories: {} });
-    const userOrders = getValue(results[15], {} as Record<string, number>);
+    const sidebarOrders = getValue(results[15], {} as Record<string, number>);
+    const scheduleOrders = getValue(results[16], {} as Record<string, number>);
 
-    // Sort teams by user's custom order, falling back to default sort_order
+    // Sort teams by user's sidebar order, falling back to default sort_order
     const teams = getValue(results[0], []);
-    const hasUserOrder = Object.keys(userOrders).length > 0;
+    const hasUserOrder = Object.keys(sidebarOrders).length > 0;
     if (hasUserOrder) {
-      teams.sort((a, b) => (userOrders[a.id] ?? 9999) - (userOrders[b.id] ?? 9999));
+      teams.sort((a, b) => (sidebarOrders[a.id] ?? 9999) - (sidebarOrders[b.id] ?? 9999));
     }
 
     set({
       teams,
-      userTeamOrders: userOrders,
+      sidebarTeamOrders: sidebarOrders,
+      scheduleTeamOrders: scheduleOrders,
       tasks: getValue(results[1], []),
       members: getValue(results[2], []),
       absences: getValue(results[3], []),

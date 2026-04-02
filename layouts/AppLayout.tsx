@@ -159,7 +159,7 @@ const AppLayout: React.FC = () => {
           onLogout={() => setIsLogoutModalOpen(true)}
           onOpenSettings={() => setIsSettingsModalOpen(true)}
           onManageTeams={() => setIsManageTeamsModalOpen(true)}
-          onReorderTeams={useDataStore.getState().reorderTeams}
+          onReorderTeams={useDataStore.getState().reorderSidebarTeams}
           teams={teams}
           userRole={currentUser.role}
           isCollapsed={sidebarCollapsed}

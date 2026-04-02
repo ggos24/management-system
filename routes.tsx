@@ -57,7 +57,7 @@ const ScheduleRoute: React.FC = () => {
     cancelAbsence,
     updateShift,
     deleteShift,
-    reorderTeams,
+    reorderScheduleTeams,
     reorderTeamMembers,
   } = useDataStore(
     useShallow((s) => ({
@@ -72,7 +72,7 @@ const ScheduleRoute: React.FC = () => {
       cancelAbsence: s.cancelAbsence,
       updateShift: s.updateShift,
       deleteShift: s.deleteShift,
-      reorderTeams: s.reorderTeams,
+      reorderScheduleTeams: s.reorderScheduleTeams,
       reorderTeamMembers: s.reorderTeamMembers,
     })),
   );
@@ -91,7 +91,7 @@ const ScheduleRoute: React.FC = () => {
       onCancelAbsence={cancelAbsence}
       onUpdateShift={updateShift}
       onDeleteShift={deleteShift}
-      onReorderTeams={reorderTeams}
+      onReorderTeams={reorderScheduleTeams}
       onReorderMembers={reorderTeamMembers}
     />
   );

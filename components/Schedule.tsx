@@ -23,6 +23,7 @@ import { isAdmin } from '../constants';
 import { Button, Label, Input, Badge } from './ui';
 import { AbsenceApprovalQueue } from './AbsenceApprovalQueue';
 import { useScheduleDragReorder } from '../hooks/useScheduleDragReorder';
+import { useDataStore } from '../stores/dataStore';
 
 interface ScheduleProps {
   members: Member[];
@@ -60,6 +61,12 @@ const Schedule: React.FC<ScheduleProps> = ({
   onReorderMembers,
 }) => {
   const isAdminUser = isAdmin(userRole);
+  const scheduleTeamOrders = useDataStore((s) => s.scheduleTeamOrders);
+
+  const sortedTeams = useMemo(() => {
+    if (Object.keys(scheduleTeamOrders).length === 0) return teams;
+    return [...teams].sort((a, b) => (scheduleTeamOrders[a.id] ?? 9999) - (scheduleTeamOrders[b.id] ?? 9999));
+  }, [teams, scheduleTeamOrders]);
 
   const {
     dragState,
@@ -302,8 +309,8 @@ const Schedule: React.FC<ScheduleProps> = ({
   };
 
   const membersByTeam = useMemo(() => {
-    const teamIds = new Set(teams.map((t) => t.id));
-    const groups = teams
+    const teamIds = new Set(sortedTeams.map((t) => t.id));
+    const groups = sortedTeams
       .map((team) => {
         let teamMembers = members
           .filter((m) => m.teamId === team.id)
@@ -355,7 +362,7 @@ const Schedule: React.FC<ScheduleProps> = ({
     }
 
     return groups;
-  }, [teams, members, filterPerson, filterAbsenceType, absences, currentDate]);
+  }, [sortedTeams, members, filterPerson, filterAbsenceType, absences, currentDate]);
 
   const pendingAbsences = useMemo(() => absences.filter((a) => a.status === 'pending'), [absences]);
 
