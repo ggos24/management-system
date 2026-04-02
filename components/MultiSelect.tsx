@@ -142,7 +142,8 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
             return (
               <>
                 {visible.map((val) => {
-                  const optionLabel = allOptions.find((o) => o.value === val)?.label || val;
+                  const matched = allOptions.find((o) => o.value === val);
+                  const optionLabel = matched?.label || (val.includes(':') ? val.substring(val.indexOf(':') + 1) : val);
                   return (
                     <span
                       key={val}
