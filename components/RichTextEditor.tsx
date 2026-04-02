@@ -58,6 +58,19 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
   };
 
+  const handlePaste = (e: React.ClipboardEvent) => {
+    e.preventDefault();
+    const html = e.clipboardData.getData('text/html');
+    const text = e.clipboardData.getData('text/plain');
+    if (html) {
+      const cleaned = html.replace(/color\s*:\s*[^;"']+(;?)/gi, '').replace(/background-color\s*:\s*[^;"']+(;?)/gi, '');
+      document.execCommand('insertHTML', false, cleaned);
+    } else {
+      document.execCommand('insertText', false, text);
+    }
+    handleInput();
+  };
+
   const handleLink = () => {
     const url = prompt('Enter URL:');
     if (url) exec('createLink', url);
@@ -133,7 +146,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           ref={editorRef}
           contentEditable
           onInput={handleInput}
-          className="w-full p-3 bg-transparent outline-none text-sm resize-y [&_h2]:text-xl [&_h2]:font-bold [&_h2]:my-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:my-1 [&_a]:text-blue-500 [&_a]:underline [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4"
+          onPaste={handlePaste}
+          className="w-full p-3 bg-transparent outline-none text-sm text-zinc-900 dark:text-white [&_*]:!text-inherit resize-y [&_h2]:text-xl [&_h2]:font-bold [&_h2]:my-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:my-1 [&_a]:!text-blue-500 [&_a]:underline [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4"
           style={{ minHeight }}
         />
       </div>
