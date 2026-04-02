@@ -21,13 +21,17 @@ const ABSENCE_TYPE_LABELS: Record<string, string> = {
   sick: 'Sick Leave',
   business_trip: 'Business Trip',
   day_off: 'Day Off',
+  free: 'Free',
+  busy: 'Busy',
 };
 
-const ABSENCE_TYPE_COLORS: Record<string, 'emerald' | 'red' | 'blue' | 'zinc'> = {
+const ABSENCE_TYPE_COLORS: Record<string, 'emerald' | 'red' | 'blue' | 'zinc' | 'amber' | 'purple'> = {
   holiday: 'emerald',
   sick: 'red',
   business_trip: 'blue',
   day_off: 'zinc',
+  free: 'amber',
+  busy: 'purple',
 };
 
 function formatDateRange(start: string, end: string): string {
@@ -92,9 +96,7 @@ export const AbsenceApprovalQueue: React.FC<AbsenceApprovalQueueProps> = ({
   // Sort decided absences by decidedAt descending (most recent first)
   const sortedDecided = useMemo(
     () =>
-      [...decidedAbsences].sort(
-        (a, b) => new Date(b.decidedAt || 0).getTime() - new Date(a.decidedAt || 0).getTime(),
-      ),
+      [...decidedAbsences].sort((a, b) => new Date(b.decidedAt || 0).getTime() - new Date(a.decidedAt || 0).getTime()),
     [decidedAbsences],
   );
 
@@ -117,10 +119,7 @@ export const AbsenceApprovalQueue: React.FC<AbsenceApprovalQueueProps> = ({
             const remainingAfter = absence.type === 'holiday' && stats ? stats.remaining - days : null;
 
             return (
-              <div
-                key={absence.id}
-                className="px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors"
-              >
+              <div key={absence.id} className="px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
                 <div className="flex items-center gap-3">
                   <Avatar src={member?.avatar} size="md" />
                   <div className="flex-1 min-w-0">
@@ -140,8 +139,11 @@ export const AbsenceApprovalQueue: React.FC<AbsenceApprovalQueueProps> = ({
                         {days} day{days !== 1 ? 's' : ''}
                       </span>
                       {remainingAfter !== null && (
-                        <span className={`font-medium ${remainingAfter < 0 ? 'text-red-500' : remainingAfter <= 3 ? 'text-amber-500' : 'text-zinc-400'}`}>
-                          {stats!.remaining}/{TOTAL_HOLIDAY_ALLOWANCE} left{remainingAfter !== stats!.remaining ? ` (${remainingAfter} after)` : ''}
+                        <span
+                          className={`font-medium ${remainingAfter < 0 ? 'text-red-500' : remainingAfter <= 3 ? 'text-amber-500' : 'text-zinc-400'}`}
+                        >
+                          {stats!.remaining}/{TOTAL_HOLIDAY_ALLOWANCE} left
+                          {remainingAfter !== stats!.remaining ? ` (${remainingAfter} after)` : ''}
                         </span>
                       )}
                       <span className="flex items-center gap-1 text-zinc-400">
@@ -219,9 +221,7 @@ export const AbsenceApprovalQueue: React.FC<AbsenceApprovalQueueProps> = ({
         <div>
           <div className="flex items-center gap-2 mb-2">
             <History size={14} className="text-zinc-400" />
-            <h3 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-              History
-            </h3>
+            <h3 className="text-xs font-medium text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">History</h3>
           </div>
           <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
             {sortedDecided.map((absence) => {
@@ -242,9 +242,7 @@ export const AbsenceApprovalQueue: React.FC<AbsenceApprovalQueueProps> = ({
                         <span className="text-xs text-zinc-400">
                           {formatDateRange(absence.startDate, absence.endDate)}
                         </span>
-                        <span className="text-xs text-zinc-400">
-                          {days}d
-                        </span>
+                        <span className="text-xs text-zinc-400">{days}d</span>
                       </div>
                       <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-zinc-400">
                         {isApproved ? (
@@ -255,9 +253,7 @@ export const AbsenceApprovalQueue: React.FC<AbsenceApprovalQueueProps> = ({
                         <span>
                           {isApproved ? 'Approved' : 'Declined'} by {decider?.name || 'Unknown'}
                         </span>
-                        {absence.decidedAt && (
-                          <span>· {formatRelativeTime(absence.decidedAt)}</span>
-                        )}
+                        {absence.decidedAt && <span>· {formatRelativeTime(absence.decidedAt)}</span>}
                         {!isApproved && absence.declineReason && (
                           <span className="text-zinc-500 dark:text-zinc-400 italic truncate">
                             — "{absence.declineReason}"

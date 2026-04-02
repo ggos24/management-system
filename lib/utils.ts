@@ -26,6 +26,8 @@ export function calculateAbsenceStats(memberId: string, absences: Absence[]) {
   let sickDays = 0;
   let businessDays = 0;
   let daysOff = 0;
+  let freeDays = 0;
+  let busyDays = 0;
 
   absences
     .filter((a) => a.memberId === memberId && a.status === 'approved')
@@ -47,8 +49,14 @@ export function calculateAbsenceStats(memberId: string, absences: Absence[]) {
         case 'day_off':
           daysOff += days;
           break;
+        case 'free':
+          freeDays += days;
+          break;
+        case 'busy':
+          busyDays += days;
+          break;
       }
     });
 
-  return { holidayDays, sickDays, businessDays, daysOff };
+  return { holidayDays, sickDays, businessDays, daysOff, freeDays, busyDays };
 }

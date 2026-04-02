@@ -74,7 +74,7 @@ export interface Task {
 export interface Absence {
   id: string;
   memberId: string;
-  type: 'holiday' | 'sick' | 'business_trip' | 'day_off';
+  type: 'holiday' | 'sick' | 'business_trip' | 'day_off' | 'free' | 'busy';
   startDate: string;
   endDate: string;
   status: AbsenceStatus;

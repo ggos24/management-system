@@ -143,6 +143,12 @@ const Schedule: React.FC<ScheduleProps> = ({
     return date.toLocaleDateString('en-US', { weekday: 'short' });
   };
 
+  const isWeekend = (day: number) => {
+    const date = new Date(year, currentDate.getMonth(), day);
+    const dow = date.getDay();
+    return dow === 0 || dow === 6;
+  };
+
   const getAbsenceForDay = (memberId: string, day: number) => {
     const dateStr = getDateStr(day);
     return absences.find(
@@ -402,6 +408,8 @@ const Schedule: React.FC<ScheduleProps> = ({
                 { value: 'sick', label: 'Sick Leave' },
                 { value: 'business_trip', label: 'Business Trip' },
                 { value: 'day_off', label: 'Day Off' },
+                { value: 'free', label: 'Free' },
+                { value: 'busy', label: 'Busy' },
               ]}
               value={filterAbsenceType}
               onChange={setFilterAbsenceType}
@@ -477,7 +485,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                   return (
                     <div
                       key={day}
-                      className={`w-10 flex-shrink-0 text-center flex flex-col items-center justify-center border-r border-zinc-100 dark:border-zinc-800 text-[10px] text-zinc-400 font-medium last:border-r-0 select-none ${isToday ? 'bg-red-50/50 dark:bg-red-900/20' : ''}`}
+                      className={`w-10 flex-shrink-0 text-center flex flex-col items-center justify-center border-r border-zinc-100 dark:border-zinc-800 text-[10px] text-zinc-400 font-medium last:border-r-0 select-none ${isToday ? 'bg-red-50/50 dark:bg-red-900/20' : isWeekend(day) ? 'bg-emerald-50/60 dark:bg-emerald-900/15' : ''}`}
                     >
                       <span
                         className={`text-zinc-900 dark:text-white font-bold ${isToday ? 'text-red-600 dark:text-red-400' : ''}`}
@@ -598,6 +606,15 @@ const Schedule: React.FC<ScheduleProps> = ({
                                     bgClass = 'bg-zinc-200 dark:bg-zinc-700 text-zinc-600 dark:text-zinc-300';
                                     text = 'OFF';
                                     break;
+                                  case 'free':
+                                    bgClass = 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300';
+                                    text = 'FREE';
+                                    break;
+                                  case 'busy':
+                                    bgClass =
+                                      'bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300';
+                                    text = 'BUSY';
+                                    break;
                                   default:
                                     bgClass = 'bg-zinc-100';
                                     text = 'OUT';
@@ -656,7 +673,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                                   onTouchStart={(e) => handleTouchStart(e, member, day)}
                                   onTouchMove={handleTouchMove}
                                   onTouchEnd={(e) => handleTouchEnd(e, member, day)}
-                                  className={`w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : ''}`}
+                                  className={`w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : !content && isWeekend(day) ? 'bg-emerald-50/40 dark:bg-emerald-900/10' : ''}`}
                                 >
                                   {content}
                                 </div>
@@ -718,6 +735,18 @@ const Schedule: React.FC<ScheduleProps> = ({
                     <p className="text-xs font-semibold text-zinc-600 dark:text-zinc-400 uppercase">Day Off</p>
                     <p className="text-xl font-bold text-zinc-900 dark:text-zinc-100 mt-1">
                       {stats.daysOff} <span className="text-xs font-normal opacity-70">days</span>
+                    </p>
+                  </div>
+                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 rounded border border-amber-100 dark:border-amber-900/40">
+                    <p className="text-xs font-semibold text-amber-800 dark:text-amber-300 uppercase">Free</p>
+                    <p className="text-xl font-bold text-amber-900 dark:text-amber-100 mt-1">
+                      {stats.freeDays} <span className="text-xs font-normal opacity-70">days</span>
+                    </p>
+                  </div>
+                  <div className="p-3 bg-purple-50 dark:bg-purple-900/20 rounded border border-purple-100 dark:border-purple-900/40">
+                    <p className="text-xs font-semibold text-purple-800 dark:text-purple-300 uppercase">Busy</p>
+                    <p className="text-xl font-bold text-purple-900 dark:text-purple-100 mt-1">
+                      {stats.busyDays} <span className="text-xs font-normal opacity-70">days</span>
                     </p>
                   </div>
                 </div>
@@ -951,6 +980,8 @@ const Schedule: React.FC<ScheduleProps> = ({
                           { value: 'sick', label: 'Sick Leave' },
                           { value: 'business_trip', label: 'Business Trip' },
                           { value: 'day_off', label: 'Day Off' },
+                          { value: 'free', label: 'Free' },
+                          { value: 'busy', label: 'Busy' },
                         ]}
                         value={absenceType}
                         onChange={(v) => setAbsenceType(v as any)}
