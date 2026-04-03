@@ -2736,11 +2736,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         ))}
                       </div>
                       {/* Add Button on Hover */}
-                      <div className="absolute top-1 left-1 opacity-0 group-hover/cell:opacity-100 transition-opacity">
-                        <button className="p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded text-zinc-400 hover:text-black dark:hover:text-white">
-                          <Plus size={12} />
-                        </button>
-                      </div>
+                      {teamFilter !== 'my-work' && (
+                        <div className="absolute top-1 left-1 opacity-0 group-hover/cell:opacity-100 transition-opacity">
+                          <button className="p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded text-zinc-400 hover:text-black dark:hover:text-white">
+                            <Plus size={12} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
