@@ -301,7 +301,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // --- Data-driven table columns with persistent ordering ---
   const allTableColumns = useMemo(() => {
     const base: { key: string; label: string; className: string }[] = [
-      { key: 'title', label: 'Title', className: 'min-w-[200px]' },
+      { key: 'title', label: 'Title', className: '' },
       { key: 'type', label: 'Type', className: 'w-28' },
       {
         key: 'assignee',
@@ -1901,7 +1901,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       <div
                         className={`hidden md:block rounded-lg cursor-default overflow-x-auto ${isIgnoredTable ? 'border border-dashed border-amber-300 dark:border-amber-800 bg-amber-50/30 dark:bg-amber-950/10' : isDoneTable ? 'border border-dashed border-emerald-300 dark:border-emerald-800 bg-emerald-50/30 dark:bg-emerald-950/10' : isBacklogTable ? 'border border-dashed border-blue-300 dark:border-blue-800 bg-blue-50/30 dark:bg-blue-950/10' : 'border border-zinc-200 dark:border-zinc-800'}`}
                       >
-                        <table className="w-full text-left text-sm border-collapse min-w-[1100px]">
+                        <table className="w-full text-left text-sm border-collapse min-w-[1100px] table-fixed">
                           <thead
                             className={`border-b ${isIgnoredTable ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40' : isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : isBacklogTable ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/40' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
                           >
