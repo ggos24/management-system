@@ -24,6 +24,7 @@ import {
   RotateCcw,
   AlertTriangle,
   Tags as TagsIcon,
+  History,
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { RichTextEditor } from './RichTextEditor';
@@ -36,7 +37,8 @@ import { Button, Input, Label, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useDataStore } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
-import { Task, TaskComment, CustomProperty } from '../types';
+import { Task, TaskComment, TaskActivity, CustomProperty } from '../types';
+import { cn } from '../lib/cn';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusColor } from '../constants';
 import * as db from '../lib/database';
 import { supabase } from '../lib/supabase';
@@ -188,12 +190,16 @@ export const TaskModal: React.FC = () => {
     return [...foreignTeamIds];
   }, [selectedCompositeKeys, taskModalData.teamId]);
 
-  // --- Comments State ---
+  // --- Comments & Activity State ---
+  const [activeTab, setActiveTab] = useState<'comments' | 'activity'>('comments');
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [commentText, setCommentText] = useState('');
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState('');
   const [isLoadingComments, setIsLoadingComments] = useState(false);
+  const [activities, setActivities] = useState<TaskActivity[]>([]);
+  const [isLoadingActivities, setIsLoadingActivities] = useState(false);
+  const activityLoadedRef = useRef(false);
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
   const [mentionCursorPos, setMentionCursorPos] = useState(0);
@@ -222,7 +228,24 @@ export const TaskModal: React.FC = () => {
     setCommentText('');
     setEditingCommentId(null);
     setShowMentionDropdown(false);
+    setActiveTab('comments');
+    setActivities([]);
+    activityLoadedRef.current = false;
   }, [isTaskModalOpen, taskModalData.id, loadComments]);
+
+  // Lazy-load activity when tab is first activated
+  useEffect(() => {
+    if (activeTab === 'activity' && taskModalData.id && !activityLoadedRef.current) {
+      setIsLoadingActivities(true);
+      db.fetchTaskActivity(taskModalData.id)
+        .then((data) => {
+          activityLoadedRef.current = true;
+          setActivities(data);
+        })
+        .catch(() => toast.error('Failed to load activity'))
+        .finally(() => setIsLoadingActivities(false));
+    }
+  }, [activeTab, taskModalData.id]);
 
   // Realtime subscription for comments on the open task
   useEffect(() => {
@@ -393,6 +416,72 @@ export const TaskModal: React.FC = () => {
     const diffD = Math.floor(diffH / 24);
     if (diffD < 7) return `${diffD}d ago`;
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  };
+
+  const renderActivityDescription = (a: TaskActivity): React.ReactNode => {
+    const bold = (text: string) => <span className="font-medium text-zinc-700 dark:text-zinc-200">{text}</span>;
+    const formatDate = (v: string) => {
+      try {
+        return new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch {
+        return v;
+      }
+    };
+    const resolveNames = (idsJson: string): string => {
+      try {
+        const ids: string[] = JSON.parse(idsJson);
+        return ids.map((id) => members.find((m) => m.id === id)?.name || 'Unknown').join(', ');
+      } catch {
+        return idsJson;
+      }
+    };
+
+    switch (a.field) {
+      case 'created':
+        return 'created this task';
+      case 'deleted':
+        return 'moved to bin';
+      case 'restored':
+        return 'restored from bin';
+      case 'title':
+        return (
+          <>
+            changed title from {bold(a.oldValue || '')} to {bold(a.newValue || '')}
+          </>
+        );
+      case 'status':
+        return <>changed status to {bold(a.newValue || '')}</>;
+      case 'priority':
+        return (
+          <>
+            changed priority from {bold(a.oldValue || '')} to {bold(a.newValue || '')}
+          </>
+        );
+      case 'dueDate':
+        return (
+          <>
+            changed due date from {bold(a.oldValue ? formatDate(a.oldValue) : 'none')} to{' '}
+            {bold(a.newValue ? formatDate(a.newValue) : 'none')}
+          </>
+        );
+      case 'assignees':
+        return (
+          <>
+            updated assignees from {bold(a.oldValue ? resolveNames(a.oldValue) : 'none')} to{' '}
+            {bold(a.newValue ? resolveNames(a.newValue) : 'none')}
+          </>
+        );
+      case 'description':
+        return 'updated description';
+      case 'placements':
+        return 'updated placements';
+      case 'contentInfo':
+        return 'updated content info';
+      case 'customFields':
+        return 'updated custom fields';
+      default:
+        return `updated ${a.field}`;
+    }
   };
 
   const handleSaveTask = () => {
@@ -1080,139 +1169,202 @@ export const TaskModal: React.FC = () => {
             </div>
           </div>
 
-          {/* Comments Section */}
+          {/* Comments & Activity Section */}
           {taskModalData.id && (
             <div className="space-y-3">
-              <Label variant="section" className="flex items-center gap-2">
-                <MessageSquare size={12} /> Comments ({comments.length})
-              </Label>
+              {/* Tab switcher */}
+              <div className="flex items-center gap-1 border-b border-zinc-200 dark:border-zinc-800">
+                <button
+                  onClick={() => setActiveTab('comments')}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors',
+                    activeTab === 'comments'
+                      ? 'border-zinc-900 dark:border-white text-zinc-900 dark:text-white'
+                      : 'border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300',
+                  )}
+                >
+                  <MessageSquare size={12} /> Comments{comments.length > 0 ? ` (${comments.length})` : ''}
+                </button>
+                <button
+                  onClick={() => setActiveTab('activity')}
+                  className={cn(
+                    'flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium border-b-2 -mb-px transition-colors',
+                    activeTab === 'activity'
+                      ? 'border-zinc-900 dark:border-white text-zinc-900 dark:text-white'
+                      : 'border-transparent text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300',
+                  )}
+                >
+                  <History size={12} /> Activity
+                </button>
+              </div>
 
-              {/* Comment list */}
-              <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-3">
-                {isLoadingComments ? (
-                  <p className="text-xs text-zinc-400 italic py-4 text-center">Loading comments...</p>
-                ) : comments.length === 0 ? (
-                  <p className="text-xs text-zinc-400 italic py-4 text-center">No comments yet</p>
-                ) : (
-                  comments.map((c) => (
-                    <div key={c.id} className="flex gap-2.5 group/comment">
-                      <Avatar
-                        src={c.userAvatar || ''}
-                        alt={c.userName || ''}
-                        size="sm"
-                        className="flex-shrink-0 mt-0.5"
-                      />
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-xs font-semibold text-zinc-900 dark:text-white">{c.userName}</span>
-                          <span className="text-[10px] text-zinc-400">{formatCommentTime(c.createdAt)}</span>
-                          {c.updatedAt && <span className="text-[10px] text-zinc-400 italic">(edited)</span>}
-                          {currentUser && (currentUser.id === c.userId || currentUser.role === 'admin') && (
-                            <div className="opacity-0 group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
-                              {currentUser.id === c.userId && (
-                                <button
-                                  onClick={() => {
-                                    setEditingCommentId(c.id);
-                                    setEditingCommentText(c.content);
-                                  }}
-                                  className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                >
-                                  <Edit2 size={12} />
-                                </button>
+              {/* Comments tab */}
+              {activeTab === 'comments' && (
+                <>
+                  {/* Comment list */}
+                  <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-3">
+                    {isLoadingComments ? (
+                      <p className="text-xs text-zinc-400 italic py-4 text-center">Loading comments...</p>
+                    ) : comments.length === 0 ? (
+                      <p className="text-xs text-zinc-400 italic py-4 text-center">No comments yet</p>
+                    ) : (
+                      comments.map((c) => (
+                        <div key={c.id} className="flex gap-2.5 group/comment">
+                          <Avatar
+                            src={c.userAvatar || ''}
+                            alt={c.userName || ''}
+                            size="sm"
+                            className="flex-shrink-0 mt-0.5"
+                          />
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 mb-0.5">
+                              <span className="text-xs font-semibold text-zinc-900 dark:text-white">{c.userName}</span>
+                              <span className="text-[10px] text-zinc-400">{formatCommentTime(c.createdAt)}</span>
+                              {c.updatedAt && <span className="text-[10px] text-zinc-400 italic">(edited)</span>}
+                              {currentUser && (currentUser.id === c.userId || currentUser.role === 'admin') && (
+                                <div className="opacity-0 group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
+                                  {currentUser.id === c.userId && (
+                                    <button
+                                      onClick={() => {
+                                        setEditingCommentId(c.id);
+                                        setEditingCommentText(c.content);
+                                      }}
+                                      className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                    >
+                                      <Edit2 size={12} />
+                                    </button>
+                                  )}
+                                  <button
+                                    onClick={() => handleDeleteComment(c.id)}
+                                    className="text-zinc-400 hover:text-red-500"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
                               )}
-                              <button
-                                onClick={() => handleDeleteComment(c.id)}
-                                className="text-zinc-400 hover:text-red-500"
-                              >
-                                <Trash2 size={12} />
-                              </button>
                             </div>
-                          )}
-                        </div>
-                        {editingCommentId === c.id ? (
-                          <div className="space-y-1.5">
-                            <textarea
-                              autoFocus
-                              className="w-full p-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 resize-none"
-                              rows={2}
-                              value={editingCommentText}
-                              onChange={(e) => setEditingCommentText(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) {
-                                  e.preventDefault();
-                                  handleUpdateComment(c.id);
-                                }
-                                if (e.key === 'Escape') setEditingCommentId(null);
-                              }}
-                            />
-                            <div className="flex gap-1.5">
-                              <Button size="sm" onClick={() => handleUpdateComment(c.id)}>
-                                Save
-                              </Button>
-                              <Button size="sm" variant="ghost" onClick={() => setEditingCommentId(null)}>
-                                Cancel
-                              </Button>
-                            </div>
+                            {editingCommentId === c.id ? (
+                              <div className="space-y-1.5">
+                                <textarea
+                                  autoFocus
+                                  className="w-full p-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 resize-none"
+                                  rows={2}
+                                  value={editingCommentText}
+                                  onChange={(e) => setEditingCommentText(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                      e.preventDefault();
+                                      handleUpdateComment(c.id);
+                                    }
+                                    if (e.key === 'Escape') setEditingCommentId(null);
+                                  }}
+                                />
+                                <div className="flex gap-1.5">
+                                  <Button size="sm" onClick={() => handleUpdateComment(c.id)}>
+                                    Save
+                                  </Button>
+                                  <Button size="sm" variant="ghost" onClick={() => setEditingCommentId(null)}>
+                                    Cancel
+                                  </Button>
+                                </div>
+                              </div>
+                            ) : (
+                              <p className="text-xs text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">
+                                {renderCommentContent(c.content)}
+                              </p>
+                            )}
                           </div>
-                        ) : (
-                          <p className="text-xs text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">
-                            {renderCommentContent(c.content)}
-                          </p>
-                        )}
+                        </div>
+                      ))
+                    )}
+                    <div ref={commentsEndRef} />
+                  </div>
+
+                  {/* Add comment input */}
+                  <div className="flex gap-2.5 items-start">
+                    {currentUser && (
+                      <Avatar
+                        src={currentUser.avatar}
+                        alt={currentUser.name}
+                        size="sm"
+                        className="flex-shrink-0 mt-1.5"
+                      />
+                    )}
+                    <div className="flex-1 space-y-2 relative">
+                      <textarea
+                        ref={commentInputRef}
+                        className="w-full p-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 focus:border-zinc-400 resize-none placeholder-zinc-400"
+                        rows={2}
+                        placeholder="Write a comment... Use @ to mention someone"
+                        value={commentText}
+                        onChange={handleCommentInput}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && !e.shiftKey && !showMentionDropdown) {
+                            e.preventDefault();
+                            handleAddComment();
+                          }
+                        }}
+                      />
+                      {/* @mention dropdown */}
+                      {showMentionDropdown && filteredMembers.length > 0 && (
+                        <div className="absolute left-0 bottom-full mb-1 w-56 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
+                          {filteredMembers.map((m) => (
+                            <button
+                              key={m.id}
+                              onClick={() => insertMention(m.name)}
+                              className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
+                            >
+                              <Avatar src={m.avatar} alt={m.name} size="sm" />
+                              <span className="text-zinc-900 dark:text-white">{m.name}</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      <div className="flex justify-end">
+                        <button
+                          onClick={handleAddComment}
+                          disabled={!commentText.trim()}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-medium rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                        >
+                          <Send size={12} />
+                          Send
+                        </button>
                       </div>
                     </div>
-                  ))
-                )}
-                <div ref={commentsEndRef} />
-              </div>
-
-              {/* Add comment input */}
-              <div className="flex gap-2.5 items-start">
-                {currentUser && (
-                  <Avatar src={currentUser.avatar} alt={currentUser.name} size="sm" className="flex-shrink-0 mt-1.5" />
-                )}
-                <div className="flex-1 space-y-2 relative">
-                  <textarea
-                    ref={commentInputRef}
-                    className="w-full p-2.5 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 focus:border-zinc-400 resize-none placeholder-zinc-400"
-                    rows={2}
-                    placeholder="Write a comment... Use @ to mention someone"
-                    value={commentText}
-                    onChange={handleCommentInput}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && !e.shiftKey && !showMentionDropdown) {
-                        e.preventDefault();
-                        handleAddComment();
-                      }
-                    }}
-                  />
-                  {/* @mention dropdown */}
-                  {showMentionDropdown && filteredMembers.length > 0 && (
-                    <div className="absolute left-0 bottom-full mb-1 w-56 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
-                      {filteredMembers.map((m) => (
-                        <button
-                          key={m.id}
-                          onClick={() => insertMention(m.name)}
-                          className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
-                        >
-                          <Avatar src={m.avatar} alt={m.name} size="sm" />
-                          <span className="text-zinc-900 dark:text-white">{m.name}</span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="flex justify-end">
-                    <button
-                      onClick={handleAddComment}
-                      disabled={!commentText.trim()}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 text-xs font-medium rounded-lg hover:bg-zinc-800 dark:hover:bg-zinc-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                    >
-                      <Send size={12} />
-                      Send
-                    </button>
                   </div>
+                </>
+              )}
+
+              {/* Activity tab */}
+              {activeTab === 'activity' && (
+                <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2.5">
+                  {isLoadingActivities ? (
+                    <p className="text-xs text-zinc-400 italic py-4 text-center">Loading activity...</p>
+                  ) : activities.length === 0 ? (
+                    <p className="text-xs text-zinc-400 italic py-4 text-center">No activity yet</p>
+                  ) : (
+                    activities.map((a) => (
+                      <div key={a.id} className="flex gap-2.5 items-start">
+                        <Avatar
+                          src={a.userAvatar || ''}
+                          alt={a.userName || ''}
+                          size="sm"
+                          className="flex-shrink-0 mt-0.5"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-baseline gap-2 flex-wrap">
+                            <span className="text-xs font-semibold text-zinc-900 dark:text-white">{a.userName}</span>
+                            <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                              {renderActivityDescription(a)}
+                            </span>
+                          </div>
+                          <span className="text-[10px] text-zinc-400">{formatCommentTime(a.createdAt)}</span>
+                        </div>
+                      </div>
+                    ))
+                  )}
                 </div>
-              </div>
+              )}
             </div>
           )}
 

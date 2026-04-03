@@ -123,6 +123,19 @@ export interface TaskComment {
   userAvatar?: string;
 }
 
+export interface TaskActivity {
+  id: string;
+  taskId: string;
+  userId: string;
+  field: string;
+  oldValue: string | null;
+  newValue: string | null;
+  createdAt: string;
+  // Joined from profiles
+  userName?: string;
+  userAvatar?: string;
+}
+
 export type DocSection = 'help' | 'knowledge-base';
 
 export interface Doc {

@@ -9,6 +9,7 @@ import {
   CustomProperty,
   Notification,
   TaskComment,
+  TaskActivity,
   TaskTeamLink,
   Doc,
   DocSection,
@@ -1007,6 +1008,47 @@ export async function updateTaskComment(commentId: string, content: string): Pro
 export async function deleteTaskComment(commentId: string) {
   const { error } = await supabase.from('task_comments').delete().eq('id', commentId);
   return { error };
+}
+
+// === Task Activity ===
+
+function mapTaskActivity(row: any): TaskActivity {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    userId: row.user_id,
+    field: row.field,
+    oldValue: row.old_value ?? null,
+    newValue: row.new_value ?? null,
+    createdAt: row.created_at,
+    userName: row.profiles?.name || '',
+    userAvatar: row.profiles?.avatar || '',
+  };
+}
+
+export async function fetchTaskActivity(taskId: string): Promise<TaskActivity[]> {
+  const { data, error } = await supabase
+    .from('task_activity')
+    .select('*, profiles(name, avatar)')
+    .eq('task_id', taskId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(mapTaskActivity);
+}
+
+export async function insertTaskActivity(
+  entries: Array<{ taskId: string; userId: string; field: string; oldValue?: string | null; newValue?: string | null }>,
+) {
+  if (entries.length === 0) return;
+  const rows = entries.map((e) => ({
+    task_id: e.taskId,
+    user_id: e.userId,
+    field: e.field,
+    old_value: e.oldValue ?? null,
+    new_value: e.newValue ?? null,
+  }));
+  const { error } = await supabase.from('task_activity').insert(rows);
+  if (error) throw error;
 }
 
 // === Task Team Links ===

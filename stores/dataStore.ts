@@ -42,6 +42,60 @@ function logAction(action: string, details: string, entityType: string) {
   db.insertLog(entry).catch(() => {});
 }
 
+function logTaskActivity(
+  taskId: string,
+  entries: Array<{ field: string; oldValue?: string | null; newValue?: string | null }>,
+) {
+  const userId = getCurrentUserId();
+  if (!userId || entries.length === 0) return;
+  db.insertTaskActivity(entries.map((e) => ({ taskId, userId, ...e }))).catch(() => {});
+}
+
+function diffTaskFields(
+  oldTask: Task,
+  newTask: Task,
+): Array<{ field: string; oldValue?: string | null; newValue?: string | null }> {
+  const entries: Array<{ field: string; oldValue?: string | null; newValue?: string | null }> = [];
+  if (oldTask.title !== newTask.title) {
+    entries.push({ field: 'title', oldValue: oldTask.title, newValue: newTask.title });
+  }
+  // Status is intentionally excluded — updateTaskStatus logs it separately
+  if (oldTask.priority !== newTask.priority) {
+    entries.push({ field: 'priority', oldValue: oldTask.priority, newValue: newTask.priority });
+  }
+  if (oldTask.dueDate !== newTask.dueDate) {
+    entries.push({ field: 'dueDate', oldValue: oldTask.dueDate || null, newValue: newTask.dueDate || null });
+  }
+  if (oldTask.description !== newTask.description) {
+    entries.push({ field: 'description' });
+  }
+  if (JSON.stringify(oldTask.assigneeIds) !== JSON.stringify(newTask.assigneeIds)) {
+    entries.push({
+      field: 'assignees',
+      oldValue: JSON.stringify(oldTask.assigneeIds),
+      newValue: JSON.stringify(newTask.assigneeIds),
+    });
+  }
+  if (JSON.stringify(oldTask.placements) !== JSON.stringify(newTask.placements)) {
+    entries.push({
+      field: 'placements',
+      oldValue: JSON.stringify(oldTask.placements),
+      newValue: JSON.stringify(newTask.placements),
+    });
+  }
+  if (JSON.stringify(oldTask.contentInfo) !== JSON.stringify(newTask.contentInfo)) {
+    entries.push({
+      field: 'contentInfo',
+      oldValue: JSON.stringify(oldTask.contentInfo),
+      newValue: JSON.stringify(newTask.contentInfo),
+    });
+  }
+  if (JSON.stringify(oldTask.customFieldValues) !== JSON.stringify(newTask.customFieldValues)) {
+    entries.push({ field: 'customFields' });
+  }
+  return entries;
+}
+
 const PRIORITY_EMOJI: Record<string, string> = { high: '🔴', medium: '🟡', low: '🟢' };
 
 function sendTelegram(recipientIds: string[], message: string, entityData?: Record<string, any>) {
@@ -390,7 +444,10 @@ export const useDataStore = create<DataState>((set, get) => ({
     if (task && task.status === newStatus) return; // Same status, no-op
     set({ tasks: prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)) });
     db.updateTaskStatus(taskId, newStatus).catch(() => set({ tasks: prev }));
-    if (task) logAction('Task Status Changed', `Moved "${task.title}" to ${newStatus}`, 'task');
+    if (task) {
+      logAction('Task Status Changed', `Moved "${task.title}" to ${newStatus}`, 'task');
+      logTaskActivity(taskId, [{ field: 'status', oldValue: task.status, newValue: newStatus }]);
+    }
 
     // Notify all task assignees about status change
     if (task && task.assigneeIds.length > 0) {
@@ -414,6 +471,9 @@ export const useDataStore = create<DataState>((set, get) => ({
         db.syncTaskPlacements(updatedTask.id, updatedTask.placements);
       })
       .catch(() => set({ tasks: prev }));
+
+    // Log activity
+    if (oldTask) logTaskActivity(updatedTask.id, diffTaskFields(oldTask, updatedTask));
 
     // Notify assignees about changes
     if (oldTask) {
@@ -477,6 +537,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     });
 
     logAction('Task Deleted', `Deleted task "${task.title}"`, 'task');
+    logTaskActivity(taskId, [{ field: 'deleted' }]);
 
     if (!userId) return;
     db.softDeleteTask(taskId, userId).catch(() => {
@@ -579,8 +640,10 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     if (isNew) {
       logAction('Task Created', `Created task "${newTask.title}"`, 'task');
+      logTaskActivity(newTask.id, [{ field: 'created' }]);
     } else {
       logAction('Task Updated', `Updated task "${newTask.title}"`, 'task');
+      if (existingTask) logTaskActivity(newTask.id, diffTaskFields(existingTask, newTask));
     }
 
     const actorName = getCurrentUserName();
@@ -1168,7 +1231,10 @@ export const useDataStore = create<DataState>((set, get) => ({
       });
       toast.error('Failed to restore task');
     });
-    if (task) logAction('Task Restored', `Restored task "${task.title}"`, 'task');
+    if (task) {
+      logAction('Task Restored', `Restored task "${task.title}"`, 'task');
+      logTaskActivity(taskId, [{ field: 'restored' }]);
+    }
   },
 
   permanentlyDeleteTask: (taskId) => {
