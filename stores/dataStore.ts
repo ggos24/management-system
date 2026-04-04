@@ -117,27 +117,62 @@ function getAllTaskPeople(task: Task): string[] {
 
 const PRIORITY_EMOJI: Record<string, string> = { high: '🔴', medium: '🟡', low: '🟢' };
 
+function formatShortDate(iso: string): string {
+  try {
+    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  } catch {
+    return iso;
+  }
+}
+
+/** Build task context available at notification time */
+function getTaskContext(entityData?: Record<string, any>) {
+  if (!entityData) return null;
+  const { teams, tasks } = useDataStore.getState();
+  const task = entityData.taskId ? tasks.find((t) => t.id === entityData.taskId) : null;
+  const teamName = entityData.teamId ? teams.find((t) => t.id === entityData.teamId)?.name : undefined;
+  return { task, teamName };
+}
+
 function sendTelegram(recipientIds: string[], message: string, entityData?: Record<string, any>) {
   let text = message;
-  const priority = entityData?.priority;
-  if (priority) {
-    text += `\nPriority: ${PRIORITY_EMOJI[priority] || ''} ${priority}`;
+  const ctx = getTaskContext(entityData);
+
+  if (ctx?.task || ctx?.teamName) {
+    const details: string[] = [];
+    if (ctx.teamName) details.push(`📁 ${ctx.teamName}`);
+    if (ctx.task?.dueDate) details.push(`📅 Due: ${formatShortDate(ctx.task.dueDate)}`);
+    const p = entityData?.priority || ctx.task?.priority;
+    if (p) details.push(`${PRIORITY_EMOJI[p] || ''} Priority: ${p.charAt(0).toUpperCase() + p.slice(1)}`);
+    if (ctx.task?.status) details.push(`📌 ${ctx.task.status}`);
+    if (details.length > 0) text += '\n\n' + details.join('\n');
+  } else if (entityData?.priority) {
+    text += `\nPriority: ${PRIORITY_EMOJI[entityData.priority] || ''} ${entityData.priority}`;
   }
+
   const teamId = entityData?.teamId;
   const taskId = entityData?.taskId;
   const link = teamId ? `${window.location.origin}/teams/${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
   supabase.functions.invoke('send-telegram', { body: { recipientIds, message: text, link } }).catch(console.error);
 }
 
-const EMAIL_SUBJECTS: Partial<Record<NotificationType, string>> = {
+const EMAIL_SUBJECTS: Record<NotificationType, string> = {
   task_assigned: 'Task assigned to you',
   task_status_changed: 'Task status updated',
+  task_updated: 'Task updated',
   task_unassigned: 'Task unassigned',
+  task_deleted: 'Task deleted',
+  absence_submitted: 'New absence request',
+  absence_decided: 'Absence request decided',
+  absence_cancelled: 'Absence cancelled',
+  comment_mention: 'You were mentioned in a comment',
+  schedule_updated: 'Schedule updated',
+  member_invited: 'New member invited',
 };
 
 function sendEmail(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
   const subject = EMAIL_SUBJECTS[type];
-  if (!subject) return; // Only send emails for supported types
+  if (!subject) return;
   // Filter to recipients who have email notifications enabled
   const { members } = useDataStore.getState();
   const emailRecipients = recipientIds.filter((id) => {
@@ -145,11 +180,28 @@ function sendEmail(recipientIds: string[], type: NotificationType, message: stri
     return member?.emailNotifications !== false;
   });
   if (emailRecipients.length === 0) return;
+
+  const ctx = getTaskContext(entityData);
+  const taskTitle = ctx?.task?.title;
+  const fullSubject = taskTitle ? `${subject} — ${taskTitle}` : subject;
+
+  const taskDetails =
+    ctx?.task || ctx?.teamName
+      ? {
+          teamName: ctx.teamName,
+          dueDate: ctx.task?.dueDate,
+          priority: entityData?.priority || ctx.task?.priority,
+          status: ctx.task?.status,
+        }
+      : undefined;
+
   const teamId = entityData?.teamId;
   const taskId = entityData?.taskId;
   const link = teamId ? `${window.location.origin}/teams/${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
   supabase.functions
-    .invoke('send-email', { body: { recipientIds: emailRecipients, subject, message, link } })
+    .invoke('send-email', {
+      body: { recipientIds: emailRecipients, subject: fullSubject, message, link, taskDetails },
+    })
     .catch(console.error);
 }
 
@@ -542,6 +594,7 @@ export const useDataStore = create<DataState>((set, get) => ({
         notifyMany(removedPeople, 'task_unassigned', `${actorName} removed you from "${updatedTask.title}"`, {
           taskId: updatedTask.id,
           teamId: updatedTask.teamId,
+          priority: updatedTask.priority,
         });
       }
 
@@ -725,6 +778,7 @@ export const useDataStore = create<DataState>((set, get) => ({
         notifyMany(removedPeople, 'task_unassigned', `${actorName} removed you from "${newTask.title}"`, {
           taskId: newTask.id,
           teamId: newTask.teamId,
+          priority: newTask.priority,
         });
       }
 

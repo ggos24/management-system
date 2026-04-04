@@ -78,7 +78,7 @@ Deno.serve(async (req) => {
 
     console.log('send-email: authenticated as', user.email);
 
-    const { recipientIds, subject, message, link } = await req.json();
+    const { recipientIds, subject, message, link, taskDetails } = await req.json();
     if (!recipientIds?.length || !message || !subject) {
       return new Response(JSON.stringify({ error: 'recipientIds, subject, and message are required' }), {
         status: 400,
@@ -118,19 +118,80 @@ Deno.serve(async (req) => {
     // Get SendPulse access token
     const spToken = await getSendPulseToken(clientId, clientSecret);
 
-    // Build HTML email body
+    // Format date helper
+    const fmtDate = (iso: string) => {
+      try {
+        return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      } catch {
+        return iso;
+      }
+    };
+
+    // Priority colors matching app design system (zinc-based)
+    const priorityColors: Record<string, { bg: string; text: string; dot: string }> = {
+      high: { bg: '#fef2f2', text: '#dc2626', dot: '#ef4444' },
+      medium: { bg: '#fefce8', text: '#ca8a04', dot: '#eab308' },
+      low: { bg: '#fafafa', text: '#71717a', dot: '#a1a1aa' },
+    };
+
+    // Build task details block
+    let detailsHtml = '';
+    if (taskDetails && (taskDetails.teamName || taskDetails.dueDate || taskDetails.priority || taskDetails.status)) {
+      const pColor = taskDetails.priority ? priorityColors[taskDetails.priority] || priorityColors.low : null;
+      const rows: string[] = [];
+      if (taskDetails.teamName) {
+        rows.push(`<tr>
+          <td style="padding:8px 12px;color:#71717a;font-size:12px;white-space:nowrap">Team</td>
+          <td style="padding:8px 12px;font-size:13px;color:#18181b;font-weight:500">${taskDetails.teamName}</td>
+        </tr>`);
+      }
+      if (taskDetails.dueDate) {
+        rows.push(`<tr>
+          <td style="padding:8px 12px;color:#71717a;font-size:12px;white-space:nowrap">Due date</td>
+          <td style="padding:8px 12px;font-size:13px;color:#18181b">${fmtDate(taskDetails.dueDate)}</td>
+        </tr>`);
+      }
+      if (taskDetails.priority && pColor) {
+        rows.push(`<tr>
+          <td style="padding:8px 12px;color:#71717a;font-size:12px;white-space:nowrap">Priority</td>
+          <td style="padding:8px 12px">
+            <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:${pColor.text}">
+              <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${pColor.dot}"></span>
+              ${taskDetails.priority.charAt(0).toUpperCase() + taskDetails.priority.slice(1)}
+            </span>
+          </td>
+        </tr>`);
+      }
+      if (taskDetails.status) {
+        rows.push(`<tr>
+          <td style="padding:8px 12px;color:#71717a;font-size:12px;white-space:nowrap">Status</td>
+          <td style="padding:8px 12px;font-size:13px;color:#18181b">${taskDetails.status}</td>
+        </tr>`);
+      }
+      detailsHtml = `<table style="width:100%;border-collapse:collapse;margin-top:16px;border:1px solid #e4e4e7;border-radius:8px;overflow:hidden">
+        <tbody>${rows.join('<tr><td colspan="2" style="border-top:1px solid #f4f4f5"></td></tr>')}</tbody>
+      </table>`;
+    }
+
+    // Build button
     const buttonHtml = link
-      ? `<p style="margin-top:24px"><a href="${link}" style="display:inline-block;padding:10px 20px;background-color:#3b82f6;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:500">Open in app</a></p>`
+      ? `<div style="margin-top:24px"><a href="${link}" style="display:inline-block;padding:10px 24px;background-color:#18181b;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:500;font-size:13px">Open in app</a></div>`
       : '';
 
     const html = `<!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"></head>
-<body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;color:#1f2937;padding:24px;max-width:560px;margin:0 auto">
-  <p style="font-size:16px;line-height:1.5;margin:0">${message}</p>
-  ${buttonHtml}
-  <hr style="border:none;border-top:1px solid #e5e7eb;margin-top:32px">
-  <p style="font-size:12px;color:#9ca3af;margin-top:12px">${senderName}</p>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background-color:#fafafa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
+  <div style="max-width:560px;margin:32px auto;background:#ffffff;border:1px solid #e4e4e7;border-radius:12px;overflow:hidden">
+    <div style="padding:32px 32px 24px">
+      <p style="font-size:15px;line-height:1.6;color:#27272a;margin:0">${message}</p>
+      ${detailsHtml}
+      ${buttonHtml}
+    </div>
+    <div style="padding:16px 32px;border-top:1px solid #f4f4f5;background:#fafafa">
+      <p style="font-size:11px;color:#a1a1aa;margin:0">${senderName}</p>
+    </div>
+  </div>
 </body>
 </html>`;
 
