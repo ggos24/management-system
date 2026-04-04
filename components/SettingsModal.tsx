@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Send,
+  Mail,
   Loader2,
   CheckCircle2,
   Unlink,
@@ -25,6 +26,7 @@ import {
   fetchTelegramLink,
   upsertTelegramLinkCode,
   deleteTelegramLink,
+  updateProfileEmailNotifications,
   TelegramLink,
 } from '../lib/database';
 import { Label, Badge, Input } from './ui';
@@ -440,8 +442,49 @@ export const SettingsModal: React.FC = () => {
       }
       case 'Notifications': {
         const isLinked = telegramLink?.chatId != null;
+        const emailEnabled = currentUser.emailNotifications !== false;
         return (
           <div className="space-y-4">
+            <div className="p-4 border border-zinc-200 dark:border-zinc-700 rounded-lg space-y-3">
+              <div className="flex justify-between items-center">
+                <div className="flex items-center gap-2">
+                  <Mail size={16} className="text-blue-500" />
+                  <span className="text-sm font-medium">Email Notifications</span>
+                </div>
+                <span
+                  className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${emailEnabled ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400' : 'text-zinc-500 bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-400'}`}
+                >
+                  {emailEnabled ? (
+                    <>
+                      <CheckCircle2 size={12} /> Enabled
+                    </>
+                  ) : (
+                    'Disabled'
+                  )}
+                </span>
+              </div>
+              <div className="flex items-center justify-between pt-1">
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  {emailEnabled
+                    ? 'You receive email notifications for task assignments and status changes.'
+                    : 'Email notifications are turned off.'}
+                </p>
+                <button
+                  onClick={() => {
+                    const newVal = !emailEnabled;
+                    updateProfileEmailNotifications(currentUser.id, newVal).catch(() =>
+                      toast.error('Failed to update email preference'),
+                    );
+                    setCurrentUser({ ...currentUser, emailNotifications: newVal });
+                    toast.success(newVal ? 'Email notifications enabled' : 'Email notifications disabled');
+                  }}
+                  className={`text-xs px-3 py-1.5 rounded transition-colors ${emailEnabled ? 'text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20' : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
+                >
+                  {emailEnabled ? 'Turn off' : 'Turn on'}
+                </button>
+              </div>
+            </div>
+
             <div className="p-4 border border-zinc-200 dark:border-zinc-700 rounded-lg space-y-3">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
@@ -501,7 +544,7 @@ export const SettingsModal: React.FC = () => {
             <div className="space-y-2">
               <Label variant="section">Your Notifications</Label>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                These are the notifications you receive in-app and via Telegram (if linked).
+                These are the notifications you receive in-app, via email (if enabled), and via Telegram (if linked).
               </p>
               <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
                 <table className="w-full text-xs">

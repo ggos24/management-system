@@ -27,6 +27,7 @@ function mapProfile(row: any): Member {
     teamId: row.team_id || '',
     status: row.status || 'active',
     scheduleSortOrder: row.schedule_sort_order ?? 0,
+    emailNotifications: row.email_notifications ?? true,
   };
 }
 
@@ -110,7 +111,7 @@ function mapLog(row: any): LogEntry {
 export async function fetchMembers(): Promise<Member[]> {
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, name, role, job_title, avatar, team_id, status, schedule_sort_order');
+    .select('id, name, role, job_title, avatar, team_id, status, schedule_sort_order, email_notifications');
   if (error) throw error;
   return (data || []).map(mapProfile);
 }
@@ -800,6 +801,11 @@ export async function updateProfileRole(memberId: string, role: string): Promise
 
 export async function updateProfileTeam(memberId: string, teamId: string | null): Promise<void> {
   const { error } = await supabase.from('profiles').update({ team_id: teamId }).eq('id', memberId);
+  if (error) throw error;
+}
+
+export async function updateProfileEmailNotifications(memberId: string, enabled: boolean): Promise<void> {
+  const { error } = await supabase.from('profiles').update({ email_notifications: enabled }).eq('id', memberId);
   if (error) throw error;
 }
 

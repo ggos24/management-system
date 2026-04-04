@@ -138,10 +138,19 @@ const EMAIL_SUBJECTS: Partial<Record<NotificationType, string>> = {
 function sendEmail(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
   const subject = EMAIL_SUBJECTS[type];
   if (!subject) return; // Only send emails for supported types
+  // Filter to recipients who have email notifications enabled
+  const { members } = useDataStore.getState();
+  const emailRecipients = recipientIds.filter((id) => {
+    const member = members.find((m) => m.id === id);
+    return member?.emailNotifications !== false;
+  });
+  if (emailRecipients.length === 0) return;
   const teamId = entityData?.teamId;
   const taskId = entityData?.taskId;
   const link = teamId ? `${window.location.origin}/teams/${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
-  supabase.functions.invoke('send-email', { body: { recipientIds, subject, message, link } }).catch(console.error);
+  supabase.functions
+    .invoke('send-email', { body: { recipientIds: emailRecipients, subject, message, link } })
+    .catch(console.error);
 }
 
 function notifyMany(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {

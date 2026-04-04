@@ -12,6 +12,7 @@ export interface User {
   avatar: string;
   teamId: string;
   scheduleSortOrder?: number;
+  emailNotifications?: boolean;
 }
 
 export interface Team {
