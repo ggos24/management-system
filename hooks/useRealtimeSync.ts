@@ -19,7 +19,6 @@ function useDebouncedCallback(fn: () => void, delay: number): () => void {
 
 export function useRealtimeSync() {
   const storeRef = useRef(useDataStore);
-  const loadNotifications = useUiStore((s) => s.loadNotifications);
 
   const debouncedFetchTasks = useDebouncedCallback(() => {
     const { setTasks, setDeletedTaskCount } = storeRef.current.getState();
@@ -74,20 +73,15 @@ export function useRealtimeSync() {
         debouncedFetchTeamPlacements();
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
-        loadNotifications();
+        useUiStore.getState().loadNotifications();
       })
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [
-    debouncedFetchTasks,
-    debouncedFetchMembers,
-    debouncedFetchAbsences,
-    debouncedFetchShifts,
-    debouncedFetchTaskTeamLinks,
-    debouncedFetchTeamPlacements,
-    loadNotifications,
-  ]);
+    // Stable deps only — debounced callbacks use refs internally, so they never change.
+    // loadNotifications is accessed via getState() to avoid dependency instability.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 }
