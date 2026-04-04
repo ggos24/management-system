@@ -127,11 +127,16 @@ function sendEmail(recipientIds: string[], type: NotificationType, message: stri
 
 function notifyMany(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
   const actorId = getCurrentUserId();
+  console.log('[notifyMany]', { type, recipientIds, actorId });
   // Filter out self-notifications
   const recipients = recipientIds.filter((id) => id !== actorId);
-  if (recipients.length === 0) return;
+  if (recipients.length === 0) {
+    console.log('[notifyMany] no recipients after filtering');
+    return;
+  }
+  console.log('[notifyMany] sending to', recipients);
   db.insertNotifications(recipients.map((recipientId) => ({ recipientId, actorId, type, message, entityData }))).catch(
-    console.error,
+    (err) => console.error('[notifyMany] insertNotifications failed:', err),
   );
   sendTelegram(recipients, message, entityData);
   sendEmail(recipients, type, message, entityData);
@@ -664,10 +669,12 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
 
     const actorName = getCurrentUserName();
+    console.log('[saveTask] notify check', { isNew, assigneeIds: newTask.assigneeIds, actorName });
 
     if (isNew) {
       // Notify assignees when a new task is created
       if (newTask.assigneeIds.length > 0) {
+        console.log('[saveTask] calling notifyMany for new task');
         notifyMany(newTask.assigneeIds, 'task_assigned', `${actorName} assigned you to "${newTask.title}"`, {
           taskId: newTask.id,
           teamId: newTask.teamId,
