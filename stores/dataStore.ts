@@ -96,11 +96,22 @@ function diffTaskFields(
   return entries;
 }
 
-/** Collect all person IDs on a task (assignees + editors + designers), deduplicated. */
+/** Collect all person IDs on a task (assignees + editors + designers + custom person fields), deduplicated. */
 function getAllTaskPeople(task: Task): string[] {
   const ids = new Set<string>(task.assigneeIds);
   task.contentInfo?.editorIds?.forEach((id) => ids.add(id));
   task.contentInfo?.designerIds?.forEach((id) => ids.add(id));
+  // Include custom person-type property values
+  if (task.customFieldValues) {
+    const allProps = useDataStore.getState().teamProperties;
+    const props = allProps[task.teamId] || [];
+    for (const prop of props) {
+      if (prop.type === 'person') {
+        const val = task.customFieldValues[prop.id];
+        if (val && typeof val === 'string') ids.add(val);
+      }
+    }
+  }
   return [...ids];
 }
 
