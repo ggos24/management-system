@@ -110,6 +110,21 @@ function sendTelegram(recipientIds: string[], message: string, entityData?: Reco
   supabase.functions.invoke('send-telegram', { body: { recipientIds, message: text, link } }).catch(console.error);
 }
 
+const EMAIL_SUBJECTS: Partial<Record<NotificationType, string>> = {
+  task_assigned: 'Task assigned to you',
+  task_status_changed: 'Task status updated',
+  task_unassigned: 'Task unassigned',
+};
+
+function sendEmail(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
+  const subject = EMAIL_SUBJECTS[type];
+  if (!subject) return; // Only send emails for supported types
+  const teamId = entityData?.teamId;
+  const taskId = entityData?.taskId;
+  const link = teamId ? `${window.location.origin}/teams/${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
+  supabase.functions.invoke('send-email', { body: { recipientIds, subject, message, link } }).catch(console.error);
+}
+
 function notifyMany(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
   const actorId = getCurrentUserId();
   // Filter out self-notifications
@@ -119,6 +134,7 @@ function notifyMany(recipientIds: string[], type: NotificationType, message: str
     console.error,
   );
   sendTelegram(recipients, message, entityData);
+  sendEmail(recipients, type, message, entityData);
 }
 
 function notify(recipientId: string, type: NotificationType, message: string, entityData?: Record<string, any>) {
@@ -126,6 +142,7 @@ function notify(recipientId: string, type: NotificationType, message: string, en
   if (recipientId === actorId) return; // Don't notify yourself
   db.insertNotification({ recipientId, actorId, type, message, entityData }).catch(console.error);
   sendTelegram([recipientId], message, entityData);
+  sendEmail([recipientId], type, message, entityData);
 }
 
 interface DataState {
