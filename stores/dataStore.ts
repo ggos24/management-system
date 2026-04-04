@@ -96,6 +96,14 @@ function diffTaskFields(
   return entries;
 }
 
+/** Collect all person IDs on a task (assignees + editors + designers), deduplicated. */
+function getAllTaskPeople(task: Task): string[] {
+  const ids = new Set<string>(task.assigneeIds);
+  task.contentInfo?.editorIds?.forEach((id) => ids.add(id));
+  task.contentInfo?.designerIds?.forEach((id) => ids.add(id));
+  return [...ids];
+}
+
 const PRIORITY_EMOJI: Record<string, string> = { high: '🔴', medium: '🟡', low: '🟢' };
 
 function sendTelegram(recipientIds: string[], message: string, entityData?: Record<string, any>) {
@@ -127,16 +135,11 @@ function sendEmail(recipientIds: string[], type: NotificationType, message: stri
 
 function notifyMany(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
   const actorId = getCurrentUserId();
-  console.log('[notifyMany]', { type, recipientIds, actorId });
   // Filter out self-notifications
   const recipients = recipientIds.filter((id) => id !== actorId);
-  if (recipients.length === 0) {
-    console.log('[notifyMany] no recipients after filtering');
-    return;
-  }
-  console.log('[notifyMany] sending to', recipients);
+  if (recipients.length === 0) return;
   db.insertNotifications(recipients.map((recipientId) => ({ recipientId, actorId, type, message, entityData }))).catch(
-    (err) => console.error('[notifyMany] insertNotifications failed:', err),
+    console.error,
   );
   sendTelegram(recipients, message, entityData);
   sendEmail(recipients, type, message, entityData);
@@ -471,15 +474,15 @@ export const useDataStore = create<DataState>((set, get) => ({
       logTaskActivity(taskId, [{ field: 'status', oldValue: task.status, newValue: newStatus }]);
     }
 
-    // Notify all task assignees about status change
-    if (task && task.assigneeIds.length > 0) {
+    // Notify all people on task about status change
+    const statusPeople = task ? getAllTaskPeople(task) : [];
+    if (task && statusPeople.length > 0) {
       const actorName = getCurrentUserName();
-      notifyMany(
-        task.assigneeIds,
-        'task_status_changed',
-        `${actorName} changed "${task.title}" status to ${newStatus}`,
-        { taskId, teamId: task.teamId, priority: task.priority },
-      );
+      notifyMany(statusPeople, 'task_status_changed', `${actorName} changed "${task.title}" status to ${newStatus}`, {
+        taskId,
+        teamId: task.teamId,
+        priority: task.priority,
+      });
     }
   },
 
@@ -497,30 +500,32 @@ export const useDataStore = create<DataState>((set, get) => ({
     // Log activity
     if (oldTask) logTaskActivity(updatedTask.id, diffTaskFields(oldTask, updatedTask));
 
-    // Notify assignees about changes
+    // Notify all people (assignees + editors + designers) about changes
     if (oldTask) {
       const actorName = getCurrentUserName();
+      const allNewPeople = getAllTaskPeople(updatedTask);
+      const allOldPeople = getAllTaskPeople(oldTask);
 
-      // Notify newly added assignees
-      const newAssignees = updatedTask.assigneeIds.filter((id) => !oldTask.assigneeIds.includes(id));
-      if (newAssignees.length > 0) {
-        notifyMany(newAssignees, 'task_assigned', `${actorName} assigned you to "${updatedTask.title}"`, {
+      // Notify newly added people
+      const newPeople = allNewPeople.filter((id) => !allOldPeople.includes(id));
+      if (newPeople.length > 0) {
+        notifyMany(newPeople, 'task_assigned', `${actorName} assigned you to "${updatedTask.title}"`, {
           taskId: updatedTask.id,
           teamId: updatedTask.teamId,
           priority: updatedTask.priority,
         });
       }
 
-      // Notify removed assignees
-      const removedAssignees = oldTask.assigneeIds.filter((id) => !updatedTask.assigneeIds.includes(id));
-      if (removedAssignees.length > 0) {
-        notifyMany(removedAssignees, 'task_unassigned', `${actorName} removed you from "${updatedTask.title}"`, {
+      // Notify removed people
+      const removedPeople = allOldPeople.filter((id) => !allNewPeople.includes(id));
+      if (removedPeople.length > 0) {
+        notifyMany(removedPeople, 'task_unassigned', `${actorName} removed you from "${updatedTask.title}"`, {
           taskId: updatedTask.id,
           teamId: updatedTask.teamId,
         });
       }
 
-      // Detect meaningful field changes and notify all current assignees
+      // Detect meaningful field changes and notify all current people
       const changes: string[] = [];
       if (oldTask.title !== updatedTask.title) changes.push('title');
       if (oldTask.priority !== updatedTask.priority) changes.push('priority');
@@ -530,8 +535,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       if (JSON.stringify(oldTask.customFieldValues) !== JSON.stringify(updatedTask.customFieldValues))
         changes.push('fields');
 
-      if (changes.length > 0 && updatedTask.assigneeIds.length > 0) {
-        const updateRecipients = updatedTask.assigneeIds.filter((id) => !newAssignees.includes(id));
+      if (changes.length > 0 && allNewPeople.length > 0) {
+        const updateRecipients = allNewPeople.filter((id) => !newPeople.includes(id));
         if (updateRecipients.length > 0) {
           notifyMany(
             updateRecipients,
@@ -570,10 +575,11 @@ export const useDataStore = create<DataState>((set, get) => ({
       });
     });
 
-    // Notify all task assignees about deletion
-    if (task.assigneeIds.length > 0) {
+    // Notify all people on task about deletion
+    const deletePeople = getAllTaskPeople(task);
+    if (deletePeople.length > 0) {
       const actorName = getCurrentUserName();
-      notifyMany(task.assigneeIds, 'task_deleted', `${actorName} deleted "${task.title}"`, {
+      notifyMany(deletePeople, 'task_deleted', `${actorName} deleted "${task.title}"`, {
         teamId: task.teamId,
       });
     }
@@ -669,32 +675,34 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
 
     const actorName = getCurrentUserName();
-    console.log('[saveTask] notify check', { isNew, assigneeIds: newTask.assigneeIds, actorName });
+    const allNewPeople = getAllTaskPeople(newTask);
 
     if (isNew) {
-      // Notify assignees when a new task is created
-      if (newTask.assigneeIds.length > 0) {
-        console.log('[saveTask] calling notifyMany for new task');
-        notifyMany(newTask.assigneeIds, 'task_assigned', `${actorName} assigned you to "${newTask.title}"`, {
+      // Notify all people on a new task (assignees + editors + designers)
+      if (allNewPeople.length > 0) {
+        notifyMany(allNewPeople, 'task_assigned', `${actorName} assigned you to "${newTask.title}"`, {
           taskId: newTask.id,
           teamId: newTask.teamId,
           priority: newTask.priority,
         });
       }
     } else if (existingTask) {
-      // Notify about changes on existing task (mirrors updateTask logic)
-      const newAssignees = newTask.assigneeIds.filter((id) => !existingTask.assigneeIds.includes(id));
-      if (newAssignees.length > 0) {
-        notifyMany(newAssignees, 'task_assigned', `${actorName} assigned you to "${newTask.title}"`, {
+      const allOldPeople = getAllTaskPeople(existingTask);
+
+      // Notify newly added people
+      const newPeople = allNewPeople.filter((id) => !allOldPeople.includes(id));
+      if (newPeople.length > 0) {
+        notifyMany(newPeople, 'task_assigned', `${actorName} assigned you to "${newTask.title}"`, {
           taskId: newTask.id,
           teamId: newTask.teamId,
           priority: newTask.priority,
         });
       }
 
-      const removedAssignees = existingTask.assigneeIds.filter((id) => !newTask.assigneeIds.includes(id));
-      if (removedAssignees.length > 0) {
-        notifyMany(removedAssignees, 'task_unassigned', `${actorName} removed you from "${newTask.title}"`, {
+      // Notify removed people
+      const removedPeople = allOldPeople.filter((id) => !allNewPeople.includes(id));
+      if (removedPeople.length > 0) {
+        notifyMany(removedPeople, 'task_unassigned', `${actorName} removed you from "${newTask.title}"`, {
           taskId: newTask.id,
           teamId: newTask.teamId,
         });
@@ -709,8 +717,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       if (JSON.stringify(existingTask.customFieldValues) !== JSON.stringify(newTask.customFieldValues))
         changes.push('fields');
 
-      if (changes.length > 0 && newTask.assigneeIds.length > 0) {
-        const updateRecipients = newTask.assigneeIds.filter((id) => !newAssignees.includes(id));
+      if (changes.length > 0 && allNewPeople.length > 0) {
+        const updateRecipients = allNewPeople.filter((id) => !newPeople.includes(id));
         if (updateRecipients.length > 0) {
           notifyMany(
             updateRecipients,
