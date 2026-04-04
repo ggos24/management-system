@@ -34,6 +34,7 @@ Deno.serve(async (req) => {
     // Verify caller is authenticated
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
+      console.error('send-email: missing Authorization header');
       return new Response(JSON.stringify({ error: 'Missing authorization header' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -46,6 +47,11 @@ Deno.serve(async (req) => {
     const senderName = Deno.env.get('SENDPULSE_SENDER_NAME') || 'U24 Media';
 
     if (!clientId || !clientSecret || !senderEmail) {
+      console.error('send-email: missing env vars', {
+        clientId: !!clientId,
+        clientSecret: !!clientSecret,
+        senderEmail: !!senderEmail,
+      });
       return new Response(JSON.stringify({ error: 'Email not configured' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -63,11 +69,14 @@ Deno.serve(async (req) => {
       error: authError,
     } = await adminClient.auth.getUser(jwt);
     if (authError || !user) {
+      console.error('send-email: JWT verification failed', authError?.message);
       return new Response(JSON.stringify({ error: 'Invalid authentication' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    console.log('send-email: authenticated as', user.email);
 
     const { recipientIds, subject, message, link } = await req.json();
     if (!recipientIds?.length || !message || !subject) {
@@ -125,10 +134,14 @@ Deno.serve(async (req) => {
 </body>
 </html>`;
 
+    // Base64 encode with UTF-8 support
+    const htmlBase64 = btoa(String.fromCharCode(...new TextEncoder().encode(html)));
+    const textBase64 = btoa(String.fromCharCode(...new TextEncoder().encode(message)));
+
     // Send via SendPulse SMTP API
     let sent = 0;
     await Promise.allSettled(
-      emails.map(async (email) => {
+      emails.map(async (recipientEmail) => {
         const res = await fetch(`${SENDPULSE_API}/smtp/emails`, {
           method: 'POST',
           headers: {
@@ -139,13 +152,14 @@ Deno.serve(async (req) => {
             email: {
               subject,
               from: { name: senderName, email: senderEmail },
-              to: [{ email }],
-              html: btoa(html),
+              to: [{ email: recipientEmail }],
+              html: htmlBase64,
+              text: textBase64,
             },
           }),
         });
         if (res.ok) sent++;
-        else console.error(`SendPulse send failed for ${email}: ${res.status}`, await res.text());
+        else console.error(`SendPulse send failed for ${recipientEmail}: ${res.status}`, await res.text());
       }),
     );
 
