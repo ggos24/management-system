@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, X, Check, Plus } from 'lucide-react';
+import { ChevronDown, X, Check, Plus, Search } from 'lucide-react';
 
 export interface MultiSelectOptionGroup {
   label: string;
@@ -24,6 +24,7 @@ interface MultiSelectProps {
   compact?: boolean;
   maxVisible?: number;
   renderTrigger?: (onClick: () => void, selected: string[]) => React.ReactNode;
+  searchable?: boolean;
 }
 
 export const MultiSelect: React.FC<MultiSelectProps> = ({
@@ -41,11 +42,14 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   compact,
   maxVisible,
   renderTrigger,
+  searchable,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [newItem, setNewItem] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
 
   const updatePosition = useCallback(() => {
@@ -68,22 +72,46 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
         (!dropdownRef.current || !dropdownRef.current.contains(target))
       ) {
         setIsOpen(false);
+        setSearchQuery('');
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
+  useLayoutEffect(() => {
+    if (isOpen) updatePosition();
+  }, [isOpen, updatePosition]);
+
   useEffect(() => {
     if (!isOpen) return;
-    updatePosition();
     const handleScroll = () => updatePosition();
     window.addEventListener('scroll', handleScroll, true);
     return () => window.removeEventListener('scroll', handleScroll, true);
   }, [isOpen, updatePosition]);
 
+  useEffect(() => {
+    if (isOpen && searchable) {
+      requestAnimationFrame(() => searchInputRef.current?.focus());
+    }
+  }, [isOpen, searchable]);
+
   // Flat options list for chip label lookup (from groups or options)
   const allOptions = groups ? groups.flatMap((g) => g.options) : options;
+
+  const filteredOptions = useMemo(() => {
+    if (!searchable || !searchQuery.trim()) return options;
+    const q = searchQuery.toLowerCase();
+    return options.filter((opt) => opt.label.toLowerCase().includes(q));
+  }, [options, searchQuery, searchable]);
+
+  const filteredGroups = useMemo(() => {
+    if (!searchable || !searchQuery.trim() || !groups) return groups;
+    const q = searchQuery.toLowerCase();
+    return groups
+      .map((g) => ({ ...g, options: g.options.filter((opt) => opt.label.toLowerCase().includes(q)) }))
+      .filter((g) => g.options.length > 0);
+  }, [groups, searchQuery, searchable]);
 
   const toggleSelection = (value: string, group?: MultiSelectOptionGroup) => {
     const isSelected = !selected.includes(value);
@@ -111,7 +139,10 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
       const rect = triggerRef.current.getBoundingClientRect();
       setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
     }
-    setIsOpen((v) => !v);
+    setIsOpen((v) => {
+      if (v) setSearchQuery('');
+      return !v;
+    });
   };
 
   return (
@@ -125,7 +156,14 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
         </div>
       )}
       {renderTrigger ? (
-        renderTrigger(() => setIsOpen((v) => !v), selected)
+        renderTrigger(
+          () =>
+            setIsOpen((v) => {
+              if (v) setSearchQuery('');
+              return !v;
+            }),
+          selected,
+        )
       ) : (
         <div
           onClick={toggle}
@@ -187,10 +225,40 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
               left: dropdownPos.left,
               width: Math.max(dropdownPos.width, 150),
             }}
-            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-[10000] max-h-60 overflow-y-auto p-1 animate-in fade-in zoom-in-95 duration-100"
+            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-[10000] max-h-60 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100"
           >
-            {groups
-              ? groups.map((group, gi) => (
+            {searchable && (
+              <div className="sticky top-0 z-10 p-1.5 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700 flex-shrink-0">
+                <div className="relative">
+                  <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" />
+                  <input
+                    ref={searchInputRef}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search..."
+                    className="w-full pl-7 pr-7 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded outline-none focus:ring-1 focus:ring-zinc-400"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSearchQuery('');
+                        searchInputRef.current?.focus();
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+            <div className="overflow-y-auto p-1 flex-1">
+              {(filteredGroups ?? filteredOptions).length === 0 && searchQuery ? (
+                <div className="px-3 py-4 text-xs text-zinc-400 text-center">No results found</div>
+              ) : filteredGroups ? (
+                filteredGroups.map((group, gi) => (
                   <div key={group.teamId}>
                     {gi > 0 && <div className="border-t border-zinc-100 dark:border-zinc-700 my-1" />}
                     <div
@@ -201,34 +269,37 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                     {group.options.map((opt) => renderOption(opt, group))}
                   </div>
                 ))
-              : options.map((opt) => renderOption(opt))}
-            {onAdd && (
-              <div className="border-t border-zinc-100 dark:border-zinc-800 mt-1 pt-1 p-1 flex gap-1">
-                <input
-                  value={newItem}
-                  onChange={(e) => setNewItem(e.target.value)}
-                  className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-zinc-400"
-                  placeholder="Add new..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && newItem) {
-                      onAdd(newItem);
-                      setNewItem('');
-                    }
-                  }}
-                />
-                <button
-                  onClick={() => {
-                    if (newItem) {
-                      onAdd(newItem);
-                      setNewItem('');
-                    }
-                  }}
-                  className="p-1 bg-black dark:bg-white text-white dark:text-black rounded hover:opacity-90"
-                >
-                  <Plus size={12} />
-                </button>
-              </div>
-            )}
+              ) : (
+                filteredOptions.map((opt) => renderOption(opt))
+              )}
+              {onAdd && (
+                <div className="border-t border-zinc-100 dark:border-zinc-800 mt-1 pt-1 p-1 flex gap-1">
+                  <input
+                    value={newItem}
+                    onChange={(e) => setNewItem(e.target.value)}
+                    className="flex-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-zinc-400"
+                    placeholder="Add new..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newItem) {
+                        onAdd(newItem);
+                        setNewItem('');
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => {
+                      if (newItem) {
+                        onAdd(newItem);
+                        setNewItem('');
+                      }
+                    }}
+                    className="p-1 bg-black dark:bg-white text-white dark:text-black rounded hover:opacity-90"
+                  >
+                    <Plus size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>,
           document.body,
         )}

@@ -739,6 +739,7 @@ export const TaskModal: React.FC = () => {
                 selected={taskModalData.assigneeIds || []}
                 onChange={(ids) => setTaskModalData({ ...taskModalData, assigneeIds: ids })}
                 placeholder={`Select ${getAuthorLabel()}...`}
+                searchable
               />
               <MultiSelect
                 icon={Eye}
@@ -750,6 +751,7 @@ export const TaskModal: React.FC = () => {
                   setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, editorIds: ids } })
                 }
                 placeholder={`Select ${getEditorLabel()}...`}
+                searchable
               />
 
               <CustomSelect
@@ -1052,6 +1054,7 @@ export const TaskModal: React.FC = () => {
                         value={fieldValues[prop.id] || ''}
                         onChange={(val) => handleFieldChange(prop.id, val)}
                         placeholder="Select person..."
+                        searchable
                       />
                     )}
                     {prop.type === 'tags' && (

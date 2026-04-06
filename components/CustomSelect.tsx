@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, Check, Plus } from 'lucide-react';
+import { ChevronDown, Check, Plus, Search, X } from 'lucide-react';
 
 export interface SelectOption {
   value: string;
@@ -20,6 +20,7 @@ interface CustomSelectProps {
   renderValue?: (value: string) => React.ReactNode;
   compact?: boolean;
   dropdownMinWidth?: number;
+  searchable?: boolean;
 }
 
 export const CustomSelect: React.FC<CustomSelectProps> = ({
@@ -35,11 +36,14 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   renderValue,
   compact,
   dropdownMinWidth = 150,
+  searchable,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [newItem, setNewItem] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
   const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
 
   const updatePosition = useCallback(() => {
@@ -59,6 +63,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         !dropdownRef.current.contains(event.target as Node)
       ) {
         setIsOpen(false);
+        setSearchQuery('');
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -69,12 +74,29 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     };
   }, [isOpen, updatePosition]);
 
+  useEffect(() => {
+    if (isOpen && searchable) {
+      requestAnimationFrame(() => searchInputRef.current?.focus());
+    }
+  }, [isOpen, searchable]);
+
   const normalizeOption = (opt: string | SelectOption): SelectOption => {
     if (typeof opt === 'string') return { value: opt, label: opt };
     return opt;
   };
 
-  const selectedOption = options.map(normalizeOption).find((o) => o.value === value);
+  const normalizedOptions = useMemo(() => options.map(normalizeOption), [options]);
+
+  const filteredOptions = useMemo(() => {
+    if (!searchable || !searchQuery.trim()) return normalizedOptions;
+    const q = searchQuery.toLowerCase();
+    return normalizedOptions.filter((opt) => {
+      const text = typeof opt.label === 'string' ? opt.label : String(opt.value);
+      return text.toLowerCase().includes(q);
+    });
+  }, [normalizedOptions, searchQuery, searchable]);
+
+  const selectedOption = normalizedOptions.find((o) => o.value === value);
 
   return (
     <div className={`relative space-y-1 ${className || ''}`} ref={triggerRef}>
@@ -89,6 +111,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       <div
         onClick={() => {
           if (!isOpen) updatePosition();
+          else setSearchQuery('');
           setIsOpen(!isOpen);
         }}
         className={
@@ -116,53 +139,84 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
               left: dropdownPos.left,
               width: Math.max(dropdownPos.width, dropdownMinWidth),
             }}
-            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-[10000] max-h-60 overflow-y-auto p-1 animate-in fade-in zoom-in-95 duration-100"
+            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-[10000] max-h-60 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100"
           >
-            {options.map((rawOpt) => {
-              const opt = normalizeOption(rawOpt);
-              return (
-                <div
-                  key={opt.value}
-                  onClick={() => {
-                    onChange(opt.value);
-                    setIsOpen(false);
-                  }}
-                  className={`px-2 py-2.5 md:py-1.5 rounded text-sm cursor-pointer flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-700 ${value === opt.value ? 'bg-zinc-50 dark:bg-zinc-700/50 font-semibold' : ''}`}
-                >
-                  <span className="truncate">{opt.label}</span>
-                  {value === opt.value && <Check size={14} className="text-black dark:text-white flex-shrink-0" />}
+            {searchable && (
+              <div className="sticky top-0 z-10 p-1.5 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700 flex-shrink-0">
+                <div className="relative">
+                  <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" />
+                  <input
+                    ref={searchInputRef}
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Search..."
+                    className="w-full pl-7 pr-7 py-1.5 text-xs bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded outline-none focus:ring-1 focus:ring-zinc-400"
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  {searchQuery && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSearchQuery('');
+                        searchInputRef.current?.focus();
+                      }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600"
+                    >
+                      <X size={10} />
+                    </button>
+                  )}
                 </div>
-              );
-            })}
-            {onAdd && (
-              <div className="border-t border-zinc-100 dark:border-zinc-700 mt-1 pt-1 p-1 flex gap-1">
-                <input
-                  value={newItem}
-                  onChange={(e) => setNewItem(e.target.value)}
-                  className="flex-1 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-zinc-400"
-                  placeholder="Add new..."
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && newItem) {
-                      onAdd(newItem);
-                      setNewItem('');
-                    }
-                  }}
-                  onClick={(e) => e.stopPropagation()}
-                />
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (newItem) {
-                      onAdd(newItem);
-                      setNewItem('');
-                    }
-                  }}
-                  className="p-1 bg-black dark:bg-white text-white dark:text-black rounded hover:opacity-90"
-                >
-                  <Plus size={12} />
-                </button>
               </div>
             )}
+            <div className="overflow-y-auto p-1 flex-1">
+              {filteredOptions.length === 0 && searchQuery ? (
+                <div className="px-3 py-4 text-xs text-zinc-400 text-center">No results found</div>
+              ) : (
+                filteredOptions.map((opt) => (
+                  <div
+                    key={opt.value}
+                    onClick={() => {
+                      onChange(opt.value);
+                      setIsOpen(false);
+                      setSearchQuery('');
+                    }}
+                    className={`px-2 py-2.5 md:py-1.5 rounded text-sm cursor-pointer flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-700 ${value === opt.value ? 'bg-zinc-50 dark:bg-zinc-700/50 font-semibold' : ''}`}
+                  >
+                    <span className="truncate">{opt.label}</span>
+                    {value === opt.value && <Check size={14} className="text-black dark:text-white flex-shrink-0" />}
+                  </div>
+                ))
+              )}
+              {onAdd && (
+                <div className="border-t border-zinc-100 dark:border-zinc-700 mt-1 pt-1 p-1 flex gap-1">
+                  <input
+                    value={newItem}
+                    onChange={(e) => setNewItem(e.target.value)}
+                    className="flex-1 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded px-2 py-1 text-xs outline-none focus:ring-1 focus:ring-zinc-400"
+                    placeholder="Add new..."
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && newItem) {
+                        onAdd(newItem);
+                        setNewItem('');
+                      }
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (newItem) {
+                        onAdd(newItem);
+                        setNewItem('');
+                      }
+                    }}
+                    className="p-1 bg-black dark:bg-white text-white dark:text-black rounded hover:opacity-90"
+                  >
+                    <Plus size={12} />
+                  </button>
+                </div>
+              )}
+            </div>
           </div>,
           document.body,
         )}

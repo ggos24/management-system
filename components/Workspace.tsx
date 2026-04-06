@@ -2108,6 +2108,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                 placeholder="—"
                                                 className="min-w-0"
                                                 compact
+                                                searchable
                                                 renderTrigger={(onClick, sIds) => {
                                                   const people = members.filter((m) => sIds.includes(m.id));
                                                   return (
