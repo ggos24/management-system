@@ -30,5 +30,17 @@ export const AbsenceStatsCard: React.FC<{ stats: AbsenceStats }> = ({ stats }) =
         {stats.daysOff} <span className="text-xs font-normal opacity-70">days</span>
       </p>
     </div>
+    <div className="p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-100 dark:border-yellow-900/40">
+      <p className="text-xs font-semibold text-yellow-800 dark:text-yellow-300 uppercase">Free</p>
+      <p className="text-xl font-bold text-yellow-900 dark:text-yellow-100 mt-1">
+        {stats.freeDays} <span className="text-xs font-normal opacity-70">days</span>
+      </p>
+    </div>
+    <div className="p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-100 dark:border-purple-900/40">
+      <p className="text-xs font-semibold text-purple-800 dark:text-purple-300 uppercase">Busy</p>
+      <p className="text-xl font-bold text-purple-900 dark:text-purple-100 mt-1">
+        {stats.busyDays} <span className="text-xs font-normal opacity-70">days</span>
+      </p>
+    </div>
   </div>
 );
