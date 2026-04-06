@@ -301,7 +301,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // --- Data-driven table columns with persistent ordering ---
   const allTableColumns = useMemo(() => {
     const base: { key: string; label: string; className: string }[] = [
-      { key: 'title', label: 'Title', className: '' },
+      { key: 'title', label: 'Title', className: 'w-[200px]' },
       { key: 'type', label: 'Type', className: 'w-28' },
       {
         key: 'assignee',
