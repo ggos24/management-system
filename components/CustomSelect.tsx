@@ -21,6 +21,7 @@ interface CustomSelectProps {
   compact?: boolean;
   dropdownMinWidth?: number;
   searchable?: boolean;
+  highlightValue?: string;
 }
 
 export const CustomSelect: React.FC<CustomSelectProps> = ({
@@ -37,6 +38,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   compact,
   dropdownMinWidth = 150,
   searchable,
+  highlightValue,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [newItem, setNewItem] = useState('');
@@ -91,10 +93,11 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     if (!searchable || !searchQuery.trim()) return normalizedOptions;
     const q = searchQuery.toLowerCase();
     return normalizedOptions.filter((opt) => {
+      if (opt.value === value) return true;
       const text = typeof opt.label === 'string' ? opt.label : String(opt.value);
       return text.toLowerCase().includes(q);
     });
-  }, [normalizedOptions, searchQuery, searchable]);
+  }, [normalizedOptions, searchQuery, searchable, value]);
 
   const selectedOption = normalizedOptions.find((o) => o.value === value);
 
@@ -180,7 +183,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                       setIsOpen(false);
                       setSearchQuery('');
                     }}
-                    className={`px-2 py-2.5 md:py-1.5 rounded text-sm cursor-pointer flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-700 ${value === opt.value ? 'bg-zinc-50 dark:bg-zinc-700/50 font-semibold' : ''}`}
+                    className={`px-2 py-2.5 md:py-1.5 rounded text-sm cursor-pointer flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-700 ${value === opt.value ? 'bg-zinc-50 dark:bg-zinc-700/50 font-semibold' : opt.value === highlightValue ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
                   >
                     <span className="truncate">{opt.label}</span>
                     {value === opt.value && <Check size={14} className="text-black dark:text-white flex-shrink-0" />}

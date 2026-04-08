@@ -274,6 +274,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
 
+  const sortedMembers = useMemo(
+    () => [...members].sort((a, b) => (a.id === currentUserId ? -1 : b.id === currentUserId ? 1 : 0)),
+    [members, currentUserId],
+  );
+
   // Column sorting state (tasks within groups)
   const [sortColumn, setSortColumn] = useState<string | null>(null);
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('asc');
@@ -1060,10 +1065,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
             <div className="w-[140px]">
               <CustomSelect
                 icon={User}
-                options={[{ value: 'all', label: 'Person' }, ...members.map((m) => ({ value: m.id, label: m.name }))]}
+                options={[
+                  { value: 'all', label: 'All People' },
+                  ...sortedMembers.map((m) => ({ value: m.id, label: m.name })),
+                ]}
                 value={filterPerson}
                 onChange={setFilterPerson}
                 placeholder="Person"
+                searchable
+                highlightValue={currentUserId}
               />
             </div>
           )}
@@ -2102,13 +2112,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               <MultiSelect
                                                 icon={personKey === 'editor' ? Eye : User}
                                                 label=""
-                                                options={members.map((m) => ({ value: m.id, label: m.name }))}
+                                                options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
                                                 selected={selectedIds}
                                                 onChange={handleChange}
                                                 placeholder="—"
                                                 className="min-w-0"
                                                 compact
                                                 searchable
+                                                highlightValue={currentUserId}
                                                 renderTrigger={(onClick, sIds) => {
                                                   const people = members.filter((m) => sIds.includes(m.id));
                                                   return (

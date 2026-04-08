@@ -76,6 +76,11 @@ export const TaskModal: React.FC = () => {
 
   const currentUser = useAuthStore((s) => s.currentUser);
 
+  const sortedMembers = useMemo(
+    () => [...members].sort((a, b) => (a.id === currentUser?.id ? -1 : b.id === currentUser?.id ? 1 : 0)),
+    [members, currentUser?.id],
+  );
+
   // Track initial state to detect unsaved changes
   const initialDataRef = useRef<string>('');
 
@@ -735,23 +740,25 @@ export const TaskModal: React.FC = () => {
                 icon={UserIcon}
                 label={getAuthorLabel()}
                 hint={isManagement ? 'Person responsible for execution' : 'Person who creates the content'}
-                options={members.map((m) => ({ value: m.id, label: m.name }))}
+                options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
                 selected={taskModalData.assigneeIds || []}
                 onChange={(ids) => setTaskModalData({ ...taskModalData, assigneeIds: ids })}
                 placeholder={`Select ${getAuthorLabel()}...`}
                 searchable
+                highlightValue={currentUser?.id}
               />
               <MultiSelect
                 icon={Eye}
                 label={getEditorLabel()}
                 hint={isManagement ? 'Person who oversees the task' : 'Person who reviews and approves'}
-                options={members.map((m) => ({ value: m.id, label: m.name }))}
+                options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
                 selected={taskModalData.contentInfo?.editorIds || []}
                 onChange={(ids) =>
                   setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, editorIds: ids } })
                 }
                 placeholder={`Select ${getEditorLabel()}...`}
                 searchable
+                highlightValue={currentUser?.id}
               />
 
               <CustomSelect
@@ -1050,11 +1057,12 @@ export const TaskModal: React.FC = () => {
                     )}
                     {prop.type === 'person' && (
                       <CustomSelect
-                        options={members.map((m) => ({ value: m.id, label: m.name }))}
+                        options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
                         value={fieldValues[prop.id] || ''}
                         onChange={(val) => handleFieldChange(prop.id, val)}
                         placeholder="Select person..."
                         searchable
+                        highlightValue={currentUser?.id}
                       />
                     )}
                     {prop.type === 'tags' && (

@@ -25,6 +25,7 @@ interface MultiSelectProps {
   maxVisible?: number;
   renderTrigger?: (onClick: () => void, selected: string[]) => React.ReactNode;
   searchable?: boolean;
+  highlightValue?: string;
 }
 
 export const MultiSelect: React.FC<MultiSelectProps> = ({
@@ -43,6 +44,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   maxVisible,
   renderTrigger,
   searchable,
+  highlightValue,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [newItem, setNewItem] = useState('');
@@ -127,7 +129,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
     <div
       key={`${group?.teamId || 'flat'}-${opt.value}`}
       onClick={() => toggleSelection(opt.value, group)}
-      className={`px-2 py-1.5 rounded text-sm cursor-pointer flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-800 ${selected.includes(opt.value) ? 'bg-zinc-50 dark:bg-zinc-800/50 font-semibold' : ''}`}
+      className={`px-2 py-1.5 rounded text-sm cursor-pointer flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-800 ${selected.includes(opt.value) ? 'bg-zinc-50 dark:bg-zinc-800/50 font-semibold' : opt.value === highlightValue ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
     >
       <span>{opt.label}</span>
       {selected.includes(opt.value) && <Check size={12} className="text-black dark:text-white" />}
