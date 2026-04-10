@@ -203,6 +203,9 @@ Subscribed tables: `tasks`, `profiles`, `absences`, `shifts`, `notifications`. S
 
 - **Prettier**: 120 char width, single quotes, semicolons, trailing commas (all), 2-space indent
 - **ESLint**: `@typescript-eslint/no-explicit-any` = warn, `@typescript-eslint/no-unused-vars` = warn (prefix `_` to suppress)
+- **ESLint strict React rules** (errors, not warnings):
+  - `react-hooks/set-state-in-effect` — Do NOT call `setState` directly in a `useEffect` body. Move state resets into event handlers instead of reacting to state changes in effects.
+  - `react-hooks/refs` — Do NOT pass functions that read `.current` from refs to render-prop callbacks (e.g. `renderTrigger`). The linter traces ref access through closures. Use `useLayoutEffect` for synchronous ref reads after state changes instead.
 - **Imports**: No path aliases used in practice (despite `@/*` config). Use relative paths.
 - **Exports**: Named exports for components. `export default` only on page-level components (Dashboard, Workspace, Schedule, LoginPage).
 - **No barrel exports** at component root — import directly from file, except `components/ui/index.ts`.
