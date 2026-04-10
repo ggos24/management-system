@@ -60,6 +60,9 @@ export function useRealtimeSync() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
         debouncedFetchMembers();
       })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'team_members' }, () => {
+        debouncedFetchMembers();
+      })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'absences' }, () => {
         debouncedFetchAbsences();
       })

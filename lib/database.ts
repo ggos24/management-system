@@ -17,14 +17,18 @@ import {
 
 // === Mappers ===
 
-function mapProfile(row: any): Member {
+function mapProfile(row: any, teamIds: string[] = []): Member {
+  const primaryTeamId = row.team_id || '';
+  // Ensure the primary team (profiles.team_id) sorts first in teamIds if both are present
+  const ordered = primaryTeamId ? [primaryTeamId, ...teamIds.filter((id) => id !== primaryTeamId)] : teamIds.slice();
   return {
     id: row.id,
     name: row.name,
     role: row.role,
     jobTitle: row.job_title || '',
     avatar: row.avatar || '',
-    teamId: row.team_id || '',
+    teamId: primaryTeamId,
+    teamIds: ordered,
     status: row.status || 'active',
     scheduleSortOrder: row.schedule_sort_order ?? 0,
     emailNotifications: row.email_notifications ?? true,
@@ -89,6 +93,7 @@ function mapShift(row: any): Shift {
   return {
     id: row.id,
     memberId: row.member_id,
+    teamId: row.team_id || '',
     date: row.date,
     startTime: row.start_time,
     endTime: row.end_time,
@@ -109,11 +114,25 @@ function mapLog(row: any): LogEntry {
 // === Fetch Functions ===
 
 export async function fetchMembers(): Promise<Member[]> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('id, name, role, job_title, avatar, team_id, status, schedule_sort_order, email_notifications');
-  if (error) throw error;
-  return (data || []).map(mapProfile);
+  const [{ data: profileRows, error: profileError }, { data: memberRows, error: memberError }] = await Promise.all([
+    supabase
+      .from('profiles')
+      .select('id, name, role, job_title, avatar, team_id, status, schedule_sort_order, email_notifications'),
+    supabase.from('team_members').select('profile_id, team_id, is_primary'),
+  ]);
+  if (profileError) throw profileError;
+  if (memberError) throw memberError;
+
+  // Build profile_id -> teamIds[], primary first
+  const byProfile = new Map<string, string[]>();
+  for (const row of memberRows || []) {
+    const list = byProfile.get(row.profile_id) || [];
+    if (row.is_primary) list.unshift(row.team_id);
+    else list.push(row.team_id);
+    byProfile.set(row.profile_id, list);
+  }
+
+  return (profileRows || []).map((row) => mapProfile(row, byProfile.get(row.id) || []));
 }
 
 export async function fetchTeams(): Promise<Team[]> {
@@ -332,7 +351,17 @@ export async function addPlacement(name: string): Promise<void> {
 export async function findProfileByAuthId(authUserId: string): Promise<Member | null> {
   const { data, error } = await supabase.from('profiles').select('*').eq('auth_user_id', authUserId).single();
   if (error || !data) return null;
-  return mapProfile(data);
+  // Hydrate teamIds from the junction so session-initiated loads carry full membership
+  const { data: memberships } = await supabase
+    .from('team_members')
+    .select('team_id, is_primary')
+    .eq('profile_id', data.id);
+  const teamIds: string[] = [];
+  for (const row of memberships || []) {
+    if (row.is_primary) teamIds.unshift(row.team_id);
+    else teamIds.push(row.team_id);
+  }
+  return mapProfile(data, teamIds);
 }
 
 // === Mutation Functions ===
@@ -573,6 +602,7 @@ export async function upsertShift(shift: Shift) {
   const row = {
     id: shift.id || undefined,
     member_id: shift.memberId,
+    team_id: shift.teamId,
     date: shift.date,
     start_time: shift.startTime,
     end_time: shift.endTime,
@@ -799,9 +829,68 @@ export async function updateProfileRole(memberId: string, role: string): Promise
   if (error) throw error;
 }
 
-export async function updateProfileTeam(memberId: string, teamId: string | null): Promise<void> {
-  const { error } = await supabase.from('profiles').update({ team_id: teamId }).eq('id', memberId);
-  if (error) throw error;
+/**
+ * Reconcile a member's team memberships to exactly `nextTeamIds`.
+ * The first entry is treated as the primary team — also written to profiles.team_id.
+ * An empty array removes all memberships and sets profiles.team_id to null.
+ */
+export async function setProfileTeams(memberId: string, nextTeamIds: string[]): Promise<void> {
+  // Fetch current memberships
+  const { data: current, error: fetchErr } = await supabase
+    .from('team_members')
+    .select('team_id, is_primary')
+    .eq('profile_id', memberId);
+  if (fetchErr) throw fetchErr;
+
+  const currentIds = new Set((current || []).map((r) => r.team_id));
+  const nextIds = new Set(nextTeamIds);
+  const toAdd = nextTeamIds.filter((id) => !currentIds.has(id));
+  const toRemove = (current || []).map((r) => r.team_id).filter((id) => !nextIds.has(id));
+  const nextPrimary = nextTeamIds[0] ?? null;
+
+  // Insert new memberships (as non-primary initially; primary is set in a dedicated step)
+  if (toAdd.length > 0) {
+    const { error } = await supabase
+      .from('team_members')
+      .insert(toAdd.map((teamId) => ({ team_id: teamId, profile_id: memberId, is_primary: false })));
+    if (error) throw error;
+  }
+
+  // Remove stale memberships
+  if (toRemove.length > 0) {
+    const { error } = await supabase.from('team_members').delete().eq('profile_id', memberId).in('team_id', toRemove);
+    if (error) throw error;
+  }
+
+  // Reconcile primary:
+  // 1. Clear any existing primary flag that isn't the new primary (avoids the partial unique index conflict)
+  // 2. Set the new primary (if any)
+  // 3. Update profiles.team_id cache
+  if (nextPrimary) {
+    const { error: clearErr } = await supabase
+      .from('team_members')
+      .update({ is_primary: false })
+      .eq('profile_id', memberId)
+      .neq('team_id', nextPrimary);
+    if (clearErr) throw clearErr;
+
+    const { error: setErr } = await supabase
+      .from('team_members')
+      .update({ is_primary: true })
+      .eq('profile_id', memberId)
+      .eq('team_id', nextPrimary);
+    if (setErr) throw setErr;
+  } else {
+    // No teams at all — clear every primary flag
+    const { error: clearErr } = await supabase
+      .from('team_members')
+      .update({ is_primary: false })
+      .eq('profile_id', memberId);
+    if (clearErr) throw clearErr;
+  }
+
+  const { error: profileErr } = await supabase.from('profiles').update({ team_id: nextPrimary }).eq('id', memberId);
+  if (profileErr) throw profileErr;
 }
 
 export async function updateProfileEmailNotifications(memberId: string, enabled: boolean): Promise<void> {

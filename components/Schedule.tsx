@@ -82,16 +82,18 @@ const Schedule: React.FC<ScheduleProps> = ({
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedCell, setSelectedCell] = useState<{
     member: Member;
+    teamId: string;
     day: number;
   } | null>(null);
 
   // Tab state: calendar vs pending requests
   const [activeTab, setActiveTab] = useState<'calendar' | 'pending'>('calendar');
 
-  // Drag Selection State
+  // Drag Selection State — keyed on (memberId, teamId) so selecting cells in
+  // one team row does not bleed into another team row for the same person.
   const [isDragging, setIsDragging] = useState(false);
-  const [dragStart, setDragStart] = useState<{ memberId: string; day: number } | null>(null);
-  const [dragEnd, setDragEnd] = useState<{ memberId: string; day: number } | null>(null);
+  const [dragStart, setDragStart] = useState<{ memberId: string; teamId: string; day: number } | null>(null);
+  const [dragEnd, setDragEnd] = useState<{ memberId: string; teamId: string; day: number } | null>(null);
 
   // Edit Modal State
   const [editType, setEditType] = useState<'absence' | 'shift'>('absence');
@@ -118,8 +120,8 @@ const Schedule: React.FC<ScheduleProps> = ({
   const [filterPerson, setFilterPerson] = useState('all');
   const [filterAbsenceType, setFilterAbsenceType] = useState('all');
 
-  // Ref to track touch-initiated member for drag selection
-  const touchMemberRef = useRef<Member | null>(null);
+  // Ref to track touch-initiated member + team for drag selection
+  const touchMemberRef = useRef<{ member: Member; teamId: string } | null>(null);
 
   // Correctly get days in month
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -156,26 +158,26 @@ const Schedule: React.FC<ScheduleProps> = ({
     );
   };
 
-  const getShiftForDay = (memberId: string, day: number) => {
+  const getShiftForDay = (memberId: string, teamId: string, day: number) => {
     const dateStr = getDateStr(day);
-    return shifts.find((s) => s.memberId === memberId && s.date === dateStr);
+    return shifts.find((s) => s.memberId === memberId && s.teamId === teamId && s.date === dateStr);
   };
 
-  const handleMouseDown = (member: Member, day: number) => {
+  const handleMouseDown = (member: Member, teamId: string, day: number) => {
     // Admins can click any row; others can only click their own row (for absences)
     if (!isAdmin(userRole) && member.id !== currentUserId) return;
     setIsDragging(true);
-    setDragStart({ memberId: member.id, day });
-    setDragEnd({ memberId: member.id, day });
+    setDragStart({ memberId: member.id, teamId, day });
+    setDragEnd({ memberId: member.id, teamId, day });
   };
 
-  const handleMouseEnter = (member: Member, day: number) => {
-    if (isDragging && dragStart && dragStart.memberId === member.id) {
-      setDragEnd({ memberId: member.id, day });
+  const handleMouseEnter = (member: Member, teamId: string, day: number) => {
+    if (isDragging && dragStart && dragStart.memberId === member.id && dragStart.teamId === teamId) {
+      setDragEnd({ memberId: member.id, teamId, day });
     }
   };
 
-  const handleMouseUp = (member: Member, day: number) => {
+  const handleMouseUp = (member: Member, teamId: string, day: number) => {
     if (!isDragging || !dragStart) return;
     setIsDragging(false);
 
@@ -189,9 +191,9 @@ const Schedule: React.FC<ScheduleProps> = ({
     setRangeEndDate(endStr);
 
     const existingAbsence = getAbsenceForDay(member.id, startDay);
-    const existingShift = getShiftForDay(member.id, startDay);
+    const existingShift = getShiftForDay(member.id, teamId, startDay);
 
-    setSelectedCell({ member, day: startDay });
+    setSelectedCell({ member, teamId, day: startDay });
 
     // Always pre-populate absence state
     if (existingAbsence) {
@@ -216,8 +218,11 @@ const Schedule: React.FC<ScheduleProps> = ({
       setEndTime('17:00');
     }
 
-    // Determine which tab to show (non-admins always get absence)
-    setEditType(!isAdmin(userRole) ? 'absence' : existingAbsence ? 'absence' : 'shift');
+    // Determine which tab to show. Non-admins always get absence, and the
+    // synthetic "No Team" group has no real team_id so shifts cannot be stored
+    // there — force absence mode for those rows.
+    const noTeamRow = !teamId || teamId === '__no_team__';
+    setEditType(noTeamRow ? 'absence' : !isAdmin(userRole) ? 'absence' : existingAbsence ? 'absence' : 'shift');
 
     // Reset decline mode
     setModalDeclineMode(false);
@@ -228,9 +233,9 @@ const Schedule: React.FC<ScheduleProps> = ({
   };
 
   // Touch event handlers for mobile drag-select
-  const handleTouchStart = (e: React.TouchEvent, member: Member, day: number) => {
-    touchMemberRef.current = member;
-    handleMouseDown(member, day);
+  const handleTouchStart = (e: React.TouchEvent, member: Member, teamId: string, day: number) => {
+    touchMemberRef.current = { member, teamId };
+    handleMouseDown(member, teamId, day);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
@@ -242,13 +247,13 @@ const Schedule: React.FC<ScheduleProps> = ({
     const cell = el.closest('[data-day]') as HTMLElement | null;
     if (cell && cell.dataset.day) {
       const day = parseInt(cell.dataset.day, 10);
-      handleMouseEnter(touchMemberRef.current, day);
+      handleMouseEnter(touchMemberRef.current.member, touchMemberRef.current.teamId, day);
     }
   };
 
-  const handleTouchEnd = (_e: React.TouchEvent, member: Member, day: number) => {
+  const handleTouchEnd = (_e: React.TouchEvent, member: Member, teamId: string, day: number) => {
     const finalDay = dragEnd?.day ?? day;
-    handleMouseUp(member, finalDay);
+    handleMouseUp(member, teamId, finalDay);
     touchMemberRef.current = null;
   };
 
@@ -259,6 +264,8 @@ const Schedule: React.FC<ScheduleProps> = ({
     if (editType === 'shift' && !isAdmin(userRole)) return;
     // Non-admins can only save absences for themselves
     if (editType === 'absence' && !isAdmin(userRole) && selectedCell.member.id !== currentUserId) return;
+    // Shifts require a concrete team (not the synthetic "No Team" row)
+    if (editType === 'shift' && (!selectedCell.teamId || selectedCell.teamId === '__no_team__')) return;
 
     if (editType === 'absence') {
       if (!rangeStartDate || !rangeEndDate) return;
@@ -279,10 +286,11 @@ const Schedule: React.FC<ScheduleProps> = ({
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
         const dateStr = d.toISOString().split('T')[0];
         const dayNum = d.getDate();
-        const existingShift = getShiftForDay(selectedCell.member.id, dayNum);
+        const existingShift = getShiftForDay(selectedCell.member.id, selectedCell.teamId, dayNum);
         const newShift: Shift = {
           id: existingShift?.id || crypto.randomUUID(),
           memberId: selectedCell.member.id,
+          teamId: selectedCell.teamId,
           date: dateStr,
           startTime: isAllDay ? '00:00' : startTime,
           endTime: isAllDay ? '23:59' : endTime,
@@ -303,7 +311,7 @@ const Schedule: React.FC<ScheduleProps> = ({
       const start = new Date(rangeStartDate);
       const end = new Date(rangeEndDate);
       for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) {
-        const existing = getShiftForDay(selectedCell.member.id, d.getDate());
+        const existing = getShiftForDay(selectedCell.member.id, selectedCell.teamId, d.getDate());
         if (existing) onDeleteShift(existing.id);
       }
     }
@@ -318,8 +326,10 @@ const Schedule: React.FC<ScheduleProps> = ({
     const teamIds = new Set(sortedTeams.map((t) => t.id));
     const groups = sortedTeams
       .map((team) => {
+        // Multi-team membership: a person appears under every team in their teamIds.
+        // This is the line that makes Rapid Response members show up as a second row.
         let teamMembers = members
-          .filter((m) => m.teamId === team.id)
+          .filter((m) => m.teamIds.includes(team.id))
           .sort((a, b) => (a.scheduleSortOrder ?? 0) - (b.scheduleSortOrder ?? 0));
         if (filterPerson !== 'all') {
           teamMembers = teamMembers.filter((m) => m.id === filterPerson);
@@ -339,8 +349,9 @@ const Schedule: React.FC<ScheduleProps> = ({
       })
       .filter((group) => group.members.length > 0);
 
-    // Include members without a team (or with a non-existent team)
-    let unassigned = members.filter((m) => !m.teamId || !teamIds.has(m.teamId));
+    // Include members with no team memberships at all, or whose memberships
+    // all point to non-existent / archived teams
+    let unassigned = members.filter((m) => m.teamIds.length === 0 || !m.teamIds.some((id) => teamIds.has(id)));
     if (filterPerson !== 'all') {
       unassigned = unassigned.filter((m) => m.id === filterPerson);
     }
@@ -538,7 +549,8 @@ const Schedule: React.FC<ScheduleProps> = ({
                         const isMemberDragOver = dragState.dragType === 'member' && dragState.dragOverId === member.id;
                         return (
                           <div
-                            key={member.id}
+                            // Composite key — a multi-team member appears in multiple rows
+                            key={`${group.team.id}-${member.id}`}
                             className={`flex border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors h-10 ${isCurrentUser ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''} ${isMemberDragOver ? 'border-t-2 border-t-blue-400 dark:border-t-blue-500' : ''}`}
                             onDragOver={(e) => handleMemberDragOver(e, member.id)}
                             onDrop={(e) => handleMemberDrop(e, member.id)}
@@ -570,7 +582,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                             </div>
                             {days.map((day) => {
                               const absence = getAbsenceForDay(member.id, day);
-                              const shift = getShiftForDay(member.id, day);
+                              const shift = getShiftForDay(member.id, group.team.id, day);
                               const isToday =
                                 day === new Date().getDate() &&
                                 currentDate.getMonth() === new Date().getMonth() &&
@@ -582,6 +594,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                               const inSelection =
                                 dragStart &&
                                 dragStart.memberId === member.id &&
+                                dragStart.teamId === group.team.id &&
                                 day >= Math.min(dragStart.day, dragEnd?.day || day) &&
                                 day <= Math.max(dragStart.day, dragEnd?.day || day);
 
@@ -667,12 +680,12 @@ const Schedule: React.FC<ScheduleProps> = ({
                                 <div
                                   key={day}
                                   data-day={day}
-                                  onMouseDown={() => handleMouseDown(member, day)}
-                                  onMouseEnter={() => handleMouseEnter(member, day)}
-                                  onMouseUp={() => handleMouseUp(member, day)}
-                                  onTouchStart={(e) => handleTouchStart(e, member, day)}
+                                  onMouseDown={() => handleMouseDown(member, group.team.id, day)}
+                                  onMouseEnter={() => handleMouseEnter(member, group.team.id, day)}
+                                  onMouseUp={() => handleMouseUp(member, group.team.id, day)}
+                                  onTouchStart={(e) => handleTouchStart(e, member, group.team.id, day)}
                                   onTouchMove={handleTouchMove}
-                                  onTouchEnd={(e) => handleTouchEnd(e, member, day)}
+                                  onTouchEnd={(e) => handleTouchEnd(e, member, group.team.id, day)}
                                   className={`w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : !content && isWeekend(day) ? 'bg-emerald-50/40 dark:bg-emerald-900/10' : ''}`}
                                 >
                                   {content}
@@ -815,9 +828,20 @@ const Schedule: React.FC<ScheduleProps> = ({
             const holidayStats =
               existingAbsence?.type === 'holiday' ? calculateAbsenceStats(selectedCell.member.id, absences) : null;
 
+            const cellTeam =
+              selectedCell.teamId && selectedCell.teamId !== '__no_team__'
+                ? teams.find((t) => t.id === selectedCell.teamId)
+                : null;
             return (
               <div>
-                <p className="text-xs text-zinc-500 mb-4 font-medium">{selectedCell.member.name}</p>
+                <p className="text-xs text-zinc-500 mb-4 font-medium flex items-center gap-1.5">
+                  {selectedCell.member.name}
+                  {cellTeam && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
+                      {cellTeam.name}
+                    </span>
+                  )}
+                </p>
 
                 {/* Status banner for existing absences */}
                 {existingAbsence && existingAbsence.status === 'pending' && (

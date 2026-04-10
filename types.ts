@@ -10,7 +10,8 @@ export interface User {
   role: UserRole; // App access level
   jobTitle: string; // Job title e.g. "Senior Editor"
   avatar: string;
-  teamId: string;
+  teamId: string; // Primary / home team (= teamIds[0]); kept as a denormalized cache
+  teamIds: string[]; // All team memberships, primary first. Empty = no teams.
   scheduleSortOrder?: number;
   emailNotifications?: boolean;
 }
@@ -87,6 +88,7 @@ export interface Absence {
 export interface Shift {
   id: string;
   memberId: string;
+  teamId: string; // Shifts are team-scoped — one person can have different shifts per team
   date: string; // YYYY-MM-DD
   startTime: string; // HH:mm
   endTime: string; // HH:mm

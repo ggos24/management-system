@@ -13,12 +13,14 @@ import {
   Trash2,
   Globe,
   Search,
+  Users,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
 import { AbsenceStatsCard } from './AbsenceStatsCard';
 import { CustomSelect } from './CustomSelect';
+import { MultiSelect } from './MultiSelect';
 import { DateRangeFilter } from './DateRangeFilter';
 import { calculateAbsenceStats } from '../lib/utils';
 import {
@@ -176,7 +178,7 @@ export const SettingsModal: React.FC = () => {
     updateMemberAvatar,
     updateMemberName,
     updateMemberJobTitle,
-    updateMemberTeam,
+    updateMemberTeams,
     updateMemberRole,
     allPlacements,
     addPlacement,
@@ -657,10 +659,10 @@ export const SettingsModal: React.FC = () => {
                   { value: 'editor', label: 'Editor' },
                   { value: 'user', label: 'User' },
                 ];
-                const teamOptions = [
-                  { value: '', label: 'No team' },
-                  ...teams.filter((t) => !t.hidden && !t.archived).map((t) => ({ value: t.id, label: t.name })),
-                ];
+                // Hidden teams are still valid assignment targets — "hidden" only
+                // removes them from the workspace navigation, not from member/team
+                // management or the schedule. Archived teams are excluded.
+                const teamOptions = teams.filter((t) => !t.archived).map((t) => ({ value: t.id, label: t.name }));
                 const roleLabel = m.role === 'admin' ? 'Admin' : m.role === 'editor' ? 'Editor' : 'User';
                 return (
                   <div
@@ -680,28 +682,38 @@ export const SettingsModal: React.FC = () => {
                     <div className="flex items-center gap-2 flex-shrink-0">
                       {canManage ? (
                         <>
-                          <CustomSelect
-                            compact
-                            value={m.teamId || ''}
-                            onChange={(teamId) => {
-                              updateMemberTeam(m.id, teamId);
-                              if (isMe) setCurrentUser({ ...currentUser, teamId });
-                              const teamName = teams.find((t) => t.id === teamId)?.name || 'No team';
-                              toast.success(`${m.name} → ${teamName}`);
-                            }}
-                            options={teamOptions}
-                            renderValue={(v) => {
-                              const t = teams.find((t) => t.id === v);
-                              return (
-                                <span className="flex items-center gap-1 text-xs">
-                                  {t?.name || 'No team'}
-                                  <ChevronDown size={12} className="text-zinc-400" />
-                                </span>
-                              );
-                            }}
-                            dropdownMinWidth={160}
-                            className="w-auto"
-                          />
+                          <div className="min-w-[180px] max-w-[260px]">
+                            <MultiSelect
+                              compact
+                              icon={Users}
+                              label=""
+                              options={teamOptions}
+                              selected={m.teamIds}
+                              onChange={(next) => {
+                                const prev = m.teamIds;
+                                updateMemberTeams(m.id, next);
+                                if (isMe) {
+                                  setCurrentUser({ ...currentUser, teamId: next[0] || '', teamIds: next });
+                                }
+                                // Surface what actually changed so admins get clear feedback
+                                const added = next.filter((id) => !prev.includes(id));
+                                const removed = prev.filter((id) => !next.includes(id));
+                                if (added.length > 0) {
+                                  const names = added
+                                    .map((id) => teams.find((t) => t.id === id)?.name || '')
+                                    .join(', ');
+                                  toast.success(`${m.name} added to ${names}`);
+                                } else if (removed.length > 0) {
+                                  const names = removed
+                                    .map((id) => teams.find((t) => t.id === id)?.name || '')
+                                    .join(', ');
+                                  toast.success(`${m.name} removed from ${names}`);
+                                }
+                              }}
+                              placeholder="No teams"
+                              searchable
+                            />
+                          </div>
                           {isMe && (
                             <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">{roleLabel}</span>
                           )}

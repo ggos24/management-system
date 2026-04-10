@@ -329,7 +329,7 @@ interface DataState {
   updateMemberAvatar: (memberId: string, newAvatar: string) => void;
   updateMemberName: (memberId: string, newName: string) => void;
   updateMemberJobTitle: (memberId: string, jobTitle: string) => void;
-  updateMemberTeam: (memberId: string, teamId: string) => void;
+  updateMemberTeams: (memberId: string, nextTeamIds: string[]) => void;
   updateMemberRole: (memberId: string, role: UserRole) => void;
 
   // Integration actions
@@ -1270,14 +1270,17 @@ export const useDataStore = create<DataState>((set, get) => ({
     set({ members: updatedMembers });
   },
 
-  updateMemberTeam: (memberId, teamId) => {
+  updateMemberTeams: (memberId, nextTeamIds) => {
     const { members } = get();
     const prev = members;
-    const updatedMembers = members.map((m) => (m.id === memberId ? { ...m, teamId } : m));
+    const primary = nextTeamIds[0] || '';
+    const updatedMembers = members.map((m) =>
+      m.id === memberId ? { ...m, teamId: primary, teamIds: nextTeamIds } : m,
+    );
     set({ members: updatedMembers });
-    db.updateProfileTeam(memberId, teamId).catch(() => {
+    db.setProfileTeams(memberId, nextTeamIds).catch(() => {
       set({ members: prev });
-      toast.error('Failed to update team');
+      toast.error('Failed to update teams');
     });
   },
 
