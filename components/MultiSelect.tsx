@@ -171,7 +171,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
           onClick={toggle}
           className={
             compact
-              ? 'w-full min-h-[24px] px-1.5 py-0.5 rounded text-xs cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 relative'
+              ? 'w-full min-h-[24px] px-1.5 py-0.5 rounded text-xs cursor-pointer flex flex-col gap-0.5 transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 relative'
               : 'w-full min-h-[32px] pl-2 pr-8 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 relative'
           }
         >

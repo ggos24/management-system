@@ -1066,8 +1066,8 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   reorderTeamMembers: (teamId: string, draggedMemberId: string, targetMemberId: string) => {
     const { members } = get();
-    const teamMembers = members.filter((m) => m.teamId === teamId);
-    const otherMembers = members.filter((m) => m.teamId !== teamId);
+    const teamMembers = members.filter((m) => m.teamIds.includes(teamId));
+    const otherMembers = members.filter((m) => !m.teamIds.includes(teamId));
 
     const draggedIndex = teamMembers.findIndex((m) => m.id === draggedMemberId);
     const targetIndex = teamMembers.findIndex((m) => m.id === targetMemberId);
