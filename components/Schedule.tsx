@@ -112,6 +112,7 @@ const Schedule: React.FC<ScheduleProps> = ({
   const [startTime, setStartTime] = useState('09:00');
   const [endTime, setEndTime] = useState('17:00');
   const [isAllDay, setIsAllDay] = useState(false);
+  const [shiftType, setShiftType] = useState<'on_call' | 'on_duty'>('on_duty');
 
   // Collapsed Teams State
   const [collapsedTeams, setCollapsedTeams] = useState<Record<string, boolean>>({});
@@ -212,10 +213,12 @@ const Schedule: React.FC<ScheduleProps> = ({
       setIsAllDay(allDay);
       setStartTime(allDay ? '09:00' : existingShift.startTime);
       setEndTime(allDay ? '17:00' : existingShift.endTime);
+      setShiftType(existingShift.shiftType || 'on_duty');
     } else {
       setIsAllDay(false);
       setStartTime('09:00');
       setEndTime('17:00');
+      setShiftType('on_duty');
     }
 
     // Determine which tab to show. Non-admins always get absence, and the
@@ -287,13 +290,15 @@ const Schedule: React.FC<ScheduleProps> = ({
         const dateStr = d.toISOString().split('T')[0];
         const dayNum = d.getDate();
         const existingShift = getShiftForDay(selectedCell.member.id, selectedCell.teamId, dayNum);
+        const isRapidResponse = teams.find((t) => t.id === selectedCell.teamId)?.rapidResponse;
         const newShift: Shift = {
           id: existingShift?.id || crypto.randomUUID(),
           memberId: selectedCell.member.id,
           teamId: selectedCell.teamId,
           date: dateStr,
-          startTime: isAllDay ? '00:00' : startTime,
-          endTime: isAllDay ? '23:59' : endTime,
+          startTime: isRapidResponse ? '00:00' : isAllDay ? '00:00' : startTime,
+          endTime: isRapidResponse ? '23:59' : isAllDay ? '23:59' : endTime,
+          shiftType: isRapidResponse ? shiftType : undefined,
         };
         onUpdateShift(newShift);
       }
@@ -653,7 +658,25 @@ const Schedule: React.FC<ScheduleProps> = ({
                               } else if (shift) {
                                 const shiftAllDay =
                                   shift.startTime.startsWith('00:00') && shift.endTime.startsWith('23:59');
-                                content = (
+                                content = shift.shiftType ? (
+                                  <div
+                                    className={`flex flex-col items-center justify-center h-full w-full select-none ${
+                                      shift.shiftType === 'on_duty'
+                                        ? 'bg-sky-100 dark:bg-sky-900/30'
+                                        : 'bg-rose-100 dark:bg-rose-900/30'
+                                    }`}
+                                  >
+                                    <span
+                                      className={`text-[10px] font-semibold leading-none ${
+                                        shift.shiftType === 'on_duty'
+                                          ? 'text-sky-700 dark:text-sky-400'
+                                          : 'text-rose-700 dark:text-rose-400'
+                                      }`}
+                                    >
+                                      {shift.shiftType === 'on_duty' ? 'On Duty' : 'On Call'}
+                                    </span>
+                                  </div>
+                                ) : (
                                   <div
                                     className={`flex flex-col items-center justify-center h-full w-full select-none ${isToday ? 'bg-red-50/20 dark:bg-red-900/10' : 'bg-zinc-100 dark:bg-zinc-800'}`}
                                   >
@@ -1010,6 +1033,21 @@ const Schedule: React.FC<ScheduleProps> = ({
                         value={absenceType}
                         onChange={(v) => setAbsenceType(v as any)}
                       />
+                    </div>
+                  ) : teams.find((t) => t.id === selectedCell?.teamId)?.rapidResponse ? (
+                    <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded">
+                      <button
+                        onClick={() => setShiftType('on_duty')}
+                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${shiftType === 'on_duty' ? 'bg-sky-600 text-white shadow-sm' : 'text-zinc-500'}`}
+                      >
+                        On Duty
+                      </button>
+                      <button
+                        onClick={() => setShiftType('on_call')}
+                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${shiftType === 'on_call' ? 'bg-rose-600 text-white shadow-sm' : 'text-zinc-500'}`}
+                      >
+                        On Call
+                      </button>
                     </div>
                   ) : (
                     <div className="space-y-3">

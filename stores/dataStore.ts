@@ -302,6 +302,7 @@ interface DataState {
   saveTeamEdit: (id: string, newName: string, newIcon: string) => void;
   toggleTeamVisibility: (id: string) => void;
   toggleTeamAdminOnly: (id: string) => void;
+  toggleTeamRapidResponse: (id: string) => void;
   reorderSidebarTeams: (draggedId: string, targetId: string) => void;
   reorderScheduleTeams: (draggedId: string, targetId: string) => void;
   reorderTeamMembers: (teamId: string, draggedMemberId: string, targetMemberId: string) => void;
@@ -1005,6 +1006,13 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   toggleTeamAdminOnly: (id) => {
     const updatedTeams = get().teams.map((t) => (t.id === id ? { ...t, adminOnly: !t.adminOnly } : t));
+    set({ teams: updatedTeams });
+    const team = updatedTeams.find((t) => t.id === id);
+    if (team) db.upsertTeam(team).catch(() => toast.error('Failed to update team'));
+  },
+
+  toggleTeamRapidResponse: (id) => {
+    const updatedTeams = get().teams.map((t) => (t.id === id ? { ...t, rapidResponse: !t.rapidResponse } : t));
     set({ teams: updatedTeams });
     const team = updatedTeams.find((t) => t.id === id);
     if (team) db.upsertTeam(team).catch(() => toast.error('Failed to update team'));

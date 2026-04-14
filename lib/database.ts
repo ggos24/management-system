@@ -44,6 +44,7 @@ function mapTeam(row: any): Team {
     hidden: row.hidden || false,
     archived: row.archived || false,
     adminOnly: row.admin_only || false,
+    rapidResponse: row.rapid_response || false,
     sortOrder: row.sort_order || 0,
   };
 }
@@ -97,6 +98,7 @@ function mapShift(row: any): Shift {
     date: row.date,
     startTime: row.start_time,
     endTime: row.end_time,
+    shiftType: row.shift_type || undefined,
   };
 }
 
@@ -606,6 +608,7 @@ export async function upsertShift(shift: Shift) {
     date: shift.date,
     start_time: shift.startTime,
     end_time: shift.endTime,
+    shift_type: shift.shiftType || null,
   };
   const { data, error } = await supabase.from('shifts').upsert(row, { onConflict: 'id' }).select().single();
   return { data, error };
@@ -627,6 +630,7 @@ export async function upsertTeam(team: Team) {
     hidden: team.hidden || false,
     archived: team.archived || false,
     admin_only: team.adminOnly || false,
+    rapid_response: team.rapidResponse || false,
     sort_order: team.sortOrder || 0,
   };
   const { data, error } = await supabase.from('teams').upsert(row, { onConflict: 'id' }).select().single();

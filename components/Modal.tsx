@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 const sizeClasses = {
   sm: 'max-w-md',
   md: 'max-w-lg',
+  mdx: 'max-w-xl',
   lg: 'max-w-3xl',
 };
 
@@ -15,7 +16,7 @@ interface ModalProps {
   actions?: React.ReactNode;
   headerActions?: React.ReactNode;
   allowOverflow?: boolean;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'sm' | 'md' | 'mdx' | 'lg';
 }
 
 export const Modal: React.FC<ModalProps> = ({

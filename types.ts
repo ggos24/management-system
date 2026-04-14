@@ -24,6 +24,7 @@ export interface Team {
   hidden?: boolean; // New property to hide from sidebar
   archived?: boolean; // New property for archived teams
   adminOnly?: boolean;
+  rapidResponse?: boolean;
   sortOrder?: number;
 }
 
@@ -92,6 +93,7 @@ export interface Shift {
   date: string; // YYYY-MM-DD
   startTime: string; // HH:mm
   endTime: string; // HH:mm
+  shiftType?: 'on_call' | 'on_duty'; // Rapid Response teams only
 }
 
 export interface Member extends User {

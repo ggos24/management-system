@@ -1,6 +1,6 @@
 import React from 'react';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Edit2, Archive, Trash2, Lock, Unlock } from 'lucide-react';
+import { Eye, EyeOff, Edit2, Archive, Trash2, Lock, Unlock, Rocket } from 'lucide-react';
 import { Modal } from './Modal';
 import { IconComponent, ICONS } from './IconComponent';
 import { Button, Input, Label, Badge, Divider } from './ui';
@@ -29,8 +29,16 @@ export const ManageTeamsModal: React.FC = () => {
   } = useUiStore();
 
   const currentUser = useAuthStore((s) => s.currentUser);
-  const { teams, addTeam, deleteTeam, archiveTeam, saveTeamEdit, toggleTeamVisibility, toggleTeamAdminOnly } =
-    useDataStore();
+  const {
+    teams,
+    addTeam,
+    deleteTeam,
+    archiveTeam,
+    saveTeamEdit,
+    toggleTeamVisibility,
+    toggleTeamAdminOnly,
+    toggleTeamRapidResponse,
+  } = useDataStore();
 
   const handleAddTeam = () => {
     if (!newTeamName) return;
@@ -74,7 +82,7 @@ export const ManageTeamsModal: React.FC = () => {
       isOpen={isManageTeamsModalOpen}
       onClose={() => setIsManageTeamsModalOpen(false)}
       title="Manage Workspaces"
-      size="md"
+      size="mdx"
     >
       <div className="space-y-6 min-h-[400px] flex flex-col">
         <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-4">
@@ -157,6 +165,12 @@ export const ManageTeamsModal: React.FC = () => {
                             Admin Only
                           </span>
                         )}
+                        {team.rapidResponse && (
+                          <span className="inline-flex items-center gap-1 ml-2 text-[10px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 px-1.5 py-0.5 rounded">
+                            <Rocket size={10} />
+                            Rapid Response
+                          </span>
+                        )}
                         {team.archived && (
                           <span className="text-[10px] font-normal text-zinc-400 uppercase ml-2">(Archived)</span>
                         )}
@@ -171,6 +185,15 @@ export const ManageTeamsModal: React.FC = () => {
                         title={team.adminOnly ? 'Make visible to all' : 'Restrict to admins'}
                       >
                         {team.adminOnly ? <Lock size={14} /> : <Unlock size={14} />}
+                      </button>
+                    )}
+                    {currentUser && isAdmin(currentUser.role) && (
+                      <button
+                        onClick={() => toggleTeamRapidResponse(team.id)}
+                        className={`p-1.5 rounded transition-colors ${team.rapidResponse ? 'text-rose-600 dark:text-rose-400 hover:text-rose-700 bg-rose-50 dark:bg-rose-900/20' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
+                        title={team.rapidResponse ? 'Remove Rapid Response' : 'Mark as Rapid Response'}
+                      >
+                        <Rocket size={14} />
                       </button>
                     )}
                     {currentUser && isAdmin(currentUser.role) && (
