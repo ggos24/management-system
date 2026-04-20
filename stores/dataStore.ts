@@ -13,6 +13,7 @@ import {
   UserRole,
 } from '../types';
 import * as db from '../lib/database';
+import { formatDateEU } from '../lib/utils';
 import { useAuthStore } from './authStore';
 import { supabase } from '../lib/supabase';
 
@@ -118,11 +119,7 @@ function getAllTaskPeople(task: Task): string[] {
 const PRIORITY_EMOJI: Record<string, string> = { high: '🔴', medium: '🟡', low: '🟢' };
 
 function formatShortDate(iso: string): string {
-  try {
-    return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  } catch {
-    return iso;
-  }
+  return formatDateEU(iso) || iso;
 }
 
 /** Build task context available at notification time */

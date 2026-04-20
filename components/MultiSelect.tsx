@@ -52,7 +52,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const updatePosition = useCallback(() => {
     if (!triggerRef.current) return;
@@ -137,10 +137,6 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   );
 
   const toggle = () => {
-    if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
-    }
     setIsOpen((v) => {
       if (v) setSearchQuery('');
       return !v;
@@ -218,6 +214,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
         </div>
       )}
       {isOpen &&
+        dropdownPos &&
         createPortal(
           <div
             ref={dropdownRef}

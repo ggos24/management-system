@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import { Task, TaskStatus, TeamType, Member, Priority, CustomProperty, TaskTeamLink, UserRole } from '../types';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent, getDeadlineUrgency, isEditorOrAbove } from '../constants';
+import { formatDateEU, mondayIndex, WEEKDAYS_MON_SHORT } from '../lib/utils';
 import {
   Plus,
   MoreHorizontal,
@@ -975,7 +976,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const getDaysInMonth = (year: number, month: number) => {
     const date = new Date(year, month, 1);
     const days = [];
-    const firstDayIndex = date.getDay(); // 0 for Sunday
+    const firstDayIndex = mondayIndex(date); // 0 for Monday
     const prevLastDay = new Date(year, month, 0).getDate();
     const lastDay = new Date(year, month + 1, 0).getDate();
 
@@ -1298,12 +1299,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                   ) : (
                                                     <CalendarIcon size={12} />
                                                   )}
-                                                  <span>
-                                                    {new Date(task.dueDate).toLocaleDateString('en-US', {
-                                                      month: 'short',
-                                                      day: 'numeric',
-                                                    })}
-                                                  </span>
+                                                  <span>{formatDateEU(task.dueDate)}</span>
                                                 </div>
                                               );
                                             })()}
@@ -1595,12 +1591,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                         ) : (
                                           <CalendarIcon size={12} />
                                         )}
-                                        <span>
-                                          {new Date(task.dueDate).toLocaleDateString('en-US', {
-                                            month: 'short',
-                                            day: 'numeric',
-                                          })}
-                                        </span>
+                                        <span>{formatDateEU(task.dueDate)}</span>
                                       </div>
                                     );
                                   })()}
@@ -1900,10 +1891,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   {task.dueDate && urgency && (
                                     <span className={`flex items-center gap-1 ${urgency.text}`}>
                                       {urgency.dot && <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />}
-                                      {new Date(task.dueDate.split('T')[0] + 'T00:00:00').toLocaleDateString('en-US', {
-                                        month: 'short',
-                                        day: 'numeric',
-                                      })}
+                                      {formatDateEU(task.dueDate.split('T')[0])}
                                     </span>
                                   )}
                                 </div>
@@ -2232,9 +2220,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                           className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${urgency.dot}`}
                                                         />
                                                       )}
-                                                      {value
-                                                        ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
-                                                        : 'Set date'}
+                                                      {value ? formatDateEU(value) : 'Set date'}
                                                     </span>
                                                   );
                                                 }}
@@ -2258,9 +2244,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                     onClick={onClick}
                                                     className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
                                                   >
-                                                    {value
-                                                      ? new Date(value + 'T00:00:00').toLocaleDateString('en-US')
-                                                      : 'Set date'}
+                                                    {value ? formatDateEU(value) : 'Set date'}
                                                   </span>
                                                 )}
                                               />
@@ -2743,7 +2727,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
             </div>
 
             <div className="grid grid-cols-7 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex-shrink-0">
-              {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((d) => (
+              {WEEKDAYS_MON_SHORT.map((d) => (
                 <div
                   key={d}
                   className="p-2 text-center text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-r border-zinc-200 dark:border-zinc-800 last:border-r-0"

@@ -7,6 +7,7 @@ import { useDataStore } from '../stores/dataStore';
 import { useUiStore } from '../stores/uiStore';
 import { Task } from '../types';
 import { getStatusColor } from '../constants';
+import { formatDateEU } from '../lib/utils';
 
 function formatRelativeTime(iso: string): string {
   const d = new Date(iso);
@@ -20,7 +21,7 @@ function formatRelativeTime(iso: string): string {
   const diffD = Math.floor(diffH / 24);
   if (diffD === 1) return 'yesterday';
   if (diffD < 30) return `${diffD} days ago`;
-  return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  return formatDateEU(d);
 }
 
 function daysUntilPurge(deletedAt: string): number {

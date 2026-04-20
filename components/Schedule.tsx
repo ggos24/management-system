@@ -18,7 +18,7 @@ import { Modal } from './Modal';
 import { Avatar } from './Avatar';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { CustomSelect } from './CustomSelect';
-import { calculateAbsenceStats } from '../lib/utils';
+import { calculateAbsenceStats, formatDateEU } from '../lib/utils';
 import { isAdmin } from '../constants';
 import { Button, Label, Input, Badge } from './ui';
 import { AbsenceApprovalQueue } from './AbsenceApprovalQueue';
@@ -952,9 +952,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                       {decider && (
                         <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
                           by {decider.name}
-                          {existingAbsence.decidedAt
-                            ? ` on ${new Date(existingAbsence.decidedAt).toLocaleDateString()}`
-                            : ''}
+                          {existingAbsence.decidedAt ? ` on ${formatDateEU(existingAbsence.decidedAt)}` : ''}
                         </span>
                       )}
                     </div>
@@ -971,9 +969,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                       {decider && (
                         <span className="text-[10px] text-red-600 dark:text-red-400">
                           by {decider.name}
-                          {existingAbsence.decidedAt
-                            ? ` on ${new Date(existingAbsence.decidedAt).toLocaleDateString()}`
-                            : ''}
+                          {existingAbsence.decidedAt ? ` on ${formatDateEU(existingAbsence.decidedAt)}` : ''}
                         </span>
                       )}
                     </div>

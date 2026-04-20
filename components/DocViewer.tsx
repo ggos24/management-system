@@ -3,6 +3,7 @@ import DOMPurify from 'dompurify';
 import { Pencil, Trash2, ChevronRight } from 'lucide-react';
 import { Doc } from '../types';
 import { Button } from './ui';
+import { formatDateEU } from '../lib/utils';
 
 interface DocViewerProps {
   doc: Doc;
@@ -56,7 +57,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({ doc, breadcrumbs, onEdit, 
       {doc.description && <p className="text-sm text-zinc-500 dark:text-zinc-400 mb-4">{doc.description}</p>}
 
       {/* Meta */}
-      <div className="text-xs text-zinc-400 mb-6">Last updated {new Date(doc.updatedAt).toLocaleDateString()}</div>
+      <div className="text-xs text-zinc-400 mb-6">Last updated {formatDateEU(doc.updatedAt)}</div>
 
       {/* Content — uses shared .docs-prose from app.css */}
       <div

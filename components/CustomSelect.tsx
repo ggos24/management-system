@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check, Plus, Search, X } from 'lucide-react';
 
@@ -46,7 +46,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const updatePosition = useCallback(() => {
     if (triggerRef.current) {
@@ -54,6 +54,10 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
     }
   }, []);
+
+  useLayoutEffect(() => {
+    if (isOpen) updatePosition();
+  }, [isOpen, updatePosition]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -113,8 +117,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       )}
       <div
         onClick={() => {
-          if (!isOpen) updatePosition();
-          else setSearchQuery('');
+          if (isOpen) setSearchQuery('');
           setIsOpen(!isOpen);
         }}
         className={
@@ -133,6 +136,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
         )}
       </div>
       {isOpen &&
+        dropdownPos &&
         createPortal(
           <div
             ref={dropdownRef}

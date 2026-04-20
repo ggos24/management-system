@@ -39,6 +39,7 @@ import { useDataStore } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
 import { Task, TaskComment, TaskActivity, CustomProperty } from '../types';
 import { cn } from '../lib/cn';
+import { formatDateEU } from '../lib/utils';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusColor } from '../constants';
 import * as db from '../lib/database';
 import { supabase } from '../lib/supabase';
@@ -420,14 +421,14 @@ export const TaskModal: React.FC = () => {
     if (diffH < 24) return `${diffH}h ago`;
     const diffD = Math.floor(diffH / 24);
     if (diffD < 7) return `${diffD}d ago`;
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    return formatDateEU(d);
   };
 
   const renderActivityDescription = (a: TaskActivity): React.ReactNode => {
     const bold = (text: string) => <span className="font-medium text-zinc-700 dark:text-zinc-200">{text}</span>;
     const formatDate = (v: string) => {
       try {
-        return new Date(v).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        return formatDateEU(v);
       } catch {
         return v;
       }
@@ -666,13 +667,7 @@ export const TaskModal: React.FC = () => {
                     <span className="font-medium">
                       {members.find((m) => m.id === taskModalData.deletedBy)?.name || 'Unknown'}
                     </span>{' '}
-                    on{' '}
-                    {new Date(taskModalData.deletedAt).toLocaleDateString('en-US', {
-                      month: 'short',
-                      day: 'numeric',
-                      year: 'numeric',
-                    })}
-                    .
+                    on {formatDateEU(taskModalData.deletedAt)}.
                   </span>
                 )}
               </p>

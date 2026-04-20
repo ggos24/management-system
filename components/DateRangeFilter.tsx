@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { mondayIndex, formatDateEU } from '../lib/utils';
 
 type PresetKey =
   | 'all'
@@ -133,7 +134,7 @@ const MiniCalendar: React.FC<{
   });
 
   const daysInMonth = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0).getDate();
-  const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
+  const firstDay = mondayIndex(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1));
 
   const isSelected = (day: number) => {
     if (!value) return false;
@@ -181,7 +182,7 @@ const MiniCalendar: React.FC<{
         ))}
       </div>
       <div className="grid grid-cols-7 gap-0.5">
-        {Array.from({ length: firstDay === 0 ? 6 : firstDay - 1 }).map((_, i) => (
+        {Array.from({ length: firstDay }).map((_, i) => (
           <div key={`e-${i}`} />
         ))}
         {Array.from({ length: daysInMonth }).map((_, i) => {
@@ -233,7 +234,7 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
   const [activeTab, setActiveTab] = useState<TabKey>('presets');
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, right: 0 });
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null);
 
   const presets = useMemo(() => buildPresets(), []);
 
@@ -262,6 +263,10 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
+  useLayoutEffect(() => {
+    if (isOpen) updatePosition();
+  }, [isOpen, updatePosition]);
+
   useEffect(() => {
     if (!isOpen) return;
     const handleScroll = () => updatePosition();
@@ -283,19 +288,12 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
 
   const displayLabel = useMemo(() => {
     if (activePreset === 'custom' && startDate && endDate) {
-      const fmtShort = (d: string) => {
-        const date = new Date(d + 'T00:00:00');
-        return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      };
-      return `${fmtShort(startDate)} – ${fmtShort(endDate)}`;
+      return `${formatDateEU(startDate)} – ${formatDateEU(endDate)}`;
     }
     return presets.find((p) => p.key === activePreset)?.label || 'All Time';
   }, [activePreset, startDate, endDate, presets]);
 
-  const handleTriggerClick = () => {
-    updatePosition();
-    setIsOpen(!isOpen);
-  };
+  const handleTriggerClick = () => setIsOpen(!isOpen);
 
   return (
     <div className="relative" ref={triggerRef}>
@@ -309,6 +307,7 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
       </button>
 
       {isOpen &&
+        dropdownPos &&
         createPortal(
           <div
             ref={dropdownRef}

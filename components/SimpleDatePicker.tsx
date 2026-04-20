@@ -1,6 +1,7 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { formatDateEU, mondayIndex, WEEKDAYS_MON_INITIALS } from '../lib/utils';
 
 interface SimpleDatePickerProps {
   value: string;
@@ -27,7 +28,7 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
   });
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0 });
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
 
   const updatePosition = useCallback(() => {
     if (!triggerRef.current) return;
@@ -54,9 +55,12 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
+  useLayoutEffect(() => {
+    if (isOpen) updatePosition();
+  }, [isOpen, updatePosition]);
+
   useEffect(() => {
     if (!isOpen) return;
-    updatePosition();
     const handleScroll = () => updatePosition();
     window.addEventListener('scroll', handleScroll, true);
     return () => window.removeEventListener('scroll', handleScroll, true);
@@ -80,7 +84,7 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
   };
 
   const daysInMonth = getDaysInMonth(currentMonth.getFullYear(), currentMonth.getMonth());
-  const firstDay = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1).getDay();
+  const firstDay = mondayIndex(new Date(currentMonth.getFullYear(), currentMonth.getMonth(), 1));
 
   // Check if a day is the selected day
   const isSelected = (day: number) => {
@@ -89,13 +93,7 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
     return y === currentMonth.getFullYear() && m === currentMonth.getMonth() + 1 && d === day;
   };
 
-  const toggle = () => {
-    if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 8, left: rect.left });
-    }
-    setIsOpen((v) => !v);
-  };
+  const toggle = () => setIsOpen((v) => !v);
 
   return (
     <div className={`relative ${className || ''}`} ref={triggerRef}>
@@ -106,12 +104,13 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
           onClick={toggle}
           className="w-full text-left px-3 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm outline-none focus:ring-1 focus:ring-zinc-400 text-zinc-900 dark:text-zinc-100 transition-colors flex items-center justify-between"
         >
-          <span>{value || placeholder}</span>
+          <span>{value ? formatDateEU(value) : placeholder}</span>
           <Calendar size={14} className="text-zinc-400" />
         </button>
       )}
 
       {isOpen &&
+        dropdownPos &&
         createPortal(
           <div
             ref={dropdownRef}
@@ -140,8 +139,8 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
               </button>
             </div>
             <div className="grid grid-cols-7 gap-1 text-center mb-1">
-              {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d) => (
-                <span key={d} className="text-[10px] text-zinc-400">
+              {WEEKDAYS_MON_INITIALS.map((d, i) => (
+                <span key={i} className="text-[10px] text-zinc-400">
                   {d}
                 </span>
               ))}

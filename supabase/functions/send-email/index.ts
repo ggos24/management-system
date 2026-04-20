@@ -118,10 +118,14 @@ Deno.serve(async (req) => {
     // Get SendPulse access token
     const spToken = await getSendPulseToken(clientId, clientSecret);
 
-    // Format date helper
+    // Format date helper (European DD/MM/YYYY)
     const fmtDate = (iso: string) => {
       try {
-        return new Date(iso).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        const d = /^\d{4}-\d{2}-\d{2}$/.test(iso) ? new Date(iso + 'T00:00:00') : new Date(iso);
+        if (isNaN(d.getTime())) return iso;
+        const dd = String(d.getDate()).padStart(2, '0');
+        const mm = String(d.getMonth() + 1).padStart(2, '0');
+        return `${dd}/${mm}/${d.getFullYear()}`;
       } catch {
         return iso;
       }

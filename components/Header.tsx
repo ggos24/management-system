@@ -19,7 +19,7 @@ import { IconButton, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
-import { teamSlug } from '../lib/utils';
+import { teamSlug, formatDateEU } from '../lib/utils';
 import type { Notification, NotificationType } from '../types';
 
 function getNotificationIcon(type: NotificationType) {
@@ -57,7 +57,7 @@ function formatRelativeTime(dateStr: string): string {
   if (diffHr < 24) return `${diffHr}h ago`;
   const diffDay = Math.floor(diffHr / 24);
   if (diffDay < 7) return `${diffDay}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  return formatDateEU(dateStr);
 }
 
 export const Header: React.FC = () => {

@@ -4,6 +4,7 @@ import { Search, Plus, FolderPlus, FileText, Folder, ChevronRight, Pencil, Trash
 import { IconComponent } from './IconComponent';
 import { Doc, DocSection } from '../types';
 import { fetchDocs, upsertDoc, deleteDoc as deleteDocDb } from '../lib/database';
+import { formatDateEU } from '../lib/utils';
 import { useAuthStore } from '../stores/authStore';
 import { isAdmin as isAdminRole } from '../constants';
 import { DocsTreeSidebar } from './DocsTreeSidebar';
@@ -336,7 +337,7 @@ export const DocsView: React.FC<DocsViewProps> = ({ section, docId, onNavigate }
                                 {article.title}
                               </span>
                               <span className="ml-auto text-[11px] text-zinc-300 dark:text-zinc-600 flex-shrink-0">
-                                {new Date(article.updatedAt).toLocaleDateString()}
+                                {formatDateEU(article.updatedAt)}
                               </span>
                             </div>
                             {article.description && (

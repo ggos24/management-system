@@ -18,6 +18,7 @@ import { DateRangeFilter } from './DateRangeFilter';
 import { Avatar } from './Avatar';
 import { Card } from './ui';
 import { getStatusHexColor } from '../constants';
+import { formatDateRangeEU } from '../lib/utils';
 
 interface DashboardProps {
   tasks: Task[];
@@ -297,7 +298,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
         .map((key) => {
           const [y, m] = key.split('-').map(Number);
           return {
-            name: new Date(y, m - 1).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+            name: `${String(m).padStart(2, '0')}/${String(y).slice(-2)}`,
             done: months[key],
           };
         });
@@ -309,7 +310,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
       d.setDate(rangeStart.getDate() + i);
       const dayStr = d.toISOString().split('T')[0];
       days.push({
-        name: d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+        name: `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}`,
         done: doneTasks.filter((t) => t.doneDate === dayStr).length,
       });
     }
@@ -544,9 +545,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
         <div className="flex justify-between items-center mb-6">
           <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">Tasks Completed</h3>
           <span className="bg-zinc-100 dark:bg-zinc-800 px-3 py-1 rounded-md text-xs font-semibold text-zinc-500 dark:text-zinc-400">
-            {startDate && endDate
-              ? `${new Date(startDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${new Date(endDate + 'T00:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-              : 'All Time'}
+            {startDate && endDate ? formatDateRangeEU(startDate, endDate) : 'All Time'}
           </span>
         </div>
         <div className="flex-1 w-full min-h-0">

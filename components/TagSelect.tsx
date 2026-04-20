@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Plus, ChevronDown, Trash2 } from 'lucide-react';
 
@@ -84,7 +84,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const colorPickerRef = useRef<HTMLDivElement>(null);
-  const [dropdownPos, setDropdownPos] = useState({ top: 0, left: 0, width: 0 });
+  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
 
   const updateDropdownPos = useCallback(() => {
     if (!triggerRef.current) return;
@@ -114,6 +114,10 @@ export const TagSelect: React.FC<TagSelectProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
+
+  useLayoutEffect(() => {
+    if (isOpen) updateDropdownPos();
+  }, [isOpen, updateDropdownPos]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -160,10 +164,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
   const visibleTags = maxVisible != null && !isOpen ? selected.slice(0, maxVisible) : selected;
   const hiddenCount = maxVisible != null && !isOpen ? Math.max(0, selected.length - maxVisible) : 0;
 
-  const handleTriggerClick = () => {
-    updateDropdownPos();
-    setIsOpen(!isOpen);
-  };
+  const handleTriggerClick = () => setIsOpen(!isOpen);
 
   return (
     <div className={`relative ${compact ? '' : 'space-y-1'}`} ref={triggerRef}>
@@ -207,6 +208,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
       </div>
 
       {isOpen &&
+        dropdownPos &&
         createPortal(
           <div
             ref={dropdownRef}

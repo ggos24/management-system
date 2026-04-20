@@ -3,7 +3,7 @@ import { Check, X, Clock, CheckCircle2, History } from 'lucide-react';
 import { Absence, Member } from '../types';
 import { Avatar } from './Avatar';
 import { Badge, Input } from './ui';
-import { calculateAbsenceStats } from '../lib/utils';
+import { calculateAbsenceStats, formatDateEU } from '../lib/utils';
 
 const TOTAL_HOLIDAY_ALLOWANCE = 24;
 
@@ -35,11 +35,8 @@ const ABSENCE_TYPE_COLORS: Record<string, 'emerald' | 'red' | 'blue' | 'zinc' | 
 };
 
 function formatDateRange(start: string, end: string): string {
-  const s = new Date(start);
-  const e = new Date(end);
-  const opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric' };
-  if (start === end) return s.toLocaleDateString('en-US', opts);
-  return `${s.toLocaleDateString('en-US', opts)} – ${e.toLocaleDateString('en-US', opts)}`;
+  if (start === end) return formatDateEU(start);
+  return `${formatDateEU(start)} – ${formatDateEU(end)}`;
 }
 
 function dayCount(start: string, end: string): number {
@@ -58,7 +55,7 @@ function formatRelativeTime(dateStr: string): string {
   if (diffHr < 24) return `${diffHr}h ago`;
   const diffDay = Math.floor(diffHr / 24);
   if (diffDay < 7) return `${diffDay}d ago`;
-  return new Date(dateStr).toLocaleDateString();
+  return formatDateEU(dateStr);
 }
 
 export const AbsenceApprovalQueue: React.FC<AbsenceApprovalQueueProps> = ({
