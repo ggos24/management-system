@@ -662,18 +662,18 @@ const Schedule: React.FC<ScheduleProps> = ({
                                   <div
                                     className={`flex flex-col items-center justify-center h-full w-full select-none ${
                                       shift.shiftType === 'on_duty'
-                                        ? 'bg-sky-100 dark:bg-sky-900/30'
-                                        : 'bg-rose-100 dark:bg-rose-900/30'
+                                        ? 'bg-indigo-100 dark:bg-indigo-900/30'
+                                        : 'bg-pink-100 dark:bg-pink-900/30'
                                     }`}
                                   >
                                     <span
                                       className={`text-[10px] font-semibold leading-none ${
                                         shift.shiftType === 'on_duty'
-                                          ? 'text-sky-700 dark:text-sky-400'
-                                          : 'text-rose-700 dark:text-rose-400'
+                                          ? 'text-indigo-700 dark:text-indigo-400'
+                                          : 'text-pink-700 dark:text-pink-400'
                                       }`}
                                     >
-                                      {shift.shiftType === 'on_duty' ? 'On Duty' : 'On Call'}
+                                      {shift.shiftType === 'on_duty' ? 'DUTY' : 'CALL'}
                                     </span>
                                   </div>
                                 ) : (
@@ -1038,15 +1038,15 @@ const Schedule: React.FC<ScheduleProps> = ({
                     <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded">
                       <button
                         onClick={() => setShiftType('on_duty')}
-                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${shiftType === 'on_duty' ? 'bg-sky-600 text-white shadow-sm' : 'text-zinc-500'}`}
+                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${shiftType === 'on_duty' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-500'}`}
                       >
-                        On Duty
+                        DUTY
                       </button>
                       <button
                         onClick={() => setShiftType('on_call')}
-                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${shiftType === 'on_call' ? 'bg-rose-600 text-white shadow-sm' : 'text-zinc-500'}`}
+                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${shiftType === 'on_call' ? 'bg-pink-600 text-white shadow-sm' : 'text-zinc-500'}`}
                       >
-                        On Call
+                        CALL
                       </button>
                     </div>
                   ) : (
