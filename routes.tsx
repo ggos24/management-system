@@ -122,6 +122,9 @@ const MyWorkspaceRoute: React.FC = () => {
     taskTeamLinks,
     linkTaskToTeam,
     deleteTask,
+    teamHiddenColumns,
+    hideTeamColumn,
+    showTeamColumn,
   } = useDataStore(
     useShallow((s) => ({
       tasks: s.tasks,
@@ -146,6 +149,9 @@ const MyWorkspaceRoute: React.FC = () => {
       taskTeamLinks: s.taskTeamLinks,
       linkTaskToTeam: s.linkTaskToTeam,
       deleteTask: s.deleteTask,
+      teamHiddenColumns: s.teamHiddenColumns,
+      hideTeamColumn: s.hideTeamColumn,
+      showTeamColumn: s.showTeamColumn,
     })),
   );
   const searchQuery = useUiStore((s) => s.searchQuery);
@@ -190,6 +196,9 @@ const MyWorkspaceRoute: React.FC = () => {
       onLinkTaskToTeam={linkTaskToTeam}
       onDeleteTask={deleteTask}
       allTeamProperties={teamProperties}
+      hiddenColumns={teamHiddenColumns['my-work'] || []}
+      onHideColumn={(key) => hideTeamColumn('my-work', key)}
+      onShowColumn={(key) => showTeamColumn('my-work', key)}
     />
   );
 };
@@ -220,6 +229,9 @@ const TeamWorkspaceRoute: React.FC = () => {
     taskTeamLinks,
     linkTaskToTeam,
     deleteTask,
+    teamHiddenColumns,
+    hideTeamColumn,
+    showTeamColumn,
   } = useDataStore(
     useShallow((s) => ({
       tasks: s.tasks,
@@ -244,6 +256,9 @@ const TeamWorkspaceRoute: React.FC = () => {
       taskTeamLinks: s.taskTeamLinks,
       linkTaskToTeam: s.linkTaskToTeam,
       deleteTask: s.deleteTask,
+      teamHiddenColumns: s.teamHiddenColumns,
+      hideTeamColumn: s.hideTeamColumn,
+      showTeamColumn: s.showTeamColumn,
     })),
   );
   const searchQuery = useUiStore((s) => s.searchQuery);
@@ -291,6 +306,9 @@ const TeamWorkspaceRoute: React.FC = () => {
       onLinkTaskToTeam={linkTaskToTeam}
       onDeleteTask={deleteTask}
       allTeamProperties={teamProperties}
+      hiddenColumns={teamHiddenColumns[team.id] || []}
+      onHideColumn={(key) => hideTeamColumn(team.id, key)}
+      onShowColumn={(key) => showTeamColumn(team.id, key)}
     />
   );
 };

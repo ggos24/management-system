@@ -11,6 +11,7 @@ import {
   TaskComment,
   TaskActivity,
   TaskTeamLink,
+  TeamHiddenColumn,
   Doc,
   DocSection,
 } from '../types';
@@ -681,6 +682,30 @@ export async function upsertUserTeamOrders(
     orders.map((o) => ({ user_id: userId, team_id: o.teamId, sort_order: o.sortOrder, context })),
     { onConflict: 'user_id,team_id,context' },
   );
+  if (error) throw error;
+}
+
+// === Team hidden columns (table view) ===
+
+export async function fetchTeamHiddenColumns(): Promise<TeamHiddenColumn[]> {
+  const { data, error } = await supabase.from('team_hidden_columns').select('team_id, column_key');
+  if (error) throw error;
+  return (data || []).map((row: any) => ({ teamId: row.team_id, columnKey: row.column_key }));
+}
+
+export async function hideTeamColumn(teamId: string, columnKey: string, hiddenBy: string | null): Promise<void> {
+  const { error } = await supabase
+    .from('team_hidden_columns')
+    .upsert({ team_id: teamId, column_key: columnKey, hidden_by: hiddenBy }, { onConflict: 'team_id,column_key' });
+  if (error) throw error;
+}
+
+export async function showTeamColumn(teamId: string, columnKey: string): Promise<void> {
+  const { error } = await supabase
+    .from('team_hidden_columns')
+    .delete()
+    .eq('team_id', teamId)
+    .eq('column_key', columnKey);
   if (error) throw error;
 }
 

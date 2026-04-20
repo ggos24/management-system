@@ -245,6 +245,7 @@ interface DataState {
   deletedTaskCount: number;
   sidebarTeamOrders: Record<string, number>;
   scheduleTeamOrders: Record<string, number>;
+  teamHiddenColumns: Record<string, string[]>;
 
   // Setters
   setTaskTeamLinks: (links: TaskTeamLink[]) => void;
@@ -271,6 +272,11 @@ interface DataState {
   setIntegrations: (integrations: Record<string, boolean>) => void;
   setDeletedTasks: (tasks: Task[]) => void;
   setDeletedTaskCount: (count: number) => void;
+  setTeamHiddenColumns: (hidden: Record<string, string[]>) => void;
+
+  // Column visibility actions (team-wide, editor+ only)
+  hideTeamColumn: (teamId: string, columnKey: string) => void;
+  showTeamColumn: (teamId: string, columnKey: string) => void;
 
   // Task team link actions
   linkTaskToTeam: (taskId: string, teamId: string) => void;
@@ -369,6 +375,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   deletedTaskCount: 0,
   sidebarTeamOrders: {},
   scheduleTeamOrders: {},
+  teamHiddenColumns: {},
 
   // Setters
   setTaskTeamLinks: (links) => set({ taskTeamLinks: links }),
@@ -464,6 +471,35 @@ export const useDataStore = create<DataState>((set, get) => ({
   setIntegrations: (integrations) => set({ integrations }),
   setDeletedTasks: (deletedTasks) => set({ deletedTasks }),
   setDeletedTaskCount: (deletedTaskCount) => set({ deletedTaskCount }),
+  setTeamHiddenColumns: (hidden) => set({ teamHiddenColumns: hidden }),
+
+  hideTeamColumn: (teamId, columnKey) => {
+    const prev = get().teamHiddenColumns;
+    const prevKeys = prev[teamId] || [];
+    if (prevKeys.includes(columnKey)) return;
+    const nextKeys = [...prevKeys, columnKey];
+    set({ teamHiddenColumns: { ...prev, [teamId]: nextKeys } });
+    const actorId = getCurrentUserId();
+    db.hideTeamColumn(teamId, columnKey, actorId).catch(() => {
+      set({ teamHiddenColumns: prev });
+      toast.error('Failed to hide column');
+    });
+  },
+
+  showTeamColumn: (teamId, columnKey) => {
+    const prev = get().teamHiddenColumns;
+    const prevKeys = prev[teamId] || [];
+    if (!prevKeys.includes(columnKey)) return;
+    const nextKeys = prevKeys.filter((k) => k !== columnKey);
+    const nextMap = { ...prev };
+    if (nextKeys.length === 0) delete nextMap[teamId];
+    else nextMap[teamId] = nextKeys;
+    set({ teamHiddenColumns: nextMap });
+    db.showTeamColumn(teamId, columnKey).catch(() => {
+      set({ teamHiddenColumns: prev });
+      toast.error('Failed to show column');
+    });
+  },
 
   // Task team link actions
   linkTaskToTeam: (taskId, teamId) => {
@@ -1418,6 +1454,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchTeamPlacements(), // 14
       db.fetchUserTeamOrders(profileResult.id, 'sidebar'), // 15
       db.fetchUserTeamOrders(profileResult.id, 'schedule'), // 16
+      db.fetchTeamHiddenColumns(), // 17
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
@@ -1426,6 +1463,12 @@ export const useDataStore = create<DataState>((set, get) => ({
     const teamStatusData = getValue(results[6], { statuses: {}, categories: {} });
     const sidebarOrders = getValue(results[15], {} as Record<string, number>);
     const scheduleOrders = getValue(results[16], {} as Record<string, number>);
+    const hiddenColumnsRows = getValue(results[17], [] as { teamId: string; columnKey: string }[]);
+    const hiddenColumnsMap: Record<string, string[]> = {};
+    for (const row of hiddenColumnsRows) {
+      if (!hiddenColumnsMap[row.teamId]) hiddenColumnsMap[row.teamId] = [];
+      hiddenColumnsMap[row.teamId].push(row.columnKey);
+    }
 
     // Sort teams by user's sidebar order, falling back to default sort_order
     const teams = getValue(results[0], []);
@@ -1453,6 +1496,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       deletedTaskCount: getValue(results[12], 0),
       taskTeamLinks: getValue(results[13], []),
       teamPlacements: getValue(results[14], {} as Record<string, string[]>),
+      teamHiddenColumns: hiddenColumnsMap,
     });
 
     // Auto-purge tasks deleted more than 30 days ago (fire-and-forget)

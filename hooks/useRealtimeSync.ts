@@ -51,6 +51,20 @@ export function useRealtimeSync() {
     db.fetchTeamPlacements().then(setTeamPlacements).catch(console.error);
   }, 300);
 
+  const debouncedFetchTeamHiddenColumns = useDebouncedCallback(() => {
+    const { setTeamHiddenColumns } = storeRef.current.getState();
+    db.fetchTeamHiddenColumns()
+      .then((rows) => {
+        const map: Record<string, string[]> = {};
+        for (const row of rows) {
+          if (!map[row.teamId]) map[row.teamId] = [];
+          map[row.teamId].push(row.columnKey);
+        }
+        setTeamHiddenColumns(map);
+      })
+      .catch(console.error);
+  }, 300);
+
   useEffect(() => {
     const channel = supabase
       .channel('realtime-sync')
@@ -74,6 +88,9 @@ export function useRealtimeSync() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'team_placements' }, () => {
         debouncedFetchTeamPlacements();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'team_hidden_columns' }, () => {
+        debouncedFetchTeamHiddenColumns();
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
         useUiStore.getState().loadNotifications();

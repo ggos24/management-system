@@ -237,6 +237,9 @@ interface WorkspaceProps {
   onLinkTaskToTeam?: (taskId: string, teamId: string) => void;
   onDeleteTask?: (taskId: string) => void;
   allTeamProperties?: Record<string, CustomProperty[]>;
+  hiddenColumns?: string[];
+  onHideColumn?: (columnKey: string) => void;
+  onShowColumn?: (columnKey: string) => void;
 }
 
 type ViewMode = 'board' | 'table' | 'calendar';
@@ -271,6 +274,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
   onLinkTaskToTeam: _onLinkTaskToTeam,
   onDeleteTask,
   allTeamProperties = {},
+  hiddenColumns = [],
+  onHideColumn,
+  onShowColumn,
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
 
@@ -294,6 +300,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // Property Creation State
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState<string | null>(null);
   const [isReorderColumnsOpen, setIsReorderColumnsOpen] = useState<string | null>(null);
+  const [isColumnVisibilityOpen, setIsColumnVisibilityOpen] = useState<string | null>(null);
   const [newPropName, setNewPropName] = useState('');
   const [newPropType, setNewPropType] = useState<CustomProperty['type']>('text');
 
@@ -369,6 +376,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
     setColumnOrder(newOrder);
     localStorage.setItem(columnOrderKey, JSON.stringify(newOrder));
   };
+
+  // Visibility: hide anything except title. Non-team views (my-work) ignore hiding.
+  const hiddenColumnSet = useMemo(() => new Set(hiddenColumns), [hiddenColumns]);
+  const canManageColumnVisibility =
+    teamFilter !== 'my-work' && !!userRole && isEditorOrAbove(userRole) && !!onHideColumn && !!onShowColumn;
+  const visibleTableColumns = useMemo(
+    () => orderedTableColumns.filter((c) => c.key === 'title' || !hiddenColumnSet.has(c.key)),
+    [orderedTableColumns, hiddenColumnSet],
+  );
 
   // Collapsible State — persisted per team in localStorage
   const collapsedKey = `collapsed-sections-${teamFilter}`;
@@ -1935,7 +1951,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   />
                                 </th>
                               )}
-                              {orderedTableColumns.map((tc) => {
+                              {visibleTableColumns.map((tc) => {
                                 const isProp = tc.key.startsWith('prop:');
                                 const prop = isProp ? resolvedProps.find((p) => p.id === tc.key.slice(5)) : undefined;
                                 return (
@@ -1986,13 +2002,28 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   </th>
                                 );
                               })}
-                              <th className="p-2 w-16 text-center">
+                              <th className="p-2 w-20 text-center">
                                 <div className="flex items-center justify-center gap-0.5">
+                                  {canManageColumnVisibility && (
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsColumnVisibilityOpen(isColumnVisibilityOpen === col.id ? null : col.id);
+                                        setIsReorderColumnsOpen(null);
+                                        setIsAddPropertyOpen(null);
+                                      }}
+                                      className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                      title="Show/hide columns"
+                                    >
+                                      <Eye size={14} />
+                                    </button>
+                                  )}
                                   <button
                                     onClick={(e) => {
                                       e.stopPropagation();
                                       setIsReorderColumnsOpen(isReorderColumnsOpen === col.id ? null : col.id);
                                       setIsAddPropertyOpen(null);
+                                      setIsColumnVisibilityOpen(null);
                                     }}
                                     className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
                                     title="Reorder columns"
@@ -2004,6 +2035,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       e.stopPropagation();
                                       setIsAddPropertyOpen(isAddPropertyOpen === col.id ? null : col.id);
                                       setIsReorderColumnsOpen(null);
+                                      setIsColumnVisibilityOpen(null);
                                     }}
                                     className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400"
                                   >
@@ -2056,7 +2088,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       </td>
                                     )}
                                     {/* Data-driven cells */}
-                                    {orderedTableColumns.map((tc) => {
+                                    {visibleTableColumns.map((tc) => {
                                       switch (tc.key) {
                                         case 'title':
                                           return (
@@ -2382,7 +2414,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             ) : (
                               <tr>
                                 <td
-                                  colSpan={orderedTableColumns.length + (indent ? 1 : 2)}
+                                  colSpan={visibleTableColumns.length + (indent ? 1 : 2)}
                                   className="p-4 text-center text-xs text-zinc-400 italic"
                                 >
                                   No tasks in this step
@@ -2396,7 +2428,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 onClick={() => onAddTask({ status: col.id })}
                               >
                                 <td
-                                  colSpan={orderedTableColumns.length + (indent ? 1 : 2)}
+                                  colSpan={visibleTableColumns.length + (indent ? 1 : 2)}
                                   className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium"
                                 >
                                   <span className="flex items-center gap-2">
@@ -2558,6 +2590,56 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 </div>
                               </div>
                             ))}
+                          </div>
+                        </div>
+                      )}
+                      {isColumnVisibilityOpen === col.id && canManageColumnVisibility && (
+                        <div
+                          className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-60 text-left max-h-[400px] overflow-y-auto custom-scrollbar"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          <div className="flex items-center justify-between mb-2">
+                            <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">Show/Hide Columns</h4>
+                            <button
+                              onClick={() => setIsColumnVisibilityOpen(null)}
+                              className="p-0.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-white rounded transition-colors"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                          <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mb-2">
+                            Applies to the whole team.
+                          </p>
+                          <div className="space-y-1">
+                            {orderedTableColumns
+                              .filter((tc) => tc.key !== 'title')
+                              .map((tc) => {
+                                const isHidden = hiddenColumnSet.has(tc.key);
+                                return (
+                                  <label
+                                    key={tc.key}
+                                    className="flex items-center justify-between gap-2 px-2 py-1.5 rounded bg-zinc-50 dark:bg-zinc-800/50 text-xs cursor-pointer hover:bg-zinc-100 dark:hover:bg-zinc-800"
+                                  >
+                                    <span className="flex items-center gap-2 truncate text-zinc-700 dark:text-zinc-300">
+                                      {isHidden ? (
+                                        <EyeOff size={12} className="text-zinc-400 flex-shrink-0" />
+                                      ) : (
+                                        <Eye size={12} className="text-emerald-500 flex-shrink-0" />
+                                      )}
+                                      <span className="truncate">{tc.label}</span>
+                                    </span>
+                                    <input
+                                      type="checkbox"
+                                      checked={!isHidden}
+                                      onChange={() => {
+                                        if (isHidden) onShowColumn?.(tc.key);
+                                        else onHideColumn?.(tc.key);
+                                      }}
+                                      className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer flex-shrink-0"
+                                    />
+                                  </label>
+                                );
+                              })}
                           </div>
                         </div>
                       )}

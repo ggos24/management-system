@@ -172,6 +172,11 @@ export interface TaskTeamLink {
   createdAt: string;
 }
 
+export interface TeamHiddenColumn {
+  teamId: string;
+  columnKey: string;
+}
+
 export type NotificationType =
   | 'task_assigned'
   | 'task_status_changed'
