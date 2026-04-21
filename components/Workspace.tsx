@@ -1116,7 +1116,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
             options={allPlacements.map((p) => ({ value: p, label: p }))}
             selected={filterPlacements}
             onChange={(selected) => setFilterPlacements(selected)}
-            placeholder="Filter placements..."
+            placeholder="Placements"
             className="min-w-0 md:min-w-[200px] md:w-[200px]"
           />
         </div>
