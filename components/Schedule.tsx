@@ -405,46 +405,47 @@ const Schedule: React.FC<ScheduleProps> = ({
           </p>
         </div>
 
-        <div className="flex items-center gap-3 flex-wrap">
-          <div className="w-[140px]">
-            <CustomSelect
-              icon={User}
-              options={[{ value: 'all', label: 'All People' }, ...members.map((m) => ({ value: m.id, label: m.name }))]}
-              value={filterPerson}
-              onChange={setFilterPerson}
-              placeholder="All People"
-            />
-          </div>
-          <div className="w-[140px]">
-            <CustomSelect
-              icon={Filter}
-              options={[
-                { value: 'all', label: 'All Absences' },
-                { value: 'holiday', label: 'Holiday' },
-                { value: 'sick', label: 'Sick Leave' },
-                { value: 'business_trip', label: 'Business Trip' },
-                { value: 'day_off', label: 'Day Off' },
-                { value: 'free', label: 'Free' },
-                { value: 'busy', label: 'Busy' },
-              ]}
-              value={filterAbsenceType}
-              onChange={setFilterAbsenceType}
-              placeholder="Absence Type"
-            />
-          </div>
-          <div className="flex items-center gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[32px] px-2 py-1.5">
+        <div className="w-full md:w-auto grid grid-cols-3 gap-2 md:flex md:items-center md:gap-3 md:flex-wrap">
+          <CustomSelect
+            icon={User}
+            options={[{ value: 'all', label: 'All People' }, ...members.map((m) => ({ value: m.id, label: m.name }))]}
+            value={filterPerson}
+            onChange={setFilterPerson}
+            placeholder="All People"
+            className="min-w-0 md:w-[140px]"
+          />
+          <CustomSelect
+            icon={Filter}
+            options={[
+              { value: 'all', label: 'All Absences' },
+              { value: 'holiday', label: 'Holiday' },
+              { value: 'sick', label: 'Sick Leave' },
+              { value: 'business_trip', label: 'Business Trip' },
+              { value: 'day_off', label: 'Day Off' },
+              { value: 'free', label: 'Free' },
+              { value: 'busy', label: 'Busy' },
+            ]}
+            value={filterAbsenceType}
+            onChange={setFilterAbsenceType}
+            placeholder="Absence Type"
+            className="min-w-0 md:w-[140px]"
+          />
+          <div className="flex items-center justify-between gap-1 md:gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[32px] px-1 md:px-2 py-1.5 min-w-0">
             <button
               onClick={() => changeMonth(-1)}
-              className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400"
+              className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 flex-shrink-0"
+              aria-label="Previous month"
             >
               <ChevronLeft size={14} />
             </button>
-            <span className="text-sm w-28 text-center text-zinc-900 dark:text-zinc-100 flex items-center justify-center gap-1.5">
-              <Calendar size={14} className="text-zinc-400" /> {monthName}
+            <span className="text-sm md:w-28 text-center text-zinc-900 dark:text-zinc-100 flex items-center justify-center gap-1 md:gap-1.5 min-w-0">
+              <Calendar size={14} className="text-zinc-400 flex-shrink-0 hidden md:inline" />
+              <span className="truncate">{monthName}</span>
             </span>
             <button
               onClick={() => changeMonth(1)}
-              className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400"
+              className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 flex-shrink-0"
+              aria-label="Next month"
             >
               <ChevronRight size={14} />
             </button>

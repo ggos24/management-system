@@ -164,16 +164,21 @@ export const Header: React.FC = () => {
             onChange={handleSearchChange}
             className="flex-1 px-3 py-2 bg-transparent border-none text-base outline-none text-zinc-900 dark:text-white"
           />
-          <button onClick={() => setMobileSearchOpen(false)} className="p-2 shrink-0">
+          <button
+            onClick={() => setMobileSearchOpen(false)}
+            aria-label="Close search"
+            className="w-10 h-10 flex items-center justify-center shrink-0 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full"
+          >
             <X size={18} className="text-zinc-400" />
           </button>
         </div>
       )}
 
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2 md:gap-3">
         <button
           onClick={() => setMobileSidebarOpen(true)}
-          className="md:hidden p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
+          aria-label="Open menu"
+          className="md:hidden w-10 h-10 flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full"
         >
           <Menu size={20} />
         </button>
@@ -181,7 +186,8 @@ export const Header: React.FC = () => {
           <>
             <button
               onClick={() => setMobileSearchOpen(true)}
-              className="md:hidden p-2 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
+              aria-label="Search"
+              className="md:hidden w-10 h-10 flex items-center justify-center hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full"
             >
               <Search size={18} className="text-zinc-500" />
             </button>
@@ -211,7 +217,7 @@ export const Header: React.FC = () => {
             )}
           </IconButton>
           {isNotificationsOpen && (
-            <div className="absolute right-0 mt-2 w-80 max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100">
+            <div className="fixed inset-x-2 top-[4.5rem] md:absolute md:inset-x-auto md:right-0 md:top-auto md:mt-2 w-auto md:w-80 md:max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100">
               <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
                 <h3 className="text-sm font-semibold">
                   Notifications

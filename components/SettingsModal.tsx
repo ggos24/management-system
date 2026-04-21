@@ -316,19 +316,30 @@ export const SettingsModal: React.FC = () => {
         const myAbsenceStats = calculateAbsenceStats(currentUser.id, absences);
         return (
           <div className="space-y-6">
-            <div className="flex items-start gap-5 border-b border-zinc-100 dark:border-zinc-800 pb-6">
+            <div className="flex items-start gap-4 md:gap-5 border-b border-zinc-100 dark:border-zinc-800 pb-6">
               <div className="relative group flex-shrink-0">
                 <Avatar src={currentUser.avatar} size="lg" className="!w-20 !h-20" />
+                {/* Desktop: full-overlay hover affordance */}
                 <button
                   onClick={handleChangeAvatar}
                   disabled={uploading}
-                  className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-pointer"
+                  className="hidden md:flex absolute inset-0 items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                  aria-label="Change avatar"
                 >
                   {uploading ? (
                     <Loader2 size={18} className="text-white animate-spin" />
                   ) : (
                     <Pencil size={18} className="text-white" />
                   )}
+                </button>
+                {/* Mobile: small corner badge so the avatar stays visible */}
+                <button
+                  onClick={handleChangeAvatar}
+                  disabled={uploading}
+                  className="md:hidden absolute -bottom-0.5 -right-0.5 w-8 h-8 flex items-center justify-center bg-zinc-900 dark:bg-white text-white dark:text-zinc-900 rounded-full border-2 border-white dark:border-zinc-900 shadow-sm"
+                  aria-label="Change avatar"
+                >
+                  {uploading ? <Loader2 size={14} className="animate-spin" /> : <Pencil size={14} />}
                 </button>
                 <input
                   ref={fileInputRef}
@@ -339,7 +350,7 @@ export const SettingsModal: React.FC = () => {
                 />
               </div>
               <div className="flex-1 min-w-0 pt-1">
-                <div className="flex items-center gap-3">
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
                   {editingName ? (
                     <form
                       className="flex items-center gap-1.5"
@@ -1048,17 +1059,34 @@ export const SettingsModal: React.FC = () => {
     }
   };
 
+  const tabs = [
+    'My Profile',
+    'Notifications',
+    'Team Members',
+    ...(currentUser && isEditorOrAbove(currentUser.role) ? ['Content'] : []),
+    'Logs History',
+  ];
+
   return (
     <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="Settings">
-      <div className="flex gap-6 h-[560px]">
-        <div className="w-48 border-r border-zinc-100 dark:border-zinc-800 pr-4 space-y-1 shrink-0">
-          {[
-            'My Profile',
-            'Notifications',
-            'Team Members',
-            ...(currentUser && isEditorOrAbove(currentUser.role) ? ['Content'] : []),
-            'Logs History',
-          ].map((tab) => (
+      <div className="flex flex-col md:flex-row md:gap-6 md:h-[560px]">
+        {/* Mobile: horizontal scrollable tab strip */}
+        <div className="md:hidden -mx-4 px-4 mb-4 border-b border-zinc-100 dark:border-zinc-800 overflow-x-auto">
+          <div className="flex gap-1 whitespace-nowrap pb-2">
+            {tabs.map((tab) => (
+              <button
+                key={tab}
+                onClick={() => setActiveSettingsTab(tab)}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex-shrink-0 ${activeSettingsTab === tab ? 'bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white' : 'text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+              >
+                {tab}
+              </button>
+            ))}
+          </div>
+        </div>
+        {/* Desktop: vertical sidebar */}
+        <div className="hidden md:block w-48 border-r border-zinc-100 dark:border-zinc-800 pr-4 space-y-1 shrink-0">
+          {tabs.map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveSettingsTab(tab)}
@@ -1068,7 +1096,7 @@ export const SettingsModal: React.FC = () => {
             </button>
           ))}
         </div>
-        <div className="flex-1 overflow-y-auto">{renderSettingsContent()}</div>
+        <div className="flex-1 md:overflow-y-auto min-w-0">{renderSettingsContent()}</div>
       </div>
     </Modal>
   );

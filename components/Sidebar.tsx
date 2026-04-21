@@ -97,9 +97,10 @@ const Sidebar: React.FC<SidebarProps> = ({
           {/* Mobile close button */}
           <button
             onClick={() => setIsMobileOpen(false)}
-            className="md:hidden absolute top-4 right-4 p-2 hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded text-zinc-500"
+            aria-label="Close menu"
+            className="md:hidden absolute top-3 right-3 w-10 h-10 flex items-center justify-center hover:bg-zinc-200 dark:hover:bg-zinc-800 rounded-full text-zinc-500"
           >
-            <X size={18} />
+            <X size={20} />
           </button>
           {/* Only show branding when NOT collapsed */}
           {!isCollapsed && (
@@ -131,7 +132,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto px-2 space-y-6 custom-scrollbar mt-6">
+        <div className="flex-1 overflow-y-auto px-2 pb-3 space-y-6 custom-scrollbar mt-6">
           {/* Main Navigation */}
           <div className="space-y-0.5">
             <button
@@ -255,7 +256,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </div>
         </div>
 
-        <div className="mt-auto p-2 border-t border-zinc-200 dark:border-zinc-800 space-y-1">
+        <div className="mt-auto p-2 pt-3 border-t border-zinc-200 dark:border-zinc-800 space-y-0.5 safe-b">
           <button
             onClick={() => onChangeView('docs-kb')}
             className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
@@ -288,7 +289,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               Help
             </span>
           </button>
-          <div className="h-px bg-zinc-200 dark:bg-zinc-800 mx-2 my-1" />
+          <div className="h-px bg-zinc-100 dark:bg-zinc-800/50 mx-2 my-1.5" />
           <button
             onClick={() => onChangeView('bin')}
             className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
