@@ -167,7 +167,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
           return (
             <span
               key={tag}
-              className={`${color.bg} ${color.text} px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-medium`}
+              className={`${color.bg} ${color.text} px-1.5 py-0.5 rounded text-[11px] md:text-[10px] flex items-center gap-1 font-medium`}
             >
               {tag}
               <button
@@ -183,7 +183,9 @@ export const TagSelect: React.FC<TagSelectProps> = ({
           );
         })}
         {hiddenCount > 0 && (
-          <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 px-1 py-0.5">+{hiddenCount}</span>
+          <span className="text-[11px] md:text-[10px] font-medium text-zinc-500 dark:text-zinc-400 px-1 py-0.5">
+            +{hiddenCount}
+          </span>
         )}
         {!compact && (
           <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
@@ -219,7 +221,9 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                     onClick={() => toggleSelection(tag)}
                     className={`flex-1 px-1.5 py-1 rounded text-xs cursor-pointer flex items-center gap-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 ${isSelected ? 'font-semibold' : ''}`}
                   >
-                    <span className={`${color.bg} ${color.text} px-1.5 py-0.5 rounded text-[10px] font-medium`}>
+                    <span
+                      className={`${color.bg} ${color.text} px-1.5 py-0.5 rounded text-[11px] md:text-[10px] font-medium`}
+                    >
                       {tag}
                     </span>
                     {isSelected && <Check size={10} className="text-black dark:text-white flex-shrink-0" />}
@@ -281,7 +285,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                     <button
                       key={c.hex}
                       onClick={() => setNewTagColor(c.hex)}
-                      className={`w-4 h-4 rounded-full border-2 transition-transform hover:scale-110 ${newTagColor === c.hex ? 'border-zinc-900 dark:border-white scale-110' : 'border-transparent'}`}
+                      className={`w-7 h-7 md:w-4 md:h-4 rounded-full border-2 transition-transform hover:scale-110 ${newTagColor === c.hex ? 'border-zinc-900 dark:border-white scale-110' : 'border-transparent'}`}
                       style={{ backgroundColor: c.hex }}
                       title={c.name}
                     />
@@ -333,7 +337,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                     setEditingTagColor(null);
                     setColorPickerPos(null);
                   }}
-                  className={`w-5 h-5 rounded-full border-2 transition-transform hover:scale-110 ${tagColors[editingTagColor] === c.hex ? 'border-zinc-900 dark:border-white scale-110' : 'border-transparent'}`}
+                  className={`w-8 h-8 md:w-5 md:h-5 rounded-full border-2 transition-transform hover:scale-110 ${tagColors[editingTagColor] === c.hex ? 'border-zinc-900 dark:border-white scale-110' : 'border-transparent'}`}
                   style={{ backgroundColor: c.hex }}
                   title={c.name}
                 />

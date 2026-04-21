@@ -48,7 +48,7 @@ const ToolbarButton: React.FC<{
       onClick();
     }}
     title={title}
-    className={`p-1.5 rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+    className={`flex-shrink-0 w-9 h-9 md:w-auto md:h-auto md:p-1.5 flex items-center justify-center rounded-md transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
       active
         ? 'bg-zinc-200 dark:bg-zinc-600 text-zinc-900 dark:text-white'
         : 'text-zinc-500 dark:text-zinc-400 hover:bg-zinc-200 dark:hover:bg-zinc-700'
@@ -145,8 +145,8 @@ export const DocsEditor: React.FC<DocsEditorProps> = ({ content, onChange }) => 
 
   return (
     <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-900 overflow-hidden focus-within:ring-1 focus-within:ring-zinc-400">
-      {/* Toolbar */}
-      <div className="flex items-center gap-0.5 flex-wrap border-b border-zinc-200 dark:border-zinc-700 p-1.5 bg-zinc-50 dark:bg-zinc-800/50">
+      {/* Toolbar — horizontal scroll on mobile, wraps on md+ */}
+      <div className="flex items-center gap-0.5 flex-nowrap overflow-x-auto md:flex-wrap border-b border-zinc-200 dark:border-zinc-700 p-1.5 bg-zinc-50 dark:bg-zinc-800/50 scrollbar-thin">
         <ToolbarButton
           onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
           active={editor.isActive('heading', { level: 1 })}

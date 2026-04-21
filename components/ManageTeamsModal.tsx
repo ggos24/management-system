@@ -135,8 +135,8 @@ export const ManageTeamsModal: React.FC = () => {
                 key={team.id}
                 className={`border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-900 group ${team.archived ? 'opacity-60 grayscale' : ''}`}
               >
-                <div className="flex items-center justify-between p-3">
-                  <div className="flex items-center gap-3">
+                <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3">
+                  <div className="flex items-center gap-3 min-w-0">
                     <div className="w-8 h-8 flex items-center justify-center bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">
                       <IconComponent name={team.icon} size={16} />
                     </div>

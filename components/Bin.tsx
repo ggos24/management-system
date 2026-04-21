@@ -258,7 +258,7 @@ export const Bin: React.FC = () => {
                   </div>
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
                     <span
-                      className={`inline-flex px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusColor(task.status)}`}
+                      className={`inline-flex px-2 py-0.5 rounded text-[11px] md:text-[10px] font-medium border ${getStatusColor(task.status)}`}
                     >
                       {task.status}
                     </span>

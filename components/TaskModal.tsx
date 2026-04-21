@@ -602,19 +602,19 @@ export const TaskModal: React.FC = () => {
       onClose={handleClose}
       title=""
       headerActions={
-        <div className="flex gap-2 mr-2 relative">
+        <div className="flex gap-1 md:gap-2 mr-1 md:mr-2 relative">
           <button
             onClick={() => handleDeleteTask(taskModalData.id!)}
-            className={`p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors ${!taskModalData.id ? 'hidden' : ''}`}
-            title="Delete Task"
+            aria-label="Delete Task"
+            className={`h-11 w-11 md:h-9 md:w-9 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors ${!taskModalData.id ? 'hidden' : ''}`}
           >
             <Trash2 size={18} />
           </button>
           <div className="relative">
             <button
               onClick={handleShareTask}
-              className="p-1.5 text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded transition-colors"
-              title="Copy link"
+              aria-label="Copy link"
+              className="h-11 w-11 md:h-9 md:w-9 flex items-center justify-center text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full transition-colors"
             >
               {linkCopied ? <CheckCircle size={18} className="text-emerald-500" /> : <Share2 size={18} />}
             </button>
@@ -1225,8 +1225,12 @@ export const TaskModal: React.FC = () => {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
                               <span className="text-xs font-semibold text-zinc-900 dark:text-white">{c.userName}</span>
-                              <span className="text-[10px] text-zinc-400">{formatCommentTime(c.createdAt)}</span>
-                              {c.updatedAt && <span className="text-[10px] text-zinc-400 italic">(edited)</span>}
+                              <span className="text-[11px] md:text-[10px] text-zinc-400">
+                                {formatCommentTime(c.createdAt)}
+                              </span>
+                              {c.updatedAt && (
+                                <span className="text-[11px] md:text-[10px] text-zinc-400 italic">(edited)</span>
+                              )}
                               {currentUser && (currentUser.id === c.userId || currentUser.role === 'admin') && (
                                 <div className="opacity-100 md:opacity-0 md:group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
                                   {currentUser.id === c.userId && (

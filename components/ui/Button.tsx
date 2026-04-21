@@ -10,7 +10,7 @@ const buttonVariants = {
 };
 
 const buttonSizes = {
-  sm: 'px-3 py-2.5 md:py-1.5 text-xs',
+  sm: 'px-3 py-2.5 md:py-1.5 text-sm md:text-xs',
   md: 'px-6 py-3 md:py-2 text-sm',
 };
 
@@ -47,8 +47,8 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
 Button.displayName = 'Button';
 
 const iconButtonSizes = {
-  sm: 'p-2.5 md:p-1.5',
-  md: 'p-3 md:p-2',
+  sm: 'h-11 w-11 md:h-8 md:w-8 p-0 flex items-center justify-center md:p-1.5',
+  md: 'h-11 w-11 md:h-9 md:w-9 p-0 flex items-center justify-center md:p-2',
 };
 
 interface IconButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {

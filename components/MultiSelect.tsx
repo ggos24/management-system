@@ -163,7 +163,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                   return (
                     <span
                       key={val}
-                      className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-[10px] flex items-center gap-1 font-medium border border-zinc-200 dark:border-zinc-700"
+                      className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-[11px] md:text-[10px] flex items-center gap-1 font-medium border border-zinc-200 dark:border-zinc-700"
                     >
                       {optionLabel}
                       <button
@@ -179,7 +179,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                   );
                 })}
                 {hiddenCount > 0 && (
-                  <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 px-1 py-0.5">
+                  <span className="text-[11px] md:text-[10px] font-medium text-zinc-500 dark:text-zinc-400 px-1 py-0.5">
                     +{hiddenCount}
                   </span>
                 )}
