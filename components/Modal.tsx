@@ -65,7 +65,7 @@ export const Modal: React.FC<ModalProps> = ({
   if (!isOpen) return null;
   return (
     <div
-      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-start md:items-center justify-center p-2 md:p-4"
+      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-start md:items-center justify-center p-2 md:p-4 safe-t"
       onClick={onClose}
     >
       <div

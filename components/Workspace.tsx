@@ -2645,7 +2645,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
         {/* Floating Bulk Action Bar */}
         {viewMode === 'table' && selectedCount > 0 && teamFilter !== 'my-work' && (
-          <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200">
+          <div
+            className="fixed left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200"
+            style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
+          >
             <div className="flex items-center gap-3 bg-zinc-900 dark:bg-zinc-100 text-white dark:text-zinc-900 rounded-full px-5 py-2.5 shadow-2xl text-sm font-medium">
               <span className="flex items-center gap-1.5">
                 <Check size={14} />

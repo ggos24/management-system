@@ -89,7 +89,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       )}
 
       <aside
-        className={`fixed md:static inset-y-0 left-0 z-40 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col transition-all duration-300 ${sidebarWidth} ${mobileClass} md:translate-x-0`}
+        className={`fixed md:static inset-y-0 left-0 z-40 bg-zinc-50 dark:bg-zinc-900 border-r border-zinc-200 dark:border-zinc-800 flex flex-col transition-all duration-300 safe-t ${sidebarWidth} ${mobileClass} md:translate-x-0`}
       >
         <div
           className={`p-4 flex items-center ${isCollapsed ? 'justify-center flex-col gap-4' : 'justify-between'} h-16 relative`}
