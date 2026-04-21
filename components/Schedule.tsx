@@ -490,7 +490,7 @@ const Schedule: React.FC<ScheduleProps> = ({
           <div className="flex-1 overflow-auto snap-x snap-mandatory md:snap-none custom-scrollbar relative">
             <div style={{ width: 'max-content', minWidth: '100%' }}>
               <div className="flex sticky top-0 z-30 bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 h-14">
-                <div className="sticky left-0 z-40 w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 p-3 text-[10px] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
+                <div className="sticky left-0 z-40 w-40 md:w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 p-3 text-[11px] md:text-[10px] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
                   Team Member
                 </div>
                 {days.map((day) => {
@@ -529,7 +529,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                       onDrop={(e) => handleTeamDrop(e, group.team.id)}
                     >
                       <div
-                        className={`group sticky left-0 z-20 w-64 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur-sm border-r border-zinc-200 dark:border-zinc-800 px-3 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-zinc-200/95 dark:hover:bg-zinc-700/95 transition-colors shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] ${isCurrentUserTeam ? 'border-l-2 border-l-blue-400 dark:border-l-blue-500' : ''}`}
+                        className={`group sticky left-0 z-20 w-40 md:w-64 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur-sm border-r border-zinc-200 dark:border-zinc-800 px-3 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-zinc-200/95 dark:hover:bg-zinc-700/95 transition-colors shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] ${isCurrentUserTeam ? 'border-l-2 border-l-blue-400 dark:border-l-blue-500' : ''}`}
                         onClick={() => toggleTeamCollapse(group.team.id)}
                       >
                         <ChevronDown
@@ -540,7 +540,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                           {group.team.name}
                         </span>
                         {isAdminUser && (
-                          <div className="ml-auto opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-zinc-500 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing flex-shrink-0 transition-opacity">
+                          <div className="ml-auto opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-300 hover:text-zinc-500 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing flex-shrink-0 transition-opacity">
                             <GripVertical size={12} />
                           </div>
                         )}
@@ -562,7 +562,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                             onDragEnd={handleDragEnd}
                           >
                             <div
-                              className={`group sticky left-0 z-10 w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-2 flex items-center gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 ${isCurrentUser ? 'bg-blue-50/60 dark:bg-blue-950/30' : 'bg-white dark:bg-zinc-900'}`}
+                              className={`group sticky left-0 z-10 w-40 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-2 flex items-center gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 ${isCurrentUser ? 'bg-blue-50/60 dark:bg-blue-950/30' : 'bg-white dark:bg-zinc-900'}`}
                               onClick={() => setSelectedMemberStats(member)}
                             >
                               <Avatar src={member.avatar} size="sm" />
@@ -574,7 +574,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                               </div>
                               {isAdminUser && (
                                 <div
-                                  className="opacity-0 group-hover:opacity-100 text-zinc-300 hover:text-zinc-500 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing flex-shrink-0 ml-auto transition-opacity"
+                                  className="opacity-100 md:opacity-0 md:group-hover:opacity-100 text-zinc-300 hover:text-zinc-500 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing flex-shrink-0 ml-auto transition-opacity"
                                   draggable
                                   onDragStart={(e) => {
                                     e.stopPropagation();

@@ -1164,7 +1164,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       </span>
                     </div>
                     {!isTeamCollapsed && (
-                      <div className="flex gap-6 overflow-x-auto pb-4">
+                      <div className="flex gap-4 sm:gap-6 overflow-x-auto pb-4 snap-x snap-mandatory sm:snap-none">
                         {group.statuses.map((status) => {
                           const col = status;
                           const statusCollapseKey = `${col.id}::${group.teamId}`;
@@ -1177,7 +1177,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           return (
                             <div
                               key={statusCollapseKey}
-                              className={`flex flex-col h-full transition-all ${isCollapsed ? 'w-12' : 'min-w-[300px] max-w-[300px]'}`}
+                              className={`flex flex-col h-full transition-all snap-start ${isCollapsed ? 'w-12' : 'min-w-[85vw] max-w-[85vw] sm:min-w-[300px] sm:max-w-[300px]'}`}
                             >
                               <div className="flex items-center justify-between px-1 mb-3 pb-2 group/header">
                                 {isCollapsed ? (
@@ -1344,7 +1344,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               })}
             </div>
           ) : (
-            <div className="flex gap-6 overflow-x-auto pb-4 h-full">
+            <div className="flex gap-4 sm:gap-6 overflow-x-auto pb-4 h-full snap-x snap-mandatory sm:snap-none">
               {displayColumns.map((col) => {
                 const isCollapsed = collapsedSections[col.id];
                 const statusCategory = statusCategories[teamFilter]?.[col.id] || 'active';
@@ -1356,7 +1356,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     key={col.id}
                     onDrop={(e) => handleDropStatus(e, col.id)}
                     onDragOver={handleDragOver}
-                    className={`flex flex-col h-full transition-all ${isCollapsed ? 'w-12' : 'min-w-[300px] max-w-[300px]'}`}
+                    className={`flex flex-col h-full transition-all snap-start ${isCollapsed ? 'w-12' : 'min-w-[85vw] max-w-[85vw] sm:min-w-[300px] sm:max-w-[300px]'}`}
                   >
                     <div className="flex items-center justify-between px-1 mb-3 pb-2 group/header">
                       {isCollapsed ? (
@@ -1457,7 +1457,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
                           {teamFilter !== 'my-work' && (
                             <div className="relative">
-                              <div className="opacity-0 group-hover/header:opacity-100 flex items-center transition-opacity">
+                              <div className="opacity-100 md:opacity-0 md:group-hover/header:opacity-100 flex items-center transition-opacity">
                                 <button
                                   ref={(el) => {
                                     columnMenuTriggerRefs.current[`board-${col.id}`] = el;
@@ -1800,7 +1800,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             e.stopPropagation();
                             setActiveColumnMenu(activeColumnMenu === col.id ? null : col.id);
                           }}
-                          className="opacity-0 group-hover/header:opacity-100 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-1 transition-opacity"
+                          className="opacity-100 md:opacity-0 md:group-hover/header:opacity-100 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-1 transition-opacity"
                         >
                           <MoreHorizontal size={14} />
                         </button>
@@ -1980,7 +1980,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               const key = `${col.id}:${prop.id}`;
                                               setActivePropertyMenu(activePropertyMenu === key ? null : key);
                                             }}
-                                            className="opacity-0 group-hover/prop:opacity-100 hover:text-zinc-900 dark:hover:text-white"
+                                            className="opacity-100 md:opacity-0 md:group-hover/prop:opacity-100 hover:text-zinc-900 dark:hover:text-white"
                                           >
                                             <MoreHorizontal size={12} />
                                           </button>
@@ -2088,7 +2088,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                 {!indent && !sortColumn && (
                                                   <GripVertical
                                                     size={12}
-                                                    className="text-zinc-300 opacity-0 group-hover:opacity-100 flex-shrink-0"
+                                                    className="text-zinc-300 opacity-100 md:opacity-0 md:group-hover:opacity-100 flex-shrink-0"
                                                   />
                                                 )}
                                                 {isLinkedCopy(task) && (
@@ -2726,7 +2726,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               <div></div>
             </div>
 
-            <div className="grid grid-cols-7 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex-shrink-0">
+            <div className="hidden sm:grid grid-cols-7 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex-shrink-0">
               {WEEKDAYS_MON_SHORT.map((d) => (
                 <div
                   key={d}
@@ -2737,8 +2737,58 @@ const Workspace: React.FC<WorkspaceProps> = ({
               ))}
             </div>
 
+            {/* Mobile agenda — list of days with tasks */}
+            <div className="sm:hidden flex-1 overflow-y-auto bg-white dark:bg-black custom-scrollbar divide-y divide-zinc-100 dark:divide-zinc-800">
+              {(() => {
+                const daysWithTasks = calendarDays
+                  .filter((d) => d.type === 'current')
+                  .map((d) => ({
+                    dateObj: d,
+                    tasks: filteredTasks.filter((t) => new Date(t.dueDate).toDateString() === d.date.toDateString()),
+                  }))
+                  .filter((d) => d.tasks.length > 0);
+                if (daysWithTasks.length === 0) {
+                  return <div className="p-6 text-center text-sm text-zinc-400">No scheduled tasks this month.</div>;
+                }
+                return daysWithTasks.map(({ dateObj, tasks }) => {
+                  const isToday = dateObj.date.toDateString() === new Date().toDateString();
+                  return (
+                    <div key={dateObj.date.toISOString()} className="px-4 py-3">
+                      <div
+                        className={`text-xs font-semibold uppercase tracking-wider mb-2 ${isToday ? 'text-blue-600 dark:text-blue-400' : 'text-zinc-500 dark:text-zinc-400'}`}
+                      >
+                        {dateObj.date.toLocaleDateString('en-GB', {
+                          weekday: 'short',
+                          day: 'numeric',
+                          month: 'short',
+                        })}
+                        {isToday ? ' · Today' : ''}
+                      </div>
+                      <div className="space-y-2">
+                        {tasks.map((t) => (
+                          <div
+                            key={t.id}
+                            onClick={() => onTaskClick(t)}
+                            className={`cursor-pointer rounded-lg border border-zinc-200 dark:border-zinc-700 border-l-[3px] bg-white dark:bg-zinc-900 px-3 py-2 flex items-center gap-2 ${getStatusAccent(getTaskStatusInTeam(t))}`}
+                          >
+                            <span
+                              className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[t.priority] || 'bg-zinc-400'}`}
+                              title={t.priority}
+                            />
+                            <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200 truncate">
+                              {t.title}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                });
+              })()}
+            </div>
+
             {/* Full Height Grid with Scroll Fix */}
-            <div className="flex-1 overflow-y-auto bg-white dark:bg-black custom-scrollbar">
+            <div className="hidden sm:block flex-1 overflow-y-auto bg-white dark:bg-black custom-scrollbar">
               <div className="grid grid-cols-7 auto-rows-fr border-b border-zinc-200 dark:border-zinc-800 h-full min-h-[500px]">
                 {calendarDays.map((dateObj, i) => {
                   const isCurrentMonth = dateObj.type === 'current';
@@ -2815,7 +2865,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       </div>
                       {/* Add Button on Hover */}
                       {teamFilter !== 'my-work' && (
-                        <div className="absolute top-1 left-1 opacity-0 group-hover/cell:opacity-100 transition-opacity">
+                        <div className="absolute top-1 left-1 opacity-100 md:opacity-0 md:group-hover/cell:opacity-100 transition-opacity">
                           <button className="p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded text-zinc-400 hover:text-black dark:hover:text-white">
                             <Plus size={12} />
                           </button>

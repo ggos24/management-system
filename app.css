@@ -24,6 +24,21 @@
   }
 }
 
+@utility safe-b {
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+@utility safe-t {
+  padding-top: env(safe-area-inset-top);
+}
+
+/* Force visibility on touch-only devices for hover-revealed controls */
+@media (hover: none) {
+  .show-on-touch {
+    opacity: 1 !important;
+  }
+}
+
 body {
   font-family: 'Inter', sans-serif;
   letter-spacing: -0.025em;

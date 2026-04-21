@@ -322,7 +322,7 @@ export const SettingsModal: React.FC = () => {
                 <button
                   onClick={handleChangeAvatar}
                   disabled={uploading}
-                  className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                  className="absolute inset-0 flex items-center justify-center bg-black/50 rounded-full opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity cursor-pointer"
                 >
                   {uploading ? (
                     <Loader2 size={18} className="text-white animate-spin" />
@@ -382,7 +382,7 @@ export const SettingsModal: React.FC = () => {
                       {currentUser.name}
                       <Pencil
                         size={14}
-                        className="text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                        className="text-zinc-400 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                       />
                     </h3>
                   )}
@@ -430,7 +430,10 @@ export const SettingsModal: React.FC = () => {
                     }}
                   >
                     {currentUser.jobTitle || 'Add job title...'}
-                    <Pencil size={12} className="text-zinc-400 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    <Pencil
+                      size={12}
+                      className="text-zinc-400 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
+                    />
                   </p>
                 )}
               </div>
@@ -852,7 +855,7 @@ export const SettingsModal: React.FC = () => {
                             >
                               {t}
                             </span>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={() => {
                                   setEditingTypeId(t);
@@ -973,7 +976,7 @@ export const SettingsModal: React.FC = () => {
                             >
                               {p}
                             </span>
-                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                               <button
                                 onClick={() => {
                                   setEditingPlacementId(p);

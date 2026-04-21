@@ -704,7 +704,7 @@ export const TaskModal: React.FC = () => {
           />
 
           <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-5">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 md:gap-x-8 gap-y-4 md:gap-y-5">
               <CustomSelect
                 icon={CheckCircle}
                 label="Section"
@@ -970,7 +970,7 @@ export const TaskModal: React.FC = () => {
                             e.stopPropagation();
                             setPropMenuId(propMenuId === prop.id ? null : prop.id);
                           }}
-                          className="opacity-0 group-hover/prop:opacity-100 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-opacity p-0.5"
+                          className="opacity-100 md:opacity-0 md:group-hover/prop:opacity-100 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-opacity p-0.5"
                         >
                           <MoreHorizontal size={14} />
                         </button>
@@ -1208,7 +1208,7 @@ export const TaskModal: React.FC = () => {
               {activeTab === 'comments' && (
                 <>
                   {/* Comment list */}
-                  <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-3">
+                  <div className="max-h-[min(300px,50dvh)] overflow-y-auto custom-scrollbar space-y-3">
                     {isLoadingComments ? (
                       <p className="text-xs text-zinc-400 italic py-4 text-center">Loading comments...</p>
                     ) : comments.length === 0 ? (
@@ -1228,7 +1228,7 @@ export const TaskModal: React.FC = () => {
                               <span className="text-[10px] text-zinc-400">{formatCommentTime(c.createdAt)}</span>
                               {c.updatedAt && <span className="text-[10px] text-zinc-400 italic">(edited)</span>}
                               {currentUser && (currentUser.id === c.userId || currentUser.role === 'admin') && (
-                                <div className="opacity-0 group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
+                                <div className="opacity-100 md:opacity-0 md:group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
                                   {currentUser.id === c.userId && (
                                     <button
                                       onClick={() => {
@@ -1343,7 +1343,7 @@ export const TaskModal: React.FC = () => {
 
               {/* Activity tab */}
               {activeTab === 'activity' && (
-                <div className="max-h-[300px] overflow-y-auto custom-scrollbar space-y-2.5">
+                <div className="max-h-[min(300px,50dvh)] overflow-y-auto custom-scrollbar space-y-2.5">
                   {isLoadingActivities ? (
                     <p className="text-xs text-zinc-400 italic py-4 text-center">Loading activity...</p>
                   ) : activities.length === 0 ? (
@@ -1433,7 +1433,7 @@ export const TaskModal: React.FC = () => {
                         </a>
                         {link.title && <span className="text-[10px] text-zinc-400 truncate block">{link.url}</span>}
                       </div>
-                      <div className="flex items-center gap-0.5 opacity-0 group-hover/link:opacity-100 transition-opacity flex-shrink-0">
+                      <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover/link:opacity-100 transition-opacity flex-shrink-0">
                         <button
                           onClick={() => {
                             setEditingLinkIdx(idx);

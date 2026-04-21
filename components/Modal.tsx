@@ -1,5 +1,6 @@
 import React, { useEffect, useCallback, useRef } from 'react';
 import { X } from 'lucide-react';
+import { IconButton } from './ui/Button';
 
 const sizeClasses = {
   sm: 'max-w-md',
@@ -64,32 +65,32 @@ export const Modal: React.FC<ModalProps> = ({
   if (!isOpen) return null;
   return (
     <div
-      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-center justify-center p-4"
+      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-start md:items-center justify-center p-2 md:p-4"
       onClick={onClose}
     >
       <div
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        className={`bg-white dark:bg-zinc-900 w-full ${sizeClasses[size]} rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in duration-200 ${allowOverflow ? 'overflow-visible' : 'max-h-[90dvh] overflow-y-auto'}`}
+        className={`bg-white dark:bg-zinc-900 w-full ${sizeClasses[size]} rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in duration-200 flex flex-col ${allowOverflow ? 'overflow-visible max-h-[calc(100dvh-1rem)] md:max-h-[90dvh]' : 'max-h-[calc(100dvh-1rem)] md:max-h-[90dvh]'}`}
         onClick={(e) => e.stopPropagation()}
       >
-        <div className="flex justify-between items-center px-4 md:px-6 py-4">
-          <div>{title && <h3 className="text-lg font-semibold text-zinc-900 dark:text-white">{title}</h3>}</div>
-          <div className="flex-1 flex justify-end gap-2 items-center">
+        <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 flex-shrink-0">
+          <div className="min-w-0 flex-1">
+            {title && <h3 className="text-lg font-semibold text-zinc-900 dark:text-white truncate">{title}</h3>}
+          </div>
+          <div className="flex justify-end gap-1 md:gap-2 items-center flex-shrink-0">
             {headerActions}
-            <button
-              onClick={onClose}
-              aria-label="Close"
-              className="focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 rounded"
-            >
-              <X size={20} className="text-zinc-400 hover:text-black dark:hover:text-white" />
-            </button>
+            <IconButton size="sm" onClick={onClose} aria-label="Close">
+              <X size={18} />
+            </IconButton>
           </div>
         </div>
-        <div className="px-4 md:px-6 pb-6">{children}</div>
+        <div className={`px-4 md:px-6 pb-6 flex-1 ${allowOverflow ? 'overflow-visible' : 'overflow-y-auto'}`}>
+          {children}
+        </div>
         {actions && (
-          <div className="px-4 md:px-6 py-4 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-100 dark:border-zinc-800 flex flex-wrap justify-end gap-3 rounded-b-lg">
+          <div className="px-4 md:px-6 py-3 md:py-4 bg-zinc-50 dark:bg-zinc-950 border-t border-zinc-100 dark:border-zinc-800 flex flex-wrap justify-end gap-2 md:gap-3 rounded-b-lg flex-shrink-0 safe-b">
             {actions}
           </div>
         )}

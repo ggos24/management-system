@@ -1,7 +1,9 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatDateEU, mondayIndex, WEEKDAYS_MON_INITIALS } from '../lib/utils';
+import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
+import { IconButton } from './ui/Button';
 
 interface SimpleDatePickerProps {
   value: string;
@@ -28,16 +30,13 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
   });
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number } | null>(null);
-
-  const updatePosition = useCallback(() => {
-    if (!triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setDropdownPos({
-      top: rect.bottom + 8,
-      left: rect.left,
-    });
-  }, []);
+  const dropdownPos = useViewportPortalPosition({
+    isOpen,
+    triggerRef,
+    fixedWidth: 288,
+    gap: 8,
+    estimatedHeight: 320,
+  });
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -54,17 +53,6 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
-
-  useLayoutEffect(() => {
-    if (isOpen) updatePosition();
-  }, [isOpen, updatePosition]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleScroll = () => updatePosition();
-    window.addEventListener('scroll', handleScroll, true);
-    return () => window.removeEventListener('scroll', handleScroll, true);
-  }, [isOpen, updatePosition]);
 
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
 
@@ -118,34 +106,31 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
               position: 'fixed',
               top: dropdownPos.top,
               left: dropdownPos.left,
+              width: dropdownPos.width,
+              maxHeight: dropdownPos.maxHeight,
+              transform: dropdownPos.flipUp ? 'translateY(-100%)' : undefined,
             }}
-            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] p-3 w-64 animate-in fade-in zoom-in-95 duration-100"
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] p-3 overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
           >
             <div className="flex justify-between items-center mb-2">
-              <button
-                onClick={() => handleMonthChange(-1)}
-                className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
-              >
-                <ChevronLeft size={14} />
-              </button>
+              <IconButton size="sm" onClick={() => handleMonthChange(-1)} aria-label="Previous month">
+                <ChevronLeft size={16} />
+              </IconButton>
               <span className="text-xs font-semibold text-zinc-900 dark:text-white">
                 {currentMonth.toLocaleString('en-US', { month: 'short', year: 'numeric' })}
               </span>
-              <button
-                onClick={() => handleMonthChange(1)}
-                className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded"
-              >
-                <ChevronRight size={14} />
-              </button>
+              <IconButton size="sm" onClick={() => handleMonthChange(1)} aria-label="Next month">
+                <ChevronRight size={16} />
+              </IconButton>
             </div>
             <div className="grid grid-cols-7 gap-1 text-center mb-1">
               {WEEKDAYS_MON_INITIALS.map((d, i) => (
-                <span key={i} className="text-[10px] text-zinc-400">
+                <span key={i} className="text-[11px] md:text-[10px] text-zinc-400">
                   {d}
                 </span>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-1">
+            <div className="grid grid-cols-7 gap-1 justify-items-center">
               {Array.from({ length: firstDay }).map((_, i) => (
                 <div key={`empty-${i}`} />
               ))}
@@ -160,7 +145,7 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
                   <button
                     key={i}
                     onClick={() => handleDateClick(day)}
-                    className={`text-xs w-7 h-7 flex items-center justify-center rounded transition-colors ${isSelected(day) ? 'bg-black text-white dark:bg-white dark:text-black font-bold' : isToday ? 'ring-1 ring-blue-500 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-50 dark:hover:bg-blue-900/30' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300'}`}
+                    className={`text-sm md:text-xs w-9 h-9 md:w-7 md:h-7 flex items-center justify-center rounded transition-colors ${isSelected(day) ? 'bg-black text-white dark:bg-white dark:text-black font-bold' : isToday ? 'ring-1 ring-blue-500 text-blue-600 dark:text-blue-400 font-semibold hover:bg-blue-50 dark:hover:bg-blue-900/30' : 'hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300'}`}
                   >
                     {day}
                   </button>

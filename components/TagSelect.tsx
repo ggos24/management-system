@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Plus, ChevronDown, Trash2 } from 'lucide-react';
+import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
 
 const TAG_COLORS = [
   { name: 'Gray', bg: 'bg-zinc-100 dark:bg-zinc-700', text: 'text-zinc-700 dark:text-zinc-200', hex: '#71717a' },
@@ -84,17 +85,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const colorPickerRef = useRef<HTMLDivElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
-
-  const updateDropdownPos = useCallback(() => {
-    if (!triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setDropdownPos({
-      top: rect.bottom + 4,
-      left: rect.left,
-      width: rect.width,
-    });
-  }, []);
+  const dropdownPos = useViewportPortalPosition({ isOpen, triggerRef, minWidth: 160, estimatedHeight: 288 });
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -115,17 +106,6 @@ export const TagSelect: React.FC<TagSelectProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  useLayoutEffect(() => {
-    if (isOpen) updateDropdownPos();
-  }, [isOpen, updateDropdownPos]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleScroll = () => updateDropdownPos();
-    window.addEventListener('scroll', handleScroll, true);
-    return () => window.removeEventListener('scroll', handleScroll, true);
-  }, [isOpen, updateDropdownPos]);
-
   const openColorPicker = useCallback(
     (tag: string, buttonEl: HTMLButtonElement) => {
       if (editingTagColor === tag) {
@@ -134,10 +114,15 @@ export const TagSelect: React.FC<TagSelectProps> = ({
         return;
       }
       const rect = buttonEl.getBoundingClientRect();
-      setColorPickerPos({
-        top: rect.top - 4,
-        left: rect.right + 4,
-      });
+      const pickerWidth = 180;
+      const pickerHeight = 56;
+      const vw = window.innerWidth;
+      const vh = window.visualViewport?.height ?? window.innerHeight;
+      let left = rect.right + 4;
+      if (left + pickerWidth > vw - 8) left = Math.max(8, rect.left - pickerWidth - 4);
+      let top = rect.top;
+      if (top + pickerHeight > vh - 8) top = Math.max(8, vh - pickerHeight - 8);
+      setColorPickerPos({ top, left });
       setEditingTagColor(tag);
     },
     [editingTagColor],
@@ -216,10 +201,11 @@ export const TagSelect: React.FC<TagSelectProps> = ({
               position: 'fixed',
               top: dropdownPos.top,
               left: dropdownPos.left,
-              minWidth: 120,
               width: dropdownPos.width,
+              maxHeight: dropdownPos.maxHeight,
+              transform: dropdownPos.flipUp ? 'translateY(-100%)' : undefined,
             }}
-            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg z-[10000] max-h-72 overflow-y-auto p-0.5 animate-in fade-in zoom-in-95 duration-100"
+            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg z-[10000] overflow-y-auto p-0.5 animate-in fade-in zoom-in-95 duration-100"
           >
             {tags.length === 0 && !isAdding && (
               <p className="text-xs text-zinc-400 px-2 py-2 text-center">No tags yet</p>
@@ -244,7 +230,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                         e.stopPropagation();
                         openColorPicker(tag, e.currentTarget);
                       }}
-                      className="p-1 rounded opacity-0 group-hover/tag:opacity-100 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-opacity flex-shrink-0"
+                      className="p-1 rounded opacity-100 md:opacity-0 md:group-hover/tag:opacity-100 hover:bg-zinc-100 dark:hover:bg-zinc-700 transition-opacity flex-shrink-0"
                     >
                       <div
                         className="w-3 h-3 rounded-full border border-zinc-300 dark:border-zinc-600"
@@ -258,7 +244,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                         e.stopPropagation();
                         onDeleteTag(tag);
                       }}
-                      className="p-1 rounded opacity-0 group-hover/tag:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-all flex-shrink-0"
+                      className="p-1 rounded opacity-100 md:opacity-0 md:group-hover/tag:opacity-100 hover:bg-red-50 dark:hover:bg-red-900/30 text-zinc-400 hover:text-red-500 dark:hover:text-red-400 transition-all flex-shrink-0"
                       title="Delete tag"
                     >
                       <Trash2 size={12} />
@@ -335,7 +321,6 @@ export const TagSelect: React.FC<TagSelectProps> = ({
               top: colorPickerPos.top,
               left: colorPickerPos.left,
               zIndex: 10001,
-              transform: 'translateY(-100%)',
             }}
             onClick={(e) => e.stopPropagation()}
           >

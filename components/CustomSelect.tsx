@@ -1,6 +1,7 @@
-import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check, Plus, Search, X } from 'lucide-react';
+import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
 
 export interface SelectOption {
   value: string;
@@ -46,18 +47,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; left: number; width: number } | null>(null);
-
-  const updatePosition = useCallback(() => {
-    if (triggerRef.current) {
-      const rect = triggerRef.current.getBoundingClientRect();
-      setDropdownPos({ top: rect.bottom + 4, left: rect.left, width: rect.width });
-    }
-  }, []);
-
-  useLayoutEffect(() => {
-    if (isOpen) updatePosition();
-  }, [isOpen, updatePosition]);
+  const dropdownPos = useViewportPortalPosition({ isOpen, triggerRef, minWidth: dropdownMinWidth });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -73,12 +63,10 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
-    window.addEventListener('scroll', updatePosition, true);
     return () => {
       document.removeEventListener('mousedown', handleClickOutside);
-      window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [isOpen, updatePosition]);
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen && searchable) {
@@ -144,9 +132,11 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
               position: 'fixed',
               top: dropdownPos.top,
               left: dropdownPos.left,
-              width: Math.max(dropdownPos.width, dropdownMinWidth),
+              width: dropdownPos.width,
+              maxHeight: dropdownPos.maxHeight,
+              transform: dropdownPos.flipUp ? 'translateY(-100%)' : undefined,
             }}
-            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-[10000] max-h-60 overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100"
+            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-[10000] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100"
           >
             {searchable && (
               <div className="sticky top-0 z-10 p-1.5 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700 flex-shrink-0">
