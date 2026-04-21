@@ -119,7 +119,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               <div className="w-6 h-6 bg-zinc-900 dark:bg-zinc-100 rounded-sm flex-shrink-0 hidden"></div>
 
               <span className="font-semibold text-sm tracking-tight text-zinc-900 dark:text-white uppercase leading-none whitespace-nowrap">
-                MANAGEMENT SYSTEM
+                UNITIES
               </span>
             </div>
           )}

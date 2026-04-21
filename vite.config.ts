@@ -19,8 +19,8 @@ export default defineConfig({
       devOptions: { enabled: false },
       includeAssets: ['favicon.ico', 'logo.svg', 'apple-touch-icon-180x180.png'],
       manifest: {
-        name: 'Management System',
-        short_name: 'Mgmt',
+        name: 'UNITIES',
+        short_name: 'UNITIES',
         description: 'Team management & content pipeline',
         theme_color: '#09090b',
         background_color: '#ffffff',

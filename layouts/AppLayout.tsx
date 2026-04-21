@@ -139,7 +139,7 @@ const AppLayout: React.FC = () => {
   return (
     <ErrorBoundary>
       <div
-        className={`flex h-dvh overflow-hidden bg-white dark:bg-black text-zinc-900 dark:text-zinc-100 ${isDarkMode ? 'dark' : ''}`}
+        className={`flex h-dvh overflow-hidden bg-white dark:bg-black text-zinc-900 dark:text-zinc-100 safe-t ${isDarkMode ? 'dark' : ''}`}
       >
         <Sidebar
           currentView={currentView}
