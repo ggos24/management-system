@@ -340,7 +340,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
             Overview for <span className="font-semibold text-zinc-900 dark:text-zinc-300">{teamLabel}</span>
           </p>
         </div>
-        <div className="flex flex-wrap gap-3 items-center">
+        <div className="w-full md:w-auto flex flex-col sm:flex-row flex-wrap gap-2 md:gap-3 md:items-center">
           <DateRangeFilter
             startDate={startDate}
             endDate={endDate}
@@ -350,38 +350,46 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
               setEndDate(e);
             }}
           />
-          <div className="w-[220px]">
-            <CustomSelect
-              icon={Briefcase}
-              options={[
-                { value: ALL_TEAMS, label: 'All Teams' },
-                ...visibleTeams.map((t) => ({ value: t.id, label: t.name })),
-              ]}
-              value={teamFilter}
-              onChange={setTeamFilter}
-            />
-          </div>
+          <CustomSelect
+            icon={Briefcase}
+            options={[
+              { value: ALL_TEAMS, label: 'All Teams' },
+              ...visibleTeams.map((t) => ({ value: t.id, label: t.name })),
+            ]}
+            value={teamFilter}
+            onChange={setTeamFilter}
+            className="w-full sm:w-[220px]"
+          />
         </div>
       </header>
 
       {/* KPI Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card padding="lg" className="flex flex-col items-center justify-center text-center h-36">
-          <h2 className="text-4xl font-bold text-zinc-900 dark:text-white mb-1">{metrics.active}</h2>
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Active Tasks</p>
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
+        <Card
+          padding="lg"
+          className="flex flex-col items-center justify-center text-center h-auto min-h-28 md:h-36 p-4 md:p-6"
+        >
+          <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-white mb-1">{metrics.active}</h2>
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">Active Tasks</p>
           <TrendBadge value={metrics.trends.active} />
         </Card>
 
-        <Card padding="lg" className="flex flex-col items-center justify-center text-center h-36">
-          <h2 className="text-4xl font-bold text-zinc-900 dark:text-white mb-1">{metrics.completed}</h2>
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Completed</p>
+        <Card
+          padding="lg"
+          className="flex flex-col items-center justify-center text-center h-auto min-h-28 md:h-36 p-4 md:p-6"
+        >
+          <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-white mb-1">{metrics.completed}</h2>
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">Completed</p>
           <TrendBadge value={metrics.trends.completed} />
         </Card>
 
-        <Card padding="lg" className="flex flex-col items-center justify-center text-center h-36">
-          <h2 className="text-4xl font-bold text-red-600 dark:text-red-400 mb-1">{metrics.overdue}</h2>
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Overdue</p>
-          <div className="flex items-center gap-2 mt-1">
+        <Card
+          padding="lg"
+          className="flex flex-col items-center justify-center text-center h-auto min-h-28 md:h-36 p-4 md:p-6"
+        >
+          <h2 className="text-3xl md:text-4xl font-bold text-red-600 dark:text-red-400 mb-1">{metrics.overdue}</h2>
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">Overdue</p>
+          <div className="flex items-center gap-2 mt-1 flex-wrap justify-center">
             <TrendBadge value={metrics.trends.overdue} invertColor />
             {metrics.avgOverdueDays > 0 && (
               <span className="text-[10px] text-zinc-400">avg {metrics.avgOverdueDays}d</span>
@@ -389,11 +397,14 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
           </div>
         </Card>
 
-        <Card padding="lg" className="flex flex-col items-center justify-center text-center h-36">
-          <h2 className="text-4xl font-bold text-zinc-900 dark:text-white mb-1">
+        <Card
+          padding="lg"
+          className="flex flex-col items-center justify-center text-center h-auto min-h-28 md:h-36 p-4 md:p-6"
+        >
+          <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-white mb-1">
             {metrics.onTimeRate !== null ? `${metrics.onTimeRate}%` : '\u2014'}
           </h2>
-          <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">On-Time Rate</p>
+          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">On-Time Rate</p>
           <TrendBadge value={metrics.trends.onTimeRate} suffix="pp" />
         </Card>
       </div>
@@ -401,10 +412,10 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
       {/* Charts row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Donut chart */}
-        <Card padding="lg" className="h-[400px] flex flex-col">
-          <h3 className="text-lg font-semibold text-zinc-900 dark:text-white mb-6">Task Statuses</h3>
-          <div className="flex flex-1 overflow-hidden">
-            <div className="w-1/2 pr-4 overflow-y-auto custom-scrollbar space-y-1">
+        <Card padding="lg" className="h-auto md:h-[400px] flex flex-col">
+          <h3 className="text-lg font-semibold text-zinc-900 dark:text-white mb-4 md:mb-6">Task Statuses</h3>
+          <div className="flex flex-col md:flex-row flex-1 overflow-hidden gap-4 md:gap-0">
+            <div className="w-full md:w-1/2 md:pr-4 overflow-y-auto custom-scrollbar space-y-1 order-2 md:order-1">
               {pieData.map((entry) => (
                 <div
                   key={entry.name}
@@ -424,7 +435,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
               ))}
               {pieData.length === 0 && <p className="text-sm text-zinc-400 italic px-2">No tasks found.</p>}
             </div>
-            <div className="w-1/2 h-full">
+            <div className="w-full md:w-1/2 h-64 md:h-full order-1 md:order-2">
               <ResponsiveContainer width="100%" height="100%">
                 <PieChart>
                   <Pie

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
-import { Search, Plus, FolderPlus, FileText, Folder, ChevronRight, Pencil, Trash2 } from 'lucide-react';
+import { Search, Plus, FolderPlus, FileText, Folder, ChevronLeft, ChevronRight, Pencil, Trash2 } from 'lucide-react';
 import { IconComponent } from './IconComponent';
 import { Doc, DocSection } from '../types';
 import { fetchDocs, upsertDoc, deleteDoc as deleteDocDb } from '../lib/database';
@@ -139,10 +139,14 @@ export const DocsView: React.FC<DocsViewProps> = ({ section, docId, onNavigate }
     );
   }
 
+  const showContent = !!activeDoc || mode === 'create-doc' || mode === 'create-folder';
+
   return (
-    <div className="flex h-full overflow-hidden">
-      {/* Left: Tree sidebar */}
-      <div className="w-64 flex-shrink-0 border-r border-zinc-200 dark:border-zinc-800 flex flex-col bg-zinc-50/50 dark:bg-zinc-900/50">
+    <div className="flex flex-col md:flex-row h-full overflow-hidden">
+      {/* Left: Tree sidebar — full width on mobile when nothing is open, fixed 256px on md+ */}
+      <div
+        className={`${showContent ? 'hidden md:flex' : 'flex'} md:w-64 flex-shrink-0 border-b md:border-b-0 md:border-r border-zinc-200 dark:border-zinc-800 flex-col bg-zinc-50/50 dark:bg-zinc-900/50`}
+      >
         <div className="p-3 border-b border-zinc-200 dark:border-zinc-800">
           <h2 className="text-sm font-semibold text-zinc-900 dark:text-white mb-2">{sectionTitle}</h2>
           <div className="relative">
@@ -192,8 +196,20 @@ export const DocsView: React.FC<DocsViewProps> = ({ section, docId, onNavigate }
         </div>
       </div>
 
-      {/* Right: Content area */}
-      <div className="flex-1 overflow-y-auto custom-scrollbar p-6 md:p-8">
+      {/* Right: Content area — only render on mobile when a doc is open */}
+      <div
+        className={`${showContent ? 'flex' : 'hidden md:flex'} flex-1 flex-col overflow-y-auto custom-scrollbar p-4 md:p-8`}
+      >
+        {/* Mobile back button */}
+        <button
+          onClick={() => {
+            setMode('view');
+            onNavigate(undefined);
+          }}
+          className="md:hidden mb-3 -mx-2 px-2 py-1.5 flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 rounded w-fit"
+        >
+          <ChevronLeft size={16} /> {sectionTitle}
+        </button>
         {mode === 'create-doc' || mode === 'create-folder' ? (
           <DocEditor
             key="new"

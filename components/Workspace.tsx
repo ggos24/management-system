@@ -1064,9 +1064,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
             </div>
           </div>
 
-          {/* Actions: AI & New Task */}
+          {/* Desktop New button (mobile uses a floating action button) */}
           {teamFilter !== 'my-work' && (
-            <div className="flex gap-2 items-center">
+            <div className="hidden md:flex gap-2 items-center">
               <Button size="sm" onClick={() => onAddTask()} className="flex items-center gap-1.5">
                 <Plus size={14} />
                 New
@@ -1075,52 +1075,50 @@ const Workspace: React.FC<WorkspaceProps> = ({
           )}
         </div>
 
-        {/* Filters Bar */}
-        <div className="flex flex-wrap gap-3 border-b border-zinc-100 dark:border-zinc-800 pb-3 items-center">
+        {/* Filters Bar — grid on mobile so all filters fit on one row */}
+        <div
+          className={`grid gap-2 md:flex md:flex-wrap md:gap-3 md:items-center border-b border-zinc-100 dark:border-zinc-800 pb-3 ${teamFilter === 'my-work' ? 'grid-cols-2' : 'grid-cols-3'}`}
+        >
           {/* Person Filter - Hidden for My Work */}
           {teamFilter !== 'my-work' && (
-            <div className="w-[140px]">
-              <CustomSelect
-                icon={User}
-                options={[
-                  { value: 'all', label: 'All People' },
-                  ...sortedMembers.map((m) => ({ value: m.id, label: m.name })),
-                ]}
-                value={filterPerson}
-                onChange={setFilterPerson}
-                placeholder="Person"
-                searchable
-                highlightValue={currentUserId}
-              />
-            </div>
+            <CustomSelect
+              icon={User}
+              options={[
+                { value: 'all', label: 'All People' },
+                ...sortedMembers.map((m) => ({ value: m.id, label: m.name })),
+              ]}
+              value={filterPerson}
+              onChange={setFilterPerson}
+              placeholder="Person"
+              searchable
+              highlightValue={currentUserId}
+              className="min-w-0 md:w-[140px]"
+            />
           )}
 
-          <div className="w-[140px]">
-            <CustomSelect
-              icon={Filter}
-              options={[
-                { value: 'all', label: 'Priority' },
-                { value: 'high', label: 'High' },
-                { value: 'medium', label: 'Medium' },
-                { value: 'low', label: 'Low' },
-              ]}
-              value={filterPriority}
-              onChange={setFilterPriority}
-              placeholder="Priority"
-            />
-          </div>
+          <CustomSelect
+            icon={Filter}
+            options={[
+              { value: 'all', label: 'Priority' },
+              { value: 'high', label: 'High' },
+              { value: 'medium', label: 'Medium' },
+              { value: 'low', label: 'Low' },
+            ]}
+            value={filterPriority}
+            onChange={setFilterPriority}
+            placeholder="Priority"
+            className="min-w-0 md:w-[140px]"
+          />
 
-          <div className="min-w-[200px]">
-            <MultiSelect
-              icon={MapPin}
-              label=""
-              options={allPlacements.map((p) => ({ value: p, label: p }))}
-              selected={filterPlacements}
-              onChange={(selected) => setFilterPlacements(selected)}
-              placeholder="Filter placements..."
-              className="w-full"
-            />
-          </div>
+          <MultiSelect
+            icon={MapPin}
+            label=""
+            options={allPlacements.map((p) => ({ value: p, label: p }))}
+            selected={filterPlacements}
+            onChange={(selected) => setFilterPlacements(selected)}
+            placeholder="Filter placements..."
+            className="min-w-0 md:min-w-[200px] md:w-[200px]"
+          />
         </div>
       </div>
 
@@ -2909,6 +2907,18 @@ const Workspace: React.FC<WorkspaceProps> = ({
             : `${selectedTaskIds.size} tasks will be moved to the bin and can be restored within 30 days.`}
         </p>
       </Modal>
+
+      {/* Mobile floating action button for New Task */}
+      {teamFilter !== 'my-work' && (
+        <button
+          onClick={() => onAddTask()}
+          aria-label="New task"
+          className="md:hidden fixed right-4 bottom-4 z-40 w-14 h-14 rounded-full bg-black dark:bg-white text-white dark:text-black shadow-xl hover:opacity-90 flex items-center justify-center active:scale-95 transition-transform"
+          style={{ bottom: 'calc(1rem + env(safe-area-inset-bottom))' }}
+        >
+          <Plus size={26} strokeWidth={2.5} />
+        </button>
+      )}
     </div>
   );
 };
