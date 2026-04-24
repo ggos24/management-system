@@ -68,6 +68,11 @@ const Schedule: React.FC<ScheduleProps> = ({
     return [...teams].sort((a, b) => (scheduleTeamOrders[a.id] ?? 9999) - (scheduleTeamOrders[b.id] ?? 9999));
   }, [teams, scheduleTeamOrders]);
 
+  const sortedMembers = useMemo(
+    () => [...members].sort((a, b) => (a.id === currentUserId ? -1 : b.id === currentUserId ? 1 : 0)),
+    [members, currentUserId],
+  );
+
   const {
     dragState,
     handleTeamDragStart,
@@ -405,50 +410,78 @@ const Schedule: React.FC<ScheduleProps> = ({
           </p>
         </div>
 
-        <div className="w-full md:w-auto grid grid-cols-3 gap-2 md:flex md:items-center md:gap-3 md:flex-wrap">
-          <CustomSelect
-            icon={User}
-            options={[{ value: 'all', label: 'All People' }, ...members.map((m) => ({ value: m.id, label: m.name }))]}
-            value={filterPerson}
-            onChange={setFilterPerson}
-            placeholder="All People"
-            className="min-w-0 md:w-[140px]"
-          />
-          <CustomSelect
-            icon={Filter}
-            options={[
-              { value: 'all', label: 'All Absences' },
-              { value: 'holiday', label: 'Holiday' },
-              { value: 'sick', label: 'Sick Leave' },
-              { value: 'business_trip', label: 'Business Trip' },
-              { value: 'day_off', label: 'Day Off' },
-              { value: 'free', label: 'Free' },
-              { value: 'busy', label: 'Busy' },
-            ]}
-            value={filterAbsenceType}
-            onChange={setFilterAbsenceType}
-            placeholder="Absence Type"
-            className="min-w-0 md:w-[140px]"
-          />
-          <div className="flex items-center justify-between gap-1 md:gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[32px] px-1 md:px-2 py-1.5 min-w-0">
-            <button
-              onClick={() => changeMonth(-1)}
-              className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 flex-shrink-0"
-              aria-label="Previous month"
-            >
-              <ChevronLeft size={14} />
-            </button>
-            <span className="text-sm md:w-28 text-center text-zinc-900 dark:text-zinc-100 flex items-center justify-center gap-1 md:gap-1.5 min-w-0">
-              <Calendar size={14} className="text-zinc-400 flex-shrink-0 hidden md:inline" />
-              <span className="truncate">{monthName}</span>
-            </span>
-            <button
-              onClick={() => changeMonth(1)}
-              className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 flex-shrink-0"
-              aria-label="Next month"
-            >
-              <ChevronRight size={14} />
-            </button>
+        <div className="w-full md:w-auto flex items-stretch gap-2 md:gap-3 md:flex-wrap">
+          {(() => {
+            const me = members.find((m) => m.id === currentUserId);
+            if (!me) return null;
+            const isMe = filterPerson === currentUserId;
+            return (
+              <button
+                type="button"
+                onClick={() => setFilterPerson(isMe ? 'all' : currentUserId)}
+                aria-pressed={isMe}
+                title={isMe ? 'Show everyone' : 'Show only me'}
+                className={`flex items-center gap-1.5 md:gap-2 rounded-lg border min-h-[32px] px-2 md:px-2.5 py-1 text-xs font-medium transition-colors flex-shrink-0 ${
+                  isMe
+                    ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:border-blue-500 dark:hover:bg-blue-600'
+                    : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-700'
+                }`}
+              >
+                <Avatar src={me.avatar} size="sm" />
+                <span className="hidden md:inline">Me</span>
+              </button>
+            );
+          })()}
+          <div className="flex-1 grid grid-cols-3 gap-2 md:flex md:flex-none md:items-center md:gap-3 md:w-auto">
+            <CustomSelect
+              icon={User}
+              options={[
+                { value: 'all', label: 'All People' },
+                ...sortedMembers.map((m) => ({ value: m.id, label: m.name })),
+              ]}
+              value={filterPerson}
+              onChange={setFilterPerson}
+              placeholder="All People"
+              searchable
+              highlightValue={currentUserId}
+              className="min-w-0 md:w-[140px]"
+            />
+            <CustomSelect
+              icon={Filter}
+              options={[
+                { value: 'all', label: 'All Absences' },
+                { value: 'holiday', label: 'Holiday' },
+                { value: 'sick', label: 'Sick Leave' },
+                { value: 'business_trip', label: 'Business Trip' },
+                { value: 'day_off', label: 'Day Off' },
+                { value: 'free', label: 'Free' },
+                { value: 'busy', label: 'Busy' },
+              ]}
+              value={filterAbsenceType}
+              onChange={setFilterAbsenceType}
+              placeholder="Absence Type"
+              className="min-w-0 md:w-[140px]"
+            />
+            <div className="flex items-center justify-between gap-1 md:gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[32px] px-1 md:px-2 py-1.5 min-w-0">
+              <button
+                onClick={() => changeMonth(-1)}
+                className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 flex-shrink-0"
+                aria-label="Previous month"
+              >
+                <ChevronLeft size={14} />
+              </button>
+              <span className="text-sm md:w-28 text-center text-zinc-900 dark:text-zinc-100 flex items-center justify-center gap-1 md:gap-1.5 min-w-0">
+                <Calendar size={14} className="text-zinc-400 flex-shrink-0 hidden md:inline" />
+                <span className="truncate">{monthName}</span>
+              </span>
+              <button
+                onClick={() => changeMonth(1)}
+                className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 flex-shrink-0"
+                aria-label="Next month"
+              >
+                <ChevronRight size={14} />
+              </button>
+            </div>
           </div>
         </div>
       </div>

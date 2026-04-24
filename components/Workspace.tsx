@@ -2202,7 +2202,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                 onChange={(date) =>
                                                   onUpdateTask({
                                                     ...task,
-                                                    dueDate: new Date(date).toISOString(),
+                                                    dueDate: date ? new Date(date).toISOString() : '',
                                                   })
                                                 }
                                                 placeholder="Set date"
@@ -2233,7 +2233,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                 onChange={(date) =>
                                                   onUpdateTask({
                                                     ...task,
-                                                    doneDate: new Date(date).toISOString(),
+                                                    doneDate: date ? new Date(date).toISOString() : null,
                                                   })
                                                 }
                                                 placeholder="Set date"

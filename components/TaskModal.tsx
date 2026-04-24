@@ -693,7 +693,7 @@ export const TaskModal: React.FC = () => {
             value={taskModalData.title || ''}
             onChange={(e) => setTaskModalData({ ...taskModalData, title: e.target.value })}
             className="w-full text-2xl font-bold bg-transparent border-none outline-none placeholder-zinc-300 dark:placeholder-zinc-700"
-            autoFocus={!taskModalData.deletedAt}
+            autoFocus={!taskModalData.deletedAt && !taskModalData.id}
           />
 
           <RichTextEditor
@@ -779,7 +779,9 @@ export const TaskModal: React.FC = () => {
                 </div>
                 <SimpleDatePicker
                   value={taskModalData.dueDate ? taskModalData.dueDate.split('T')[0] : ''}
-                  onChange={(date) => setTaskModalData({ ...taskModalData, dueDate: new Date(date).toISOString() })}
+                  onChange={(date) =>
+                    setTaskModalData({ ...taskModalData, dueDate: date ? new Date(date).toISOString() : '' })
+                  }
                   placeholder="Set due date"
                 />
               </div>
@@ -792,7 +794,9 @@ export const TaskModal: React.FC = () => {
                 </div>
                 <SimpleDatePicker
                   value={taskModalData.doneDate ? taskModalData.doneDate.split('T')[0] : ''}
-                  onChange={(date) => setTaskModalData({ ...taskModalData, doneDate: new Date(date).toISOString() })}
+                  onChange={(date) =>
+                    setTaskModalData({ ...taskModalData, doneDate: date ? new Date(date).toISOString() : null })
+                  }
                   placeholder="Set publish date"
                 />
               </div>

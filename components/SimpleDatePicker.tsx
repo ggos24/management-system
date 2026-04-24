@@ -65,6 +65,11 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
     setIsOpen(false);
   };
 
+  const handleClear = () => {
+    onChange('');
+    setIsOpen(false);
+  };
+
   const handleMonthChange = (offset: number) => {
     const newMonth = new Date(currentMonth);
     newMonth.setMonth(newMonth.getMonth() + offset);
@@ -152,6 +157,17 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
                 );
               })}
             </div>
+            {value && (
+              <div className="mt-2 pt-2 border-t border-zinc-200 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={handleClear}
+                  className="w-full text-xs text-zinc-600 dark:text-zinc-400 hover:text-red-600 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 rounded py-1.5 transition-colors"
+                >
+                  Clear date
+                </button>
+              </div>
+            )}
           </div>,
           document.body,
         )}
