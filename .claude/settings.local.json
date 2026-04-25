@@ -58,7 +58,8 @@
       "Bash(ls -la /Users/slobodskyi/Documents/u24media.com/tools/u24ms-app/*.ts /Users/slobodskyi/Documents/u24media.com/tools/u24ms-app/*.tsx)",
       "Bash(wait %1)",
       "Bash(npm ls:*)",
-      "Bash(npm ci:*)"
+      "Bash(npm ci:*)",
+      "Bash(xargs ls *)"
     ]
   }
 }

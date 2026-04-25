@@ -11,11 +11,29 @@ import {
   TaskTeamLink,
   NotificationType,
   UserRole,
+  PersonFieldKey,
+  TeamPersonFieldConfig,
 } from '../types';
 import * as db from '../lib/database';
-import { formatDateEU } from '../lib/utils';
+import { formatDateEU, toDateOnly } from '../lib/utils';
 import { useAuthStore } from './authStore';
 import { supabase } from '../lib/supabase';
+import { PERSON_FIELD_DEFAULT_LABELS } from '../constants';
+
+export type PersonFieldConfigEntry = { label: string | null; hidden: boolean };
+export type PersonFieldConfigMap = Record<string, Partial<Record<PersonFieldKey, PersonFieldConfigEntry>>>;
+
+export function resolvePersonFieldConfig(
+  map: PersonFieldConfigMap,
+  teamId: string | undefined,
+  fieldKey: PersonFieldKey,
+): { label: string; hidden: boolean } {
+  const entry = (teamId && map[teamId]?.[fieldKey]) || undefined;
+  return {
+    label: entry?.label || PERSON_FIELD_DEFAULT_LABELS[fieldKey],
+    hidden: entry?.hidden ?? false,
+  };
+}
 
 // === Notification helpers (fire-and-forget, non-critical) ===
 
@@ -243,6 +261,7 @@ interface DataState {
   sidebarTeamOrders: Record<string, number>;
   scheduleTeamOrders: Record<string, number>;
   teamHiddenColumns: Record<string, string[]>;
+  teamPersonFieldConfig: PersonFieldConfigMap;
 
   // Setters
   setTaskTeamLinks: (links: TaskTeamLink[]) => void;
@@ -270,10 +289,19 @@ interface DataState {
   setDeletedTasks: (tasks: Task[]) => void;
   setDeletedTaskCount: (count: number) => void;
   setTeamHiddenColumns: (hidden: Record<string, string[]>) => void;
+  setTeamPersonFieldConfig: (cfg: PersonFieldConfigMap) => void;
 
   // Column visibility actions (team-wide, editor+ only)
   hideTeamColumn: (teamId: string, columnKey: string) => void;
   showTeamColumn: (teamId: string, columnKey: string) => void;
+
+  // Person-field config actions (per-team, editor+ only)
+  setPersonFieldConfig: (
+    teamId: string,
+    fieldKey: PersonFieldKey,
+    patch: { label?: string | null; hidden?: boolean },
+  ) => void;
+  resetPersonFieldConfig: (teamId: string, fieldKey: PersonFieldKey) => void;
 
   // Task team link actions
   linkTaskToTeam: (taskId: string, teamId: string) => void;
@@ -373,6 +401,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   sidebarTeamOrders: {},
   scheduleTeamOrders: {},
   teamHiddenColumns: {},
+  teamPersonFieldConfig: {},
 
   // Setters
   setTaskTeamLinks: (links) => set({ taskTeamLinks: links }),
@@ -469,6 +498,41 @@ export const useDataStore = create<DataState>((set, get) => ({
   setDeletedTasks: (deletedTasks) => set({ deletedTasks }),
   setDeletedTaskCount: (deletedTaskCount) => set({ deletedTaskCount }),
   setTeamHiddenColumns: (hidden) => set({ teamHiddenColumns: hidden }),
+  setTeamPersonFieldConfig: (cfg) => set({ teamPersonFieldConfig: cfg }),
+
+  setPersonFieldConfig: (teamId, fieldKey, patch) => {
+    const prev = get().teamPersonFieldConfig;
+    const prevTeam = prev[teamId] || {};
+    const prevEntry = prevTeam[fieldKey] || { label: null, hidden: false };
+    const nextEntry: PersonFieldConfigEntry = {
+      label: patch.label !== undefined ? patch.label : prevEntry.label,
+      hidden: patch.hidden !== undefined ? patch.hidden : prevEntry.hidden,
+    };
+    set({
+      teamPersonFieldConfig: { ...prev, [teamId]: { ...prevTeam, [fieldKey]: nextEntry } },
+    });
+    const actorId = getCurrentUserId();
+    db.upsertTeamPersonFieldConfig(teamId, fieldKey, patch, actorId).catch(() => {
+      set({ teamPersonFieldConfig: prev });
+      toast.error('Failed to update person field');
+    });
+  },
+
+  resetPersonFieldConfig: (teamId, fieldKey) => {
+    const prev = get().teamPersonFieldConfig;
+    const prevTeam = prev[teamId];
+    if (!prevTeam || !prevTeam[fieldKey]) return;
+    const nextTeam = { ...prevTeam };
+    delete nextTeam[fieldKey];
+    const nextMap = { ...prev };
+    if (Object.keys(nextTeam).length === 0) delete nextMap[teamId];
+    else nextMap[teamId] = nextTeam;
+    set({ teamPersonFieldConfig: nextMap });
+    db.deleteTeamPersonFieldConfig(teamId, fieldKey).catch(() => {
+      set({ teamPersonFieldConfig: prev });
+      toast.error('Failed to reset person field');
+    });
+  },
 
   hideTeamColumn: (teamId, columnKey) => {
     const prev = get().teamHiddenColumns;
@@ -751,8 +815,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       teamId: taskData.teamId || teams[0]?.id || '',
       status: taskData.status || 'Not Started',
       priority: taskData.priority || 'medium',
-      dueDate: taskData.dueDate || new Date().toISOString(),
-      doneDate: taskData.doneDate || null,
+      dueDate: toDateOnly(taskData.dueDate),
+      doneDate: taskData.doneDate ? toDateOnly(taskData.doneDate) : null,
       placements: taskData.placements || [],
       assigneeIds: taskData.assigneeIds || [],
       links: taskData.links || [],
@@ -1452,6 +1516,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchUserTeamOrders(profileResult.id, 'sidebar'), // 15
       db.fetchUserTeamOrders(profileResult.id, 'schedule'), // 16
       db.fetchTeamHiddenColumns(), // 17
+      db.fetchTeamPersonFieldConfig(), // 18
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
@@ -1465,6 +1530,12 @@ export const useDataStore = create<DataState>((set, get) => ({
     for (const row of hiddenColumnsRows) {
       if (!hiddenColumnsMap[row.teamId]) hiddenColumnsMap[row.teamId] = [];
       hiddenColumnsMap[row.teamId].push(row.columnKey);
+    }
+    const personFieldRows = getValue(results[18], [] as TeamPersonFieldConfig[]);
+    const personFieldMap: PersonFieldConfigMap = {};
+    for (const row of personFieldRows) {
+      if (!personFieldMap[row.teamId]) personFieldMap[row.teamId] = {};
+      personFieldMap[row.teamId][row.fieldKey] = { label: row.label, hidden: row.hidden };
     }
 
     // Sort teams by user's sidebar order, falling back to default sort_order
@@ -1494,6 +1565,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       taskTeamLinks: getValue(results[13], []),
       teamPlacements: getValue(results[14], {} as Record<string, string[]>),
       teamHiddenColumns: hiddenColumnsMap,
+      teamPersonFieldConfig: personFieldMap,
     });
 
     // Auto-purge tasks deleted more than 30 days ago (fire-and-forget)

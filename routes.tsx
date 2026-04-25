@@ -125,6 +125,7 @@ const MyWorkspaceRoute: React.FC = () => {
     teamHiddenColumns,
     hideTeamColumn,
     showTeamColumn,
+    teamPersonFieldConfig,
   } = useDataStore(
     useShallow((s) => ({
       tasks: s.tasks,
@@ -152,6 +153,7 @@ const MyWorkspaceRoute: React.FC = () => {
       teamHiddenColumns: s.teamHiddenColumns,
       hideTeamColumn: s.hideTeamColumn,
       showTeamColumn: s.showTeamColumn,
+      teamPersonFieldConfig: s.teamPersonFieldConfig,
     })),
   );
   const searchQuery = useUiStore((s) => s.searchQuery);
@@ -199,6 +201,7 @@ const MyWorkspaceRoute: React.FC = () => {
       hiddenColumns={teamHiddenColumns['my-work'] || []}
       onHideColumn={(key) => hideTeamColumn('my-work', key)}
       onShowColumn={(key) => showTeamColumn('my-work', key)}
+      personFieldConfig={teamPersonFieldConfig['my-work'] || {}}
     />
   );
 };
@@ -232,6 +235,7 @@ const TeamWorkspaceRoute: React.FC = () => {
     teamHiddenColumns,
     hideTeamColumn,
     showTeamColumn,
+    teamPersonFieldConfig,
   } = useDataStore(
     useShallow((s) => ({
       tasks: s.tasks,
@@ -259,6 +263,7 @@ const TeamWorkspaceRoute: React.FC = () => {
       teamHiddenColumns: s.teamHiddenColumns,
       hideTeamColumn: s.hideTeamColumn,
       showTeamColumn: s.showTeamColumn,
+      teamPersonFieldConfig: s.teamPersonFieldConfig,
     })),
   );
   const searchQuery = useUiStore((s) => s.searchQuery);
@@ -309,6 +314,7 @@ const TeamWorkspaceRoute: React.FC = () => {
       hiddenColumns={teamHiddenColumns[team.id] || []}
       onHideColumn={(key) => hideTeamColumn(team.id, key)}
       onShowColumn={(key) => showTeamColumn(team.id, key)}
+      personFieldConfig={teamPersonFieldConfig[team.id] || {}}
     />
   );
 };

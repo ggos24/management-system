@@ -1,14 +1,77 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Edit2, Archive, Trash2, Lock, Unlock, Rocket } from 'lucide-react';
+import { Eye, EyeOff, Edit2, Archive, Trash2, Lock, Unlock, Rocket, Users as UsersIcon, RotateCcw } from 'lucide-react';
 import { Modal } from './Modal';
 import { IconComponent, ICONS } from './IconComponent';
 import { Button, Input, Label, Badge, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
-import { Team } from '../types';
-import { isAdmin, isEditorOrAbove } from '../constants';
+import { Team, PersonFieldKey } from '../types';
+import { isAdmin, isEditorOrAbove, PERSON_FIELD_DEFAULT_LABELS, PERSON_FIELD_KEYS } from '../constants';
+
+const EMPTY_FIELD_CONFIG = {} as Partial<Record<PersonFieldKey, { label: string | null; hidden: boolean }>>;
+
+const PersonFieldsPanel: React.FC<{ teamId: string }> = ({ teamId }) => {
+  const config = useDataStore((s) => s.teamPersonFieldConfig[teamId] ?? EMPTY_FIELD_CONFIG);
+  const setPersonFieldConfig = useDataStore((s) => s.setPersonFieldConfig);
+  const resetPersonFieldConfig = useDataStore((s) => s.resetPersonFieldConfig);
+
+  return (
+    <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40 px-3 py-3 space-y-2">
+      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+        Person fields
+      </p>
+      {PERSON_FIELD_KEYS.map((key) => {
+        const entry = config[key];
+        const currentLabel = entry?.label || '';
+        const hidden = entry?.hidden ?? false;
+        const isOverridden = !!entry && (entry.label !== null || entry.hidden);
+        return (
+          <div key={key} className="flex items-center gap-2">
+            <span className="text-xs text-zinc-500 dark:text-zinc-400 w-20 capitalize flex-shrink-0">{key}</span>
+            <Input
+              type="text"
+              defaultValue={currentLabel}
+              placeholder={PERSON_FIELD_DEFAULT_LABELS[key]}
+              className="flex-1 text-sm h-8"
+              onBlur={(e) => {
+                const v = e.currentTarget.value.trim();
+                const nextLabel = v.length === 0 ? null : v;
+                if ((entry?.label ?? null) === nextLabel) return;
+                setPersonFieldConfig(teamId, key, { label: nextLabel });
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.currentTarget as HTMLInputElement).blur();
+              }}
+            />
+            <button
+              type="button"
+              onClick={() => setPersonFieldConfig(teamId, key, { hidden: !hidden })}
+              className={`p-1.5 rounded transition-colors ${
+                hidden
+                  ? 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200'
+                  : 'text-zinc-600 hover:text-black dark:text-zinc-300 dark:hover:text-white'
+              }`}
+              title={hidden ? 'Show field' : 'Hide field'}
+            >
+              {hidden ? <EyeOff size={14} /> : <Eye size={14} />}
+            </button>
+            <button
+              type="button"
+              onClick={() => resetPersonFieldConfig(teamId, key)}
+              disabled={!isOverridden}
+              className="p-1.5 rounded text-zinc-400 hover:text-blue-500 disabled:opacity-30 disabled:cursor-not-allowed"
+              title="Reset to default"
+            >
+              <RotateCcw size={14} />
+            </button>
+          </div>
+        );
+      })}
+    </div>
+  );
+};
 
 export const ManageTeamsModal: React.FC = () => {
   const {
@@ -75,6 +138,16 @@ export const ManageTeamsModal: React.FC = () => {
       setTeamToDelete(null);
       setDeleteConfirmationInput('');
     }
+  };
+
+  const [expandedFields, setExpandedFields] = useState<Set<string>>(new Set());
+  const toggleFieldsPanel = (teamId: string) => {
+    setExpandedFields((prev) => {
+      const next = new Set(prev);
+      if (next.has(teamId)) next.delete(teamId);
+      else next.add(teamId);
+      return next;
+    });
   };
 
   return (
@@ -207,6 +280,15 @@ export const ManageTeamsModal: React.FC = () => {
                     )}
                     {currentUser && isEditorOrAbove(currentUser.role) && (
                       <button
+                        onClick={() => toggleFieldsPanel(team.id)}
+                        className={`p-1.5 rounded transition-colors ${expandedFields.has(team.id) ? 'text-black dark:text-white bg-zinc-100 dark:bg-zinc-800' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
+                        title="Person fields"
+                      >
+                        <UsersIcon size={14} />
+                      </button>
+                    )}
+                    {currentUser && isEditorOrAbove(currentUser.role) && (
+                      <button
                         onClick={() => setEditingTeamId(team.id)}
                         className="p-1.5 text-zinc-400 hover:text-blue-500"
                         title="Rename"
@@ -234,6 +316,7 @@ export const ManageTeamsModal: React.FC = () => {
                     )}
                   </div>
                 </div>
+                {expandedFields.has(team.id) && <PersonFieldsPanel teamId={team.id} />}
               </div>
             ))}
           </div>

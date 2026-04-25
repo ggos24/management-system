@@ -1,9 +1,26 @@
 import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
-import { Task, TaskStatus, TeamType, Member, Priority, CustomProperty, TaskTeamLink, UserRole } from '../types';
-import { PRIORITY_COLORS, PRIORITY_DOT, getStatusAccent, getDeadlineUrgency, isEditorOrAbove } from '../constants';
-import { formatDateEU, mondayIndex, WEEKDAYS_MON_SHORT } from '../lib/utils';
+import {
+  Task,
+  TaskStatus,
+  TeamType,
+  Member,
+  Priority,
+  CustomProperty,
+  TaskTeamLink,
+  UserRole,
+  PersonFieldKey,
+} from '../types';
+import {
+  PRIORITY_COLORS,
+  PRIORITY_DOT,
+  getStatusAccent,
+  getDeadlineUrgency,
+  isEditorOrAbove,
+  PERSON_FIELD_DEFAULT_LABELS,
+} from '../constants';
+import { formatDateEU, getDateDiffFromToday, mondayIndex, toDateOnly, WEEKDAYS_MON_SHORT } from '../lib/utils';
 import {
   Plus,
   MoreHorizontal,
@@ -29,6 +46,7 @@ import {
   Type,
   List as ListIcon,
   Users,
+  Paintbrush,
   ArrowLeftRight,
   Check,
   ArrowRight,
@@ -87,6 +105,113 @@ const getFaviconUrl = (url: string, hostname: string): string => {
     /* ignore */
   }
   return `https://www.google.com/s2/favicons?domain=${hostname}&sz=32`;
+};
+
+const DEADLINE_WINDOW_DAYS = 14;
+
+function getDeadlineVisualState(value: string) {
+  const diffDays = getDateDiffFromToday(value);
+  if (diffDays === null) {
+    return {
+      label: '',
+      progress: 0,
+      textClass: 'text-zinc-500 dark:text-zinc-400',
+      barClass: 'bg-zinc-300 dark:bg-zinc-600',
+      showMarker: false,
+    };
+  }
+
+  const daysText = `${Math.abs(diffDays)}d`;
+  const urgencyProgress =
+    diffDays <= 0 ? 100 : Math.max(10, Math.min(100, ((DEADLINE_WINDOW_DAYS - diffDays) / DEADLINE_WINDOW_DAYS) * 100));
+
+  if (diffDays < 0) {
+    return {
+      label: `${daysText} late`,
+      progress: 100,
+      textClass: 'text-red-600 dark:text-red-400',
+      barClass: 'bg-red-500',
+      showMarker: false,
+    };
+  }
+
+  if (diffDays === 0) {
+    return {
+      label: 'Today',
+      progress: 100,
+      textClass: 'text-red-600 dark:text-red-400',
+      barClass: 'bg-red-500',
+      showMarker: false,
+    };
+  }
+
+  if (diffDays <= 7) {
+    return {
+      label: `${daysText} left`,
+      progress: urgencyProgress,
+      textClass: 'text-amber-600 dark:text-amber-400',
+      barClass: 'bg-amber-500',
+      showMarker: true,
+    };
+  }
+
+  return {
+    label: `${daysText} left`,
+    progress: urgencyProgress,
+    textClass: 'text-emerald-600 dark:text-emerald-400',
+    barClass: 'bg-emerald-500',
+    showMarker: true,
+  };
+}
+
+const DeadlineDateTrigger: React.FC<{ value: string; placeholder: string; onClick: () => void }> = ({
+  value,
+  placeholder,
+  onClick,
+}) => {
+  const dateOnly = toDateOnly(value);
+
+  if (!dateOnly) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className="flex w-[7.25rem] items-center gap-1 rounded-md px-1 py-0.5 text-left text-[11px] text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+      >
+        <CalendarIcon size={12} className="text-zinc-400" />
+        {placeholder}
+      </button>
+    );
+  }
+
+  const visual = getDeadlineVisualState(dateOnly);
+  const markerPosition = Math.max(2, Math.min(98, visual.progress));
+
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={`Deadline ${formatDateEU(dateOnly)} · ${visual.label}`}
+      aria-label={`Deadline ${formatDateEU(dateOnly)}, ${visual.label}`}
+      className="flex w-[7.25rem] flex-col gap-0.5 rounded-md px-1 py-0.5 text-left transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800"
+    >
+      <span className="flex items-center justify-between gap-1.5">
+        <span className={`text-[11px] font-semibold tabular-nums ${visual.textClass}`}>{formatDateEU(dateOnly)}</span>
+        <span className="whitespace-nowrap text-[10px] font-semibold text-zinc-500 dark:text-zinc-400">
+          {visual.label}
+        </span>
+      </span>
+      <span className="relative h-1 w-full overflow-hidden rounded-full bg-zinc-100 dark:bg-zinc-800">
+        <span className={`block h-full rounded-full ${visual.barClass}`} style={{ width: `${visual.progress}%` }} />
+        {visual.showMarker && (
+          <span
+            className="absolute top-1/2 h-2 w-0.5 -translate-y-1/2 rounded-full bg-zinc-950/80 dark:bg-white/80"
+            style={{ left: `calc(${markerPosition}% - 1px)` }}
+          />
+        )}
+      </span>
+    </button>
+  );
 };
 
 // Shared column context menu used in both board and table views
@@ -241,6 +366,7 @@ interface WorkspaceProps {
   hiddenColumns?: string[];
   onHideColumn?: (columnKey: string) => void;
   onShowColumn?: (columnKey: string) => void;
+  personFieldConfig?: Partial<Record<PersonFieldKey, { label: string | null; hidden: boolean }>>;
 }
 
 type ViewMode = 'board' | 'table' | 'calendar';
@@ -278,8 +404,26 @@ const Workspace: React.FC<WorkspaceProps> = ({
   hiddenColumns = [],
   onHideColumn,
   onShowColumn,
+  personFieldConfig = {},
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
+
+  const personFieldLabels = useMemo<Record<PersonFieldKey, string>>(
+    () => ({
+      author: personFieldConfig.author?.label || PERSON_FIELD_DEFAULT_LABELS.author,
+      editor: personFieldConfig.editor?.label || PERSON_FIELD_DEFAULT_LABELS.editor,
+      designer: personFieldConfig.designer?.label || PERSON_FIELD_DEFAULT_LABELS.designer,
+    }),
+    [personFieldConfig],
+  );
+  const personFieldHidden = useMemo<Record<PersonFieldKey, boolean>>(
+    () => ({
+      author: personFieldConfig.author?.hidden ?? false,
+      editor: personFieldConfig.editor?.hidden ?? false,
+      designer: personFieldConfig.designer?.hidden ?? false,
+    }),
+    [personFieldConfig],
+  );
 
   const sortedMembers = useMemo(
     () => [...members].sort((a, b) => (a.id === currentUserId ? -1 : b.id === currentUserId ? 1 : 0)),
@@ -316,17 +460,21 @@ const Workspace: React.FC<WorkspaceProps> = ({
     const base: { key: string; label: string; className: string }[] = [
       { key: 'title', label: 'Title', className: 'w-[200px]' },
       { key: 'type', label: 'Type', className: 'w-28' },
-      {
-        key: 'assignee',
-        label: teamName.toLowerCase().includes('management') ? 'Executive' : 'Author',
-        className: 'w-32',
-      },
-      { key: 'editor', label: teamName.toLowerCase().includes('management') ? 'Manager' : 'Editor', className: 'w-32' },
-
-      { key: 'priority', label: 'Priority', className: 'w-24' },
-      { key: 'deadline', label: 'Deadline', className: 'w-24' },
-      { key: 'done', label: 'Pub Date', className: 'w-24' },
     ];
+    if (!personFieldHidden.author) {
+      base.push({ key: 'assignee', label: personFieldLabels.author, className: 'w-32' });
+    }
+    if (!personFieldHidden.editor) {
+      base.push({ key: 'editor', label: personFieldLabels.editor, className: 'w-32' });
+    }
+    if (!personFieldHidden.designer) {
+      base.push({ key: 'designer', label: personFieldLabels.designer, className: 'w-32' });
+    }
+    base.push(
+      { key: 'priority', label: 'Priority', className: 'w-24' },
+      { key: 'deadline', label: 'Deadline', className: 'w-[8.25rem] min-w-[8.25rem]' },
+      { key: 'done', label: 'Pub Date', className: 'w-24' },
+    );
     const propCols = customProperties.map((p) => ({
       key: `prop:${p.id}`,
       label: p.name,
@@ -338,7 +486,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       { key: 'links', label: 'Links', className: 'w-32' },
       { key: 'placements', label: 'Placements', className: 'w-32' },
     ];
-  }, [teamFilter, customProperties, teamName]);
+  }, [teamFilter, customProperties, personFieldLabels, personFieldHidden]);
 
   const columnOrderKey = `table-col-order-${teamFilter}`;
   const [columnOrder, setColumnOrder] = useState<string[]>(() => {
@@ -764,9 +912,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
             return dir * ((order[a.priority] ?? 1) - (order[b.priority] ?? 1));
           }
           case 'deadline':
-            return dir * (a.dueDate || '').localeCompare(b.dueDate || '');
+            return dir * toDateOnly(a.dueDate).localeCompare(toDateOnly(b.dueDate));
           case 'done':
-            return dir * (a.doneDate || '').localeCompare(b.doneDate || '');
+            return dir * toDateOnly(a.doneDate).localeCompare(toDateOnly(b.doneDate));
           case 'type':
             return dir * (a.contentInfo?.type || '').localeCompare(b.contentInfo?.type || '');
           case 'assignee': {
@@ -778,6 +926,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
             const edA = memberMap.get(a.contentInfo?.editorIds?.[0] || '')?.name || '';
             const edB = memberMap.get(b.contentInfo?.editorIds?.[0] || '')?.name || '';
             return dir * edA.localeCompare(edB);
+          }
+          case 'designer': {
+            const dA = memberMap.get(a.contentInfo?.designerIds?.[0] || '')?.name || '';
+            const dB = memberMap.get(b.contentInfo?.designerIds?.[0] || '')?.name || '';
+            return dir * dA.localeCompare(dB);
           }
 
           case 'links':
@@ -1286,22 +1439,23 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                             )}
                                           </div>
                                           <div className="flex items-center justify-between pt-2">
-                                            {(() => {
-                                              const urgency = getDeadlineUrgency(task.dueDate);
-                                              return (
-                                                <div
-                                                  className={`flex items-center gap-1.5 text-[10px] ${urgency.text}`}
-                                                >
-                                                  {urgency.dot ? (
-                                                    <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
-                                                  ) : (
-                                                    <CalendarIcon size={12} />
-                                                  )}
-                                                  <span>{formatDateEU(task.dueDate)}</span>
-                                                </div>
-                                              );
-                                            })()}
-                                            <div className="flex -space-x-1.5">
+                                            {task.dueDate &&
+                                              (() => {
+                                                const urgency = getDeadlineUrgency(task.dueDate);
+                                                return (
+                                                  <div
+                                                    className={`flex items-center gap-1.5 text-[10px] ${urgency.text}`}
+                                                  >
+                                                    {urgency.dot ? (
+                                                      <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
+                                                    ) : (
+                                                      <CalendarIcon size={12} />
+                                                    )}
+                                                    <span>{formatDateEU(toDateOnly(task.dueDate))}</span>
+                                                  </div>
+                                                );
+                                              })()}
+                                            <div className="ml-auto flex -space-x-1.5">
                                               {assignees.length > 0 ? (
                                                 assignees
                                                   .slice(0, 3)
@@ -1580,20 +1734,21 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 </div>
 
                                 <div className="flex items-center justify-between pt-2">
-                                  {(() => {
-                                    const urgency = getDeadlineUrgency(task.dueDate);
-                                    return (
-                                      <div className={`flex items-center gap-1.5 text-[10px] ${urgency.text}`}>
-                                        {urgency.dot ? (
-                                          <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
-                                        ) : (
-                                          <CalendarIcon size={12} />
-                                        )}
-                                        <span>{formatDateEU(task.dueDate)}</span>
-                                      </div>
-                                    );
-                                  })()}
-                                  <div className="flex -space-x-1.5">
+                                  {task.dueDate &&
+                                    (() => {
+                                      const urgency = getDeadlineUrgency(task.dueDate);
+                                      return (
+                                        <div className={`flex items-center gap-1.5 text-[10px] ${urgency.text}`}>
+                                          {urgency.dot ? (
+                                            <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />
+                                          ) : (
+                                            <CalendarIcon size={12} />
+                                          )}
+                                          <span>{formatDateEU(toDateOnly(task.dueDate))}</span>
+                                        </div>
+                                      );
+                                    })()}
+                                  <div className="ml-auto flex -space-x-1.5">
                                     {assignees.length > 0 ? (
                                       assignees
                                         .slice(0, 3)
@@ -1889,7 +2044,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   {task.dueDate && urgency && (
                                     <span className={`flex items-center gap-1 ${urgency.text}`}>
                                       {urgency.dot && <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />}
-                                      {formatDateEU(task.dueDate.split('T')[0])}
+                                      {formatDateEU(toDateOnly(task.dueDate))}
                                     </span>
                                   )}
                                 </div>
@@ -2109,26 +2264,36 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                             </td>
                                           );
                                         case 'assignee':
-                                        case 'editor': {
-                                          const personKey = tc.key;
+                                        case 'editor':
+                                        case 'designer': {
+                                          const personKey = tc.key as 'assignee' | 'editor' | 'designer';
                                           const selectedIds =
                                             personKey === 'assignee'
                                               ? task.assigneeIds
-                                              : task.contentInfo?.editorIds || [];
+                                              : personKey === 'editor'
+                                                ? task.contentInfo?.editorIds || []
+                                                : task.contentInfo?.designerIds || [];
                                           const handleChange = (ids: string[]) => {
                                             if (personKey === 'assignee') {
                                               onUpdateTask({ ...task, assigneeIds: ids });
-                                            } else {
+                                            } else if (personKey === 'editor') {
                                               onUpdateTask({
                                                 ...task,
                                                 contentInfo: { ...task.contentInfo!, editorIds: ids },
                                               });
+                                            } else {
+                                              onUpdateTask({
+                                                ...task,
+                                                contentInfo: { ...task.contentInfo!, designerIds: ids },
+                                              });
                                             }
                                           };
+                                          const personIcon =
+                                            personKey === 'editor' ? Eye : personKey === 'designer' ? Paintbrush : User;
                                           return (
                                             <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
                                               <MultiSelect
-                                                icon={personKey === 'editor' ? Eye : User}
+                                                icon={personIcon}
                                                 label=""
                                                 options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
                                                 selected={selectedIds}
@@ -2196,32 +2361,23 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                           );
                                         case 'deadline':
                                           return (
-                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                            <td key={tc.key} className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
                                               <SimpleDatePicker
-                                                value={task.dueDate ? task.dueDate.split('T')[0] : ''}
+                                                value={toDateOnly(task.dueDate)}
                                                 onChange={(date) =>
                                                   onUpdateTask({
                                                     ...task,
-                                                    dueDate: date ? new Date(date).toISOString() : '',
+                                                    dueDate: toDateOnly(date),
                                                   })
                                                 }
                                                 placeholder="Set date"
-                                                renderTrigger={(onClick, value) => {
-                                                  const urgency = getDeadlineUrgency(value || undefined);
-                                                  return (
-                                                    <span
-                                                      onClick={onClick}
-                                                      className={`text-xs flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors ${value ? urgency.text : 'text-zinc-500'}`}
-                                                    >
-                                                      {value && urgency.dot && (
-                                                        <span
-                                                          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${urgency.dot}`}
-                                                        />
-                                                      )}
-                                                      {value ? formatDateEU(value) : 'Set date'}
-                                                    </span>
-                                                  );
-                                                }}
+                                                renderTrigger={(onClick, value, placeholder) => (
+                                                  <DeadlineDateTrigger
+                                                    value={value}
+                                                    placeholder={placeholder}
+                                                    onClick={onClick}
+                                                  />
+                                                )}
                                               />
                                             </td>
                                           );
@@ -2229,21 +2385,22 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                           return (
                                             <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
                                               <SimpleDatePicker
-                                                value={task.doneDate ? task.doneDate.split('T')[0] : ''}
+                                                value={toDateOnly(task.doneDate)}
                                                 onChange={(date) =>
                                                   onUpdateTask({
                                                     ...task,
-                                                    doneDate: date ? new Date(date).toISOString() : null,
+                                                    doneDate: date ? toDateOnly(date) : null,
                                                   })
                                                 }
                                                 placeholder="Set date"
                                                 renderTrigger={(onClick, value) => (
-                                                  <span
+                                                  <button
+                                                    type="button"
                                                     onClick={onClick}
-                                                    className="text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-100 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded px-1.5 py-0.5 cursor-pointer transition-colors"
+                                                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
                                                   >
                                                     {value ? formatDateEU(value) : 'Set date'}
-                                                  </span>
+                                                  </button>
                                                 )}
                                               />
                                             </td>
@@ -2745,7 +2902,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   .filter((d) => d.type === 'current')
                   .map((d) => ({
                     dateObj: d,
-                    tasks: filteredTasks.filter((t) => new Date(t.dueDate).toDateString() === d.date.toDateString()),
+                    tasks: filteredTasks.filter((t) => toDateOnly(t.dueDate) === toDateOnly(d.date)),
                   }))
                   .filter((d) => d.tasks.length > 0);
                 if (daysWithTasks.length === 0) {
@@ -2794,11 +2951,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 {calendarDays.map((dateObj, i) => {
                   const isCurrentMonth = dateObj.type === 'current';
                   const isToday = isCurrentMonth && dateObj.date.toDateString() === new Date().toDateString();
-                  const dateStr = dateObj.date.toISOString();
+                  const dateStr = toDateOnly(dateObj.date);
 
                   if (!isCurrentMonth) {
                     const overflowTasks = filteredTasks.filter(
-                      (t) => new Date(t.dueDate).toDateString() === dateObj.date.toDateString(),
+                      (t) => toDateOnly(t.dueDate) === toDateOnly(dateObj.date),
                     );
                     return (
                       <div
@@ -2823,9 +2980,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     );
                   }
 
-                  const dayTasks = filteredTasks.filter(
-                    (t) => new Date(t.dueDate).toDateString() === dateObj.date.toDateString(),
-                  );
+                  const dayTasks = filteredTasks.filter((t) => toDateOnly(t.dueDate) === toDateOnly(dateObj.date));
 
                   return (
                     <div

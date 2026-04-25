@@ -12,4 +12,11 @@ describe('Smoke test', () => {
     expect(constants.STATUS_COLORS).toBeDefined();
     expect(constants.PRIORITY_COLORS).toBeDefined();
   });
+
+  it('formats normalized task dates in EU format without timezone shifts', async () => {
+    const { formatDateEU, toDateOnly } = await import('../lib/utils');
+    const dateOnly = toDateOnly('2026-04-24T00:00:00.000Z');
+    expect(dateOnly).toBe('2026-04-24');
+    expect(formatDateEU(dateOnly)).toBe('24/04/2026');
+  });
 });

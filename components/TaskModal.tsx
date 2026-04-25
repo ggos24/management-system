@@ -10,6 +10,7 @@ import {
   Layout,
   User as UserIcon,
   Eye,
+  Paintbrush,
   Zap,
   Globe,
   Link as LinkIcon,
@@ -35,11 +36,11 @@ import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
 import { Button, Input, Label, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
-import { useDataStore } from '../stores/dataStore';
+import { useDataStore, resolvePersonFieldConfig } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
 import { Task, TaskComment, TaskActivity, CustomProperty } from '../types';
 import { cn } from '../lib/cn';
-import { formatDateEU } from '../lib/utils';
+import { formatDateEU, toDateOnly } from '../lib/utils';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusColor } from '../constants';
 import * as db from '../lib/database';
 import { supabase } from '../lib/supabase';
@@ -73,6 +74,7 @@ export const TaskModal: React.FC = () => {
     taskTeamLinks,
     linkTaskToTeam,
     updateLinkedTaskFields,
+    teamPersonFieldConfig,
   } = useDataStore();
 
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -589,12 +591,9 @@ export const TaskModal: React.FC = () => {
     });
   };
 
-  const isManagement = teams
-    .find((t) => t.id === taskModalData.teamId)
-    ?.name.toLowerCase()
-    .includes('management');
-  const getAuthorLabel = () => (isManagement ? 'Executive' : 'Author');
-  const getEditorLabel = () => (isManagement ? 'Manager' : 'Editor');
+  const authorCfg = resolvePersonFieldConfig(teamPersonFieldConfig, taskModalData.teamId, 'author');
+  const editorCfg = resolvePersonFieldConfig(teamPersonFieldConfig, taskModalData.teamId, 'editor');
+  const designerCfg = resolvePersonFieldConfig(teamPersonFieldConfig, taskModalData.teamId, 'designer');
 
   return (
     <Modal
@@ -731,30 +730,55 @@ export const TaskModal: React.FC = () => {
                   setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } });
                 }}
               />
-              <MultiSelect
-                icon={UserIcon}
-                label={getAuthorLabel()}
-                hint={isManagement ? 'Person responsible for execution' : 'Person who creates the content'}
-                options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
-                selected={taskModalData.assigneeIds || []}
-                onChange={(ids) => setTaskModalData({ ...taskModalData, assigneeIds: ids })}
-                placeholder={`Select ${getAuthorLabel()}...`}
-                searchable
-                highlightValue={currentUser?.id}
-              />
-              <MultiSelect
-                icon={Eye}
-                label={getEditorLabel()}
-                hint={isManagement ? 'Person who oversees the task' : 'Person who reviews and approves'}
-                options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
-                selected={taskModalData.contentInfo?.editorIds || []}
-                onChange={(ids) =>
-                  setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, editorIds: ids } })
-                }
-                placeholder={`Select ${getEditorLabel()}...`}
-                searchable
-                highlightValue={currentUser?.id}
-              />
+              {!authorCfg.hidden && (
+                <MultiSelect
+                  icon={UserIcon}
+                  label={authorCfg.label}
+                  hint="Person who creates the content"
+                  options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
+                  selected={taskModalData.assigneeIds || []}
+                  onChange={(ids) => setTaskModalData({ ...taskModalData, assigneeIds: ids })}
+                  placeholder={`Select ${authorCfg.label}...`}
+                  searchable
+                  highlightValue={currentUser?.id}
+                />
+              )}
+              {!editorCfg.hidden && (
+                <MultiSelect
+                  icon={Eye}
+                  label={editorCfg.label}
+                  hint="Person who reviews and approves"
+                  options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
+                  selected={taskModalData.contentInfo?.editorIds || []}
+                  onChange={(ids) =>
+                    setTaskModalData({
+                      ...taskModalData,
+                      contentInfo: { ...taskModalData.contentInfo!, editorIds: ids },
+                    })
+                  }
+                  placeholder={`Select ${editorCfg.label}...`}
+                  searchable
+                  highlightValue={currentUser?.id}
+                />
+              )}
+              {!designerCfg.hidden && (
+                <MultiSelect
+                  icon={Paintbrush}
+                  label={designerCfg.label}
+                  hint="Person who handles visuals"
+                  options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
+                  selected={taskModalData.contentInfo?.designerIds || []}
+                  onChange={(ids) =>
+                    setTaskModalData({
+                      ...taskModalData,
+                      contentInfo: { ...taskModalData.contentInfo!, designerIds: ids },
+                    })
+                  }
+                  placeholder={`Select ${designerCfg.label}...`}
+                  searchable
+                  highlightValue={currentUser?.id}
+                />
+              )}
 
               <CustomSelect
                 icon={Zap}
@@ -778,10 +802,8 @@ export const TaskModal: React.FC = () => {
                   <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Target completion deadline</p>
                 </div>
                 <SimpleDatePicker
-                  value={taskModalData.dueDate ? taskModalData.dueDate.split('T')[0] : ''}
-                  onChange={(date) =>
-                    setTaskModalData({ ...taskModalData, dueDate: date ? new Date(date).toISOString() : '' })
-                  }
+                  value={toDateOnly(taskModalData.dueDate)}
+                  onChange={(date) => setTaskModalData({ ...taskModalData, dueDate: toDateOnly(date) })}
                   placeholder="Set due date"
                 />
               </div>
@@ -793,10 +815,8 @@ export const TaskModal: React.FC = () => {
                   <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Actual date of publication</p>
                 </div>
                 <SimpleDatePicker
-                  value={taskModalData.doneDate ? taskModalData.doneDate.split('T')[0] : ''}
-                  onChange={(date) =>
-                    setTaskModalData({ ...taskModalData, doneDate: date ? new Date(date).toISOString() : null })
-                  }
+                  value={toDateOnly(taskModalData.doneDate)}
+                  onChange={(date) => setTaskModalData({ ...taskModalData, doneDate: date ? toDateOnly(date) : null })}
                   placeholder="Set publish date"
                 />
               </div>

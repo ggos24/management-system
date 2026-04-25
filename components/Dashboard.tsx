@@ -18,7 +18,7 @@ import { DateRangeFilter } from './DateRangeFilter';
 import { Avatar } from './Avatar';
 import { Card } from './ui';
 import { getStatusHexColor } from '../constants';
-import { formatDateRangeEU } from '../lib/utils';
+import { formatDateRangeEU, getDateDiffFromToday, toDateOnly } from '../lib/utils';
 
 interface DashboardProps {
   tasks: Task[];
@@ -115,9 +115,10 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
       }
 
       if (startDate && endDate) {
-        const taskDate = new Date(task.dueDate);
-        const start = new Date(startDate);
-        const end = new Date(endDate);
+        const taskDate = toDateOnly(task.dueDate);
+        const start = toDateOnly(startDate);
+        const end = toDateOnly(endDate);
+        if (!taskDate) return false;
         if (taskDate < start || taskDate > end) return false;
       }
 
@@ -134,8 +135,8 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
     let prevEnd: Date;
 
     if (startDate && endDate) {
-      const s = new Date(startDate);
-      const e = new Date(endDate);
+      const s = new Date(`${toDateOnly(startDate)}T00:00:00`);
+      const e = new Date(`${toDateOnly(endDate)}T00:00:00`);
       const rangeMs = e.getTime() - s.getTime();
       prevEnd = new Date(s.getTime() - 1);
       prevStart = new Date(prevEnd.getTime() - rangeMs);
@@ -153,15 +154,16 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
       } else {
         if (task.teamId !== teamFilter) return false;
       }
-      const taskDate = new Date(task.dueDate);
-      if (taskDate < prevStart || taskDate > prevEnd) return false;
+      const taskDate = toDateOnly(task.dueDate);
+      const prevStartDate = toDateOnly(prevStart);
+      const prevEndDate = toDateOnly(prevEnd);
+      if (!taskDate) return false;
+      if (taskDate < prevStartDate || taskDate > prevEndDate) return false;
       return getStatusCategory(task.status, task.teamId) !== 'ignored';
     });
   }, [tasks, teamFilter, visibleTeamIds, startDate, endDate]);
 
   const metrics = useMemo(() => {
-    const now = new Date();
-
     let active = 0;
     let completed = 0;
     let overdue = 0;
@@ -174,10 +176,10 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
         completed++;
       } else if (category === 'active') {
         active++;
-        const due = new Date(t.dueDate);
-        if (!isNaN(due.getTime()) && due < now) {
+        const dueDiff = getDateDiffFromToday(t.dueDate);
+        if (dueDiff !== null && dueDiff < 0) {
           overdue++;
-          totalOverdueDays += Math.floor((now.getTime() - due.getTime()) / (1000 * 60 * 60 * 24));
+          totalOverdueDays += Math.abs(dueDiff);
         }
       }
     });
@@ -188,7 +190,6 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
     let prevActive = 0;
     let prevCompleted = 0;
     let prevOverdue = 0;
-    const prevNow = new Date();
 
     previousPeriodTasks.forEach((t) => {
       const category = getStatusCategory(t.status, t.teamId);
@@ -196,8 +197,8 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
         prevCompleted++;
       } else if (category === 'active') {
         prevActive++;
-        const due = new Date(t.dueDate);
-        if (!isNaN(due.getTime()) && due < prevNow) {
+        const dueDiff = getDateDiffFromToday(t.dueDate);
+        if (dueDiff !== null && dueDiff < 0) {
           prevOverdue++;
         }
       }
@@ -241,8 +242,6 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
       teamFilter === ALL_TEAMS
         ? members.filter((m) => visibleTeamIds.has(m.teamId))
         : members.filter((m) => m.teamId === teamFilter);
-    const now = new Date();
-
     return teamMembers
       .map((member) => {
         const memberTasks = chartTasks.filter((t) => t.assigneeIds[0] === member.id);
@@ -252,8 +251,8 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
 
         memberTasks.forEach((t) => {
           statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
-          const due = new Date(t.dueDate);
-          if (getStatusCategory(t.status, t.teamId) === 'active' && !isNaN(due.getTime()) && due < now) {
+          const dueDiff = getDateDiffFromToday(t.dueDate);
+          if (getStatusCategory(t.status, t.teamId) === 'active' && dueDiff !== null && dueDiff < 0) {
             overdueCount++;
           }
         });

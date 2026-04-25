@@ -65,6 +65,23 @@ export function useRealtimeSync() {
       .catch(console.error);
   }, 300);
 
+  const debouncedFetchPersonFieldConfig = useDebouncedCallback(() => {
+    const { setTeamPersonFieldConfig } = storeRef.current.getState();
+    db.fetchTeamPersonFieldConfig()
+      .then((rows) => {
+        const map: Record<
+          string,
+          Partial<Record<'author' | 'editor' | 'designer', { label: string | null; hidden: boolean }>>
+        > = {};
+        for (const row of rows) {
+          if (!map[row.teamId]) map[row.teamId] = {};
+          map[row.teamId][row.fieldKey] = { label: row.label, hidden: row.hidden };
+        }
+        setTeamPersonFieldConfig(map);
+      })
+      .catch(console.error);
+  }, 300);
+
   useEffect(() => {
     const channel = supabase
       .channel('realtime-sync')
@@ -91,6 +108,9 @@ export function useRealtimeSync() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'team_hidden_columns' }, () => {
         debouncedFetchTeamHiddenColumns();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'team_person_field_config' }, () => {
+        debouncedFetchPersonFieldConfig();
       })
       .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'notifications' }, () => {
         useUiStore.getState().loadNotifications();

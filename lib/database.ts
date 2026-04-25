@@ -12,9 +12,12 @@ import {
   TaskActivity,
   TaskTeamLink,
   TeamHiddenColumn,
+  TeamPersonFieldConfig,
+  PersonFieldKey,
   Doc,
   DocSection,
 } from '../types';
+import { toDateOnly } from './utils';
 
 // === Mappers ===
 
@@ -58,8 +61,8 @@ function mapTask(row: any, assigneeIds: string[], placements: string[]): Task {
     teamId: row.team_id,
     status: row.status,
     priority: row.priority || 'medium',
-    dueDate: row.due_date || '',
-    doneDate: row.done_date || null,
+    dueDate: toDateOnly(row.due_date),
+    doneDate: row.done_date ? toDateOnly(row.done_date) : null,
     assigneeIds,
     placements,
     links: row.links || [],
@@ -377,8 +380,8 @@ export async function upsertTask(task: Task) {
     team_id: task.teamId,
     status: task.status,
     priority: task.priority,
-    due_date: task.dueDate ? task.dueDate.split('T')[0] : null,
-    done_date: task.doneDate ? task.doneDate.split('T')[0] : null,
+    due_date: task.dueDate ? toDateOnly(task.dueDate) : null,
+    done_date: task.doneDate ? toDateOnly(task.doneDate) : null,
     content_type: task.contentInfo?.type || null,
     notes: task.contentInfo?.notes || null,
     editor_ids: task.contentInfo?.editorIds || [],
@@ -494,7 +497,7 @@ export async function updateTaskStatus(taskId: string, newStatus: string) {
 export async function updateTaskDueDate(taskId: string, dueDate: string) {
   const { error } = await supabase
     .from('tasks')
-    .update({ due_date: dueDate.split('T')[0] })
+    .update({ due_date: dueDate ? toDateOnly(dueDate) : null })
     .eq('id', taskId);
   return { error };
 }
@@ -706,6 +709,46 @@ export async function showTeamColumn(teamId: string, columnKey: string): Promise
     .delete()
     .eq('team_id', teamId)
     .eq('column_key', columnKey);
+  if (error) throw error;
+}
+
+// === Team person-field config (Author / Editor / Designer per team) ===
+
+export async function fetchTeamPersonFieldConfig(): Promise<TeamPersonFieldConfig[]> {
+  const { data, error } = await supabase.from('team_person_field_config').select('team_id, field_key, label, hidden');
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+    teamId: row.team_id,
+    fieldKey: row.field_key as PersonFieldKey,
+    label: row.label ?? null,
+    hidden: !!row.hidden,
+  }));
+}
+
+export async function upsertTeamPersonFieldConfig(
+  teamId: string,
+  fieldKey: PersonFieldKey,
+  patch: { label?: string | null; hidden?: boolean },
+  updatedBy: string | null,
+): Promise<void> {
+  const row: Record<string, any> = {
+    team_id: teamId,
+    field_key: fieldKey,
+    updated_by: updatedBy,
+    updated_at: new Date().toISOString(),
+  };
+  if (patch.label !== undefined) row.label = patch.label;
+  if (patch.hidden !== undefined) row.hidden = patch.hidden;
+  const { error } = await supabase.from('team_person_field_config').upsert(row, { onConflict: 'team_id,field_key' });
+  if (error) throw error;
+}
+
+export async function deleteTeamPersonFieldConfig(teamId: string, fieldKey: PersonFieldKey): Promise<void> {
+  const { error } = await supabase
+    .from('team_person_field_config')
+    .delete()
+    .eq('team_id', teamId)
+    .eq('field_key', fieldKey);
   if (error) throw error;
 }
 

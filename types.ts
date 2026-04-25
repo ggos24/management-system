@@ -177,6 +177,15 @@ export interface TeamHiddenColumn {
   columnKey: string;
 }
 
+export type PersonFieldKey = 'author' | 'editor' | 'designer';
+
+export interface TeamPersonFieldConfig {
+  teamId: string;
+  fieldKey: PersonFieldKey;
+  label: string | null;
+  hidden: boolean;
+}
+
 export type NotificationType =
   | 'task_assigned'
   | 'task_status_changed'

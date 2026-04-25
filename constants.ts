@@ -1,7 +1,16 @@
-import type { UserRole } from './types';
+import type { PersonFieldKey, UserRole } from './types';
+import { getDateDiffFromToday } from './lib/utils';
 
 export const isEditorOrAbove = (role: UserRole) => role === 'editor' || role === 'admin';
 export const isAdmin = (role: UserRole) => role === 'admin';
+
+export const PERSON_FIELD_DEFAULT_LABELS: Record<PersonFieldKey, string> = {
+  author: 'Author',
+  editor: 'Editor',
+  designer: 'Designer',
+};
+
+export const PERSON_FIELD_KEYS: PersonFieldKey[] = ['author', 'editor', 'designer'];
 
 export const STATUS_COLORS: Record<string, string> = {
   // Generic / Video
@@ -191,20 +200,12 @@ export function getDeadlineUrgency(dueDate: string | undefined | null): {
   dot: string;
   text: string;
 } {
-  if (!dueDate) return { dot: '', text: 'text-zinc-400' };
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const due = new Date(dueDate);
-  const dueDay = new Date(due.getFullYear(), due.getMonth(), due.getDate());
-  const diffDays = Math.round((dueDay.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+  const diffDays = getDateDiffFromToday(dueDate);
+  if (diffDays === null) return { dot: '', text: 'text-zinc-400' };
 
-  if (diffDays < 0)
-    return { dot: 'bg-red-500', text: 'text-red-600 dark:text-red-400' };
-  if (diffDays === 0)
-    return { dot: 'bg-orange-500', text: 'text-orange-600 dark:text-orange-400' };
-  if (diffDays <= 2)
-    return { dot: 'bg-amber-400', text: 'text-amber-600 dark:text-amber-400' };
-  if (diffDays <= 7)
-    return { dot: 'bg-blue-400', text: 'text-blue-500 dark:text-blue-400' };
+  if (diffDays < 0) return { dot: 'bg-red-500', text: 'text-red-600 dark:text-red-400' };
+  if (diffDays === 0) return { dot: 'bg-red-500', text: 'text-red-600 dark:text-red-400' };
+  if (diffDays <= 7) return { dot: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400' };
+  if (diffDays <= 14) return { dot: 'bg-emerald-500', text: 'text-emerald-600 dark:text-emerald-400' };
   return { dot: '', text: 'text-zinc-400' };
 }

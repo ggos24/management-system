@@ -2,6 +2,25 @@ import { Absence, Team } from '../types';
 
 // === Date formatting (European DD/MM/YYYY) ===
 
+const DATE_ONLY_RE = /^(\d{4})-(\d{2})-(\d{2})/;
+
+function formatDateOnlyParts(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+}
+
+/** Normalize dates used by task scheduling to YYYY-MM-DD. */
+export function toDateOnly(d: Date | string | null | undefined): string {
+  if (!d) return '';
+  if (d instanceof Date) return formatDateOnlyParts(d);
+  const dateOnly = d.match(DATE_ONLY_RE);
+  if (dateOnly) return `${dateOnly[1]}-${dateOnly[2]}-${dateOnly[3]}`;
+  const parsed = new Date(d);
+  return isNaN(parsed.getTime()) ? '' : formatDateOnlyParts(parsed);
+}
+
 function toDate(d: Date | string | null | undefined): Date | null {
   if (!d) return null;
   if (d instanceof Date) return d;
@@ -17,6 +36,17 @@ export function formatDateEU(d: Date | string | null | undefined): string {
   const day = String(date.getDate()).padStart(2, '0');
   const month = String(date.getMonth() + 1).padStart(2, '0');
   return `${day}/${month}/${date.getFullYear()}`;
+}
+
+/** Signed day distance from today. Negative means overdue. */
+export function getDateDiffFromToday(d: Date | string | null | undefined): number | null {
+  const dateOnly = toDateOnly(d);
+  if (!dateOnly) return null;
+  const [year, month, day] = dateOnly.split('-').map(Number);
+  const target = new Date(year, month - 1, day);
+  const now = new Date();
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((target.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
 }
 
 /** Format a date range as "DD/MM/YYYY – DD/MM/YYYY". */
