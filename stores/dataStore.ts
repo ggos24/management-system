@@ -35,6 +35,26 @@ export function resolvePersonFieldConfig(
   };
 }
 
+// Auto-stamp/clear doneDate when crossing the `completed` status-category boundary.
+// Returns the doneDate that should be persisted for the task in its new status.
+export function resolveDoneDate(
+  prevDoneDate: string | null | undefined,
+  prevStatus: string | undefined,
+  nextStatus: string,
+  teamId: string | undefined,
+  statusCategories: Record<string, Record<string, string>>,
+): string | null {
+  const prevCategory = teamId ? statusCategories[teamId]?.[prevStatus ?? ''] : undefined;
+  const nextCategory = teamId ? statusCategories[teamId]?.[nextStatus] : undefined;
+  if (nextCategory === 'completed' && !prevDoneDate) {
+    return toDateOnly(new Date());
+  }
+  if (prevCategory === 'completed' && nextCategory !== 'completed') {
+    return null;
+  }
+  return prevDoneDate ?? null;
+}
+
 // === Notification helpers (fire-and-forget, non-critical) ===
 
 function getCurrentUserId(): string | null {
@@ -637,11 +657,29 @@ export const useDataStore = create<DataState>((set, get) => ({
     const prev = get().tasks;
     const task = prev.find((t) => t.id === taskId);
     if (task && task.status === newStatus) return; // Same status, no-op
-    set({ tasks: prev.map((t) => (t.id === taskId ? { ...t, status: newStatus } : t)) });
-    db.updateTaskStatus(taskId, newStatus).catch(() => set({ tasks: prev }));
+    const nextDoneDate = task
+      ? resolveDoneDate(task.doneDate, task.status, newStatus, task.teamId, get().statusCategories)
+      : null;
+    const doneDateChanged = task ? (task.doneDate ?? null) !== nextDoneDate : false;
+    set({
+      tasks: prev.map((t) => (t.id === taskId ? { ...t, status: newStatus, doneDate: nextDoneDate } : t)),
+    });
+    db.updateTaskStatus(taskId, newStatus)
+      .then(() => {
+        if (doneDateChanged) {
+          db.updateTaskDoneDate(taskId, nextDoneDate).catch(() => {});
+        }
+      })
+      .catch(() => set({ tasks: prev }));
     if (task) {
       logAction('Task Status Changed', `Moved "${task.title}" to ${newStatus}`, 'task');
-      logTaskActivity(taskId, [{ field: 'status', oldValue: task.status, newValue: newStatus }]);
+      const activity: Array<{ field: string; oldValue?: string | null; newValue?: string | null }> = [
+        { field: 'status', oldValue: task.status, newValue: newStatus },
+      ];
+      if (doneDateChanged) {
+        activity.push({ field: 'doneDate', oldValue: task.doneDate ?? null, newValue: nextDoneDate });
+      }
+      logTaskActivity(taskId, activity);
     }
 
     // Notify all people on task about status change
@@ -659,51 +697,66 @@ export const useDataStore = create<DataState>((set, get) => ({
   updateTask: (updatedTask) => {
     const prev = get().tasks;
     const oldTask = prev.find((t) => t.id === updatedTask.id);
-    set({ tasks: prev.map((t) => (t.id === updatedTask.id ? updatedTask : t)) });
-    db.upsertTask(updatedTask)
+    // Auto-stamp/clear doneDate on status-category transitions, unless the caller
+    // already changed doneDate explicitly (TaskModal manual entry must win).
+    let finalTask = updatedTask;
+    if (oldTask && oldTask.status !== updatedTask.status && oldTask.doneDate === updatedTask.doneDate) {
+      const resolvedDoneDate = resolveDoneDate(
+        updatedTask.doneDate,
+        oldTask.status,
+        updatedTask.status,
+        updatedTask.teamId,
+        get().statusCategories,
+      );
+      if (resolvedDoneDate !== (updatedTask.doneDate ?? null)) {
+        finalTask = { ...updatedTask, doneDate: resolvedDoneDate };
+      }
+    }
+    set({ tasks: prev.map((t) => (t.id === finalTask.id ? finalTask : t)) });
+    db.upsertTask(finalTask)
       .then(() => {
-        db.syncTaskAssignees(updatedTask.id, updatedTask.assigneeIds);
-        db.syncTaskPlacements(updatedTask.id, updatedTask.placements);
+        db.syncTaskAssignees(finalTask.id, finalTask.assigneeIds);
+        db.syncTaskPlacements(finalTask.id, finalTask.placements);
       })
       .catch(() => set({ tasks: prev }));
 
     // Log activity
-    if (oldTask) logTaskActivity(updatedTask.id, diffTaskFields(oldTask, updatedTask));
+    if (oldTask) logTaskActivity(finalTask.id, diffTaskFields(oldTask, finalTask));
 
     // Notify all people (assignees + editors + designers) about changes
     if (oldTask) {
       const actorName = getCurrentUserName();
-      const allNewPeople = getAllTaskPeople(updatedTask);
+      const allNewPeople = getAllTaskPeople(finalTask);
       const allOldPeople = getAllTaskPeople(oldTask);
 
       // Notify newly added people
       const newPeople = allNewPeople.filter((id) => !allOldPeople.includes(id));
       if (newPeople.length > 0) {
-        notifyMany(newPeople, 'task_assigned', `${actorName} assigned you to "${updatedTask.title}"`, {
-          taskId: updatedTask.id,
-          teamId: updatedTask.teamId,
-          priority: updatedTask.priority,
+        notifyMany(newPeople, 'task_assigned', `${actorName} assigned you to "${finalTask.title}"`, {
+          taskId: finalTask.id,
+          teamId: finalTask.teamId,
+          priority: finalTask.priority,
         });
       }
 
       // Notify removed people
       const removedPeople = allOldPeople.filter((id) => !allNewPeople.includes(id));
       if (removedPeople.length > 0) {
-        notifyMany(removedPeople, 'task_unassigned', `${actorName} removed you from "${updatedTask.title}"`, {
-          taskId: updatedTask.id,
-          teamId: updatedTask.teamId,
-          priority: updatedTask.priority,
+        notifyMany(removedPeople, 'task_unassigned', `${actorName} removed you from "${finalTask.title}"`, {
+          taskId: finalTask.id,
+          teamId: finalTask.teamId,
+          priority: finalTask.priority,
         });
       }
 
       // Detect meaningful field changes and notify all current people
       const changes: string[] = [];
-      if (oldTask.title !== updatedTask.title) changes.push('title');
-      if (oldTask.priority !== updatedTask.priority) changes.push('priority');
-      if (oldTask.dueDate !== updatedTask.dueDate) changes.push('due date');
-      if (oldTask.description !== updatedTask.description) changes.push('description');
-      if (JSON.stringify(oldTask.placements) !== JSON.stringify(updatedTask.placements)) changes.push('placements');
-      if (JSON.stringify(oldTask.customFieldValues) !== JSON.stringify(updatedTask.customFieldValues))
+      if (oldTask.title !== finalTask.title) changes.push('title');
+      if (oldTask.priority !== finalTask.priority) changes.push('priority');
+      if (oldTask.dueDate !== finalTask.dueDate) changes.push('due date');
+      if (oldTask.description !== finalTask.description) changes.push('description');
+      if (JSON.stringify(oldTask.placements) !== JSON.stringify(finalTask.placements)) changes.push('placements');
+      if (JSON.stringify(oldTask.customFieldValues) !== JSON.stringify(finalTask.customFieldValues))
         changes.push('fields');
 
       if (changes.length > 0 && allNewPeople.length > 0) {
@@ -712,8 +765,8 @@ export const useDataStore = create<DataState>((set, get) => ({
           notifyMany(
             updateRecipients,
             'task_updated',
-            `${actorName} updated ${changes.join(', ')} on "${updatedTask.title}"`,
-            { taskId: updatedTask.id, teamId: updatedTask.teamId, priority: updatedTask.priority },
+            `${actorName} updated ${changes.join(', ')} on "${finalTask.title}"`,
+            { taskId: finalTask.id, teamId: finalTask.teamId, priority: finalTask.priority },
           );
         }
       }
@@ -808,15 +861,30 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     const existingTask = taskData.id ? get().tasks.find((t) => t.id === taskData.id) : null;
     const isNew = !existingTask;
+    const incomingStatus = taskData.status || 'Not Started';
+    const incomingTeamId = taskData.teamId || teams[0]?.id || '';
+    // Auto-stamp/clear doneDate when the save crosses a `completed` category boundary,
+    // unless the caller supplied an explicit doneDate that differs from the existing.
+    const callerDoneDate = taskData.doneDate ? toDateOnly(taskData.doneDate) : null;
+    const callerOverrodeDoneDate = isNew ? !!taskData.doneDate : (existingTask?.doneDate ?? null) !== callerDoneDate;
+    const resolvedDoneDate = callerOverrodeDoneDate
+      ? callerDoneDate
+      : resolveDoneDate(
+          existingTask?.doneDate ?? null,
+          existingTask?.status,
+          incomingStatus,
+          incomingTeamId,
+          get().statusCategories,
+        );
     const newTask: Task = {
       id: taskData.id || crypto.randomUUID(),
       title: taskData.title!,
       description: taskData.description || '',
-      teamId: taskData.teamId || teams[0]?.id || '',
-      status: taskData.status || 'Not Started',
+      teamId: incomingTeamId,
+      status: incomingStatus,
       priority: taskData.priority || 'medium',
       dueDate: toDateOnly(taskData.dueDate),
-      doneDate: taskData.doneDate ? toDateOnly(taskData.doneDate) : null,
+      doneDate: resolvedDoneDate,
       placements: taskData.placements || [],
       assigneeIds: taskData.assigneeIds || [],
       links: taskData.links || [],

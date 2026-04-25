@@ -494,6 +494,14 @@ export async function updateTaskStatus(taskId: string, newStatus: string) {
   return { error };
 }
 
+export async function updateTaskDoneDate(taskId: string, doneDate: string | null) {
+  const { error } = await supabase
+    .from('tasks')
+    .update({ done_date: doneDate ? toDateOnly(doneDate) : null })
+    .eq('id', taskId);
+  return { error };
+}
+
 export async function updateTaskDueDate(taskId: string, dueDate: string) {
   const { error } = await supabase
     .from('tasks')

@@ -109,7 +109,69 @@ const getFaviconUrl = (url: string, hostname: string): string => {
 
 const DEADLINE_WINDOW_DAYS = 14;
 
-function getDeadlineVisualState(value: string) {
+type DeadlineStatusCategory = 'active' | 'completed' | 'backlog' | 'ignored';
+
+function getDeadlineVisualState(
+  value: string,
+  ctx?: { statusCategory?: DeadlineStatusCategory; doneDate?: string | null },
+) {
+  // Archived tasks: render the date neutrally — the team has opted out of caring.
+  if (ctx?.statusCategory === 'ignored') {
+    return {
+      label: '',
+      progress: 100,
+      textClass: 'text-zinc-400 dark:text-zinc-500',
+      barClass: 'bg-zinc-200 dark:bg-zinc-700',
+      showMarker: false,
+    };
+  }
+
+  // Completed tasks: freeze the comparison at the doneDate moment.
+  if (ctx?.statusCategory === 'completed') {
+    const doneOnly = ctx.doneDate ? toDateOnly(ctx.doneDate) : '';
+    const dueOnly = toDateOnly(value);
+    if (doneOnly && dueOnly) {
+      const [dy, dm, dd] = doneOnly.split('-').map(Number);
+      const [uy, um, ud] = dueOnly.split('-').map(Number);
+      const doneTime = new Date(dy, dm - 1, dd).getTime();
+      const dueTime = new Date(uy, um - 1, ud).getTime();
+      const delta = Math.round((doneTime - dueTime) / (1000 * 60 * 60 * 24));
+      if (delta > 0) {
+        return {
+          label: `${delta}d late`,
+          progress: 100,
+          textClass: 'text-amber-600 dark:text-amber-400',
+          barClass: 'bg-emerald-500/70',
+          showMarker: false,
+        };
+      }
+      if (delta < 0) {
+        return {
+          label: `${Math.abs(delta)}d early`,
+          progress: 100,
+          textClass: 'text-emerald-600 dark:text-emerald-400',
+          barClass: 'bg-emerald-500',
+          showMarker: false,
+        };
+      }
+      return {
+        label: 'On time',
+        progress: 100,
+        textClass: 'text-emerald-600 dark:text-emerald-400',
+        barClass: 'bg-emerald-500',
+        showMarker: false,
+      };
+    }
+    // Legacy completed task with no captured doneDate — show the date muted, no claim.
+    return {
+      label: '',
+      progress: 100,
+      textClass: 'text-emerald-600/70 dark:text-emerald-400/70',
+      barClass: 'bg-emerald-500/40',
+      showMarker: false,
+    };
+  }
+
   const diffDays = getDateDiffFromToday(value);
   if (diffDays === null) {
     return {
@@ -164,11 +226,13 @@ function getDeadlineVisualState(value: string) {
   };
 }
 
-const DeadlineDateTrigger: React.FC<{ value: string; placeholder: string; onClick: () => void }> = ({
-  value,
-  placeholder,
-  onClick,
-}) => {
+const DeadlineDateTrigger: React.FC<{
+  value: string;
+  placeholder: string;
+  onClick: () => void;
+  statusCategory?: DeadlineStatusCategory;
+  doneDate?: string | null;
+}> = ({ value, placeholder, onClick, statusCategory, doneDate }) => {
   const dateOnly = toDateOnly(value);
 
   if (!dateOnly) {
@@ -184,7 +248,7 @@ const DeadlineDateTrigger: React.FC<{ value: string; placeholder: string; onClic
     );
   }
 
-  const visual = getDeadlineVisualState(dateOnly);
+  const visual = getDeadlineVisualState(dateOnly, { statusCategory, doneDate });
   const markerPosition = Math.max(2, Math.min(98, visual.progress));
 
   return (
@@ -2359,7 +2423,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               />
                                             </td>
                                           );
-                                        case 'deadline':
+                                        case 'deadline': {
+                                          const deadlineCategory: DeadlineStatusCategory = isIgnoredTable
+                                            ? 'ignored'
+                                            : isDoneTable
+                                              ? 'completed'
+                                              : isBacklogTable
+                                                ? 'backlog'
+                                                : 'active';
                                           return (
                                             <td key={tc.key} className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
                                               <SimpleDatePicker
@@ -2376,11 +2447,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                     value={value}
                                                     placeholder={placeholder}
                                                     onClick={onClick}
+                                                    statusCategory={deadlineCategory}
+                                                    doneDate={task.doneDate ?? null}
                                                   />
                                                 )}
                                               />
                                             </td>
                                           );
+                                        }
                                         case 'done':
                                           return (
                                             <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
@@ -2823,16 +2897,40 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 </button>
                 {bulkStatusMenuOpen && (
                   <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-xl py-1 min-w-[180px] text-zinc-900 dark:text-zinc-100">
-                    {displayColumns.map((col) => (
-                      <button
-                        key={col.id}
-                        onClick={() => handleBulkMove(col.id)}
-                        className="w-full text-left px-3 py-2 text-xs hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors flex items-center gap-2"
-                      >
-                        <span className="w-2 h-2 rounded-full flex-shrink-0 bg-zinc-400" />
-                        {col.label}
-                      </button>
-                    ))}
+                    {displayColumns.map((col) => {
+                      const cat = statusCategories[teamFilter]?.[col.id] || 'active';
+                      const isDone = cat === 'completed';
+                      const isArchive = cat === 'ignored';
+                      const isBacklog = cat === 'backlog';
+                      return (
+                        <button
+                          key={col.id}
+                          onClick={() => handleBulkMove(col.id)}
+                          className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 font-medium ${
+                            isDone
+                              ? 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
+                              : isArchive
+                                ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-900/20'
+                                : isBacklog
+                                  ? 'text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20'
+                                  : 'hover:bg-zinc-100 dark:hover:bg-zinc-800'
+                          }`}
+                        >
+                          <span
+                            className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                              isDone
+                                ? 'bg-emerald-500'
+                                : isArchive
+                                  ? 'bg-amber-500'
+                                  : isBacklog
+                                    ? 'bg-blue-500'
+                                    : 'bg-zinc-400'
+                            }`}
+                          />
+                          {col.label}
+                        </button>
+                      );
+                    })}
                   </div>
                 )}
               </div>
