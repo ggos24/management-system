@@ -241,6 +241,10 @@ function sendEmail(recipientIds: string[], type: NotificationType, message: stri
     .catch(console.error);
 }
 
+// Notification types that should ONLY appear in-app (no Telegram, no email).
+// Schedule edits are noisy and rarely actionable outside the app.
+const IN_APP_ONLY_TYPES: ReadonlySet<NotificationType> = new Set(['schedule_updated']);
+
 function notifyMany(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
   const actorId = getCurrentUserId();
   // Filter out self-notifications
@@ -249,6 +253,7 @@ function notifyMany(recipientIds: string[], type: NotificationType, message: str
   db.insertNotifications(recipients.map((recipientId) => ({ recipientId, actorId, type, message, entityData }))).catch(
     console.error,
   );
+  if (IN_APP_ONLY_TYPES.has(type)) return;
   sendTelegram(recipients, message, entityData);
   sendEmail(recipients, type, message, entityData);
 }
@@ -257,6 +262,7 @@ function notify(recipientId: string, type: NotificationType, message: string, en
   const actorId = getCurrentUserId();
   if (recipientId === actorId) return; // Don't notify yourself
   db.insertNotification({ recipientId, actorId, type, message, entityData }).catch(console.error);
+  if (IN_APP_ONLY_TYPES.has(type)) return;
   sendTelegram([recipientId], message, entityData);
   sendEmail([recipientId], type, message, entityData);
 }
