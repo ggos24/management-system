@@ -8,6 +8,18 @@ const corsHeaders = {
 
 const SENDPULSE_API = 'https://api.sendpulse.com';
 
+function isServiceRoleJwt(jwt: string): boolean {
+  try {
+    const parts = jwt.split('.');
+    if (parts.length !== 3) return false;
+    const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(padded + '==='.slice((padded.length + 3) % 4)));
+    return payload.role === 'service_role';
+  } catch {
+    return false;
+  }
+}
+
 async function getSendPulseToken(clientId: string, clientSecret: string): Promise<string> {
   const res = await fetch(`${SENDPULSE_API}/oauth/access_token`, {
     method: 'POST',
@@ -63,9 +75,9 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // Allow trusted server-to-server callers (e.g. Vercel cron) to authenticate
-    // with the service role key directly. Otherwise verify a user JWT.
+    // with any service_role-scoped JWT. Otherwise verify a user JWT.
     const jwt = authHeader.replace('Bearer ', '');
-    if (jwt !== supabaseServiceKey) {
+    if (!isServiceRoleJwt(jwt)) {
       const {
         data: { user },
         error: authError,

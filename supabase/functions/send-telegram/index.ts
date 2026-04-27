@@ -8,6 +8,18 @@ const corsHeaders = {
 
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 
+function isServiceRoleJwt(jwt: string): boolean {
+  try {
+    const parts = jwt.split('.');
+    if (parts.length !== 3) return false;
+    const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const payload = JSON.parse(atob(padded + '==='.slice((padded.length + 3) % 4)));
+    return payload.role === 'service_role';
+  } catch {
+    return false;
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response('ok', { headers: corsHeaders });
@@ -36,9 +48,9 @@ Deno.serve(async (req) => {
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
     // Allow trusted server-to-server callers (e.g. Vercel cron) to authenticate
-    // with the service role key directly. Otherwise verify a user JWT.
+    // with any service_role-scoped JWT. Otherwise verify a user JWT.
     const jwt = authHeader.replace('Bearer ', '');
-    if (jwt !== supabaseServiceKey) {
+    if (!isServiceRoleJwt(jwt)) {
       const {
         data: { user },
         error: authError,
