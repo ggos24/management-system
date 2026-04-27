@@ -596,7 +596,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                             onDragEnd={handleDragEnd}
                           >
                             <div
-                              className={`group sticky left-0 z-10 w-40 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-2 flex items-center gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 ${isCurrentUser ? 'bg-blue-50/60 dark:bg-blue-950/30' : 'bg-white dark:bg-zinc-900'}`}
+                              className={`group sticky left-0 z-10 w-40 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-2 flex items-center gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 ${isCurrentUser ? 'bg-blue-50 dark:bg-blue-950' : 'bg-white dark:bg-zinc-900'}`}
                               onClick={() => setSelectedMemberStats(member)}
                             >
                               <Avatar src={member.avatar} size="sm" />
