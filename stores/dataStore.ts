@@ -10,6 +10,10 @@ import {
   CustomProperty,
   TaskTeamLink,
   NotificationType,
+  NotificationCategory,
+  NotificationChannel,
+  NotificationPreference,
+  NOTIFICATION_CATEGORY,
   UserRole,
   PersonFieldKey,
   TeamPersonFieldConfig,
@@ -208,14 +212,7 @@ const EMAIL_SUBJECTS: Record<NotificationType, string> = {
 
 function sendEmail(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
   const subject = EMAIL_SUBJECTS[type];
-  if (!subject) return;
-  // Filter to recipients who have email notifications enabled
-  const { members } = useDataStore.getState();
-  const emailRecipients = recipientIds.filter((id) => {
-    const member = members.find((m) => m.id === id);
-    return member?.emailNotifications !== false;
-  });
-  if (emailRecipients.length === 0) return;
+  if (!subject || recipientIds.length === 0) return;
 
   const ctx = getTaskContext(entityData);
   const taskTitle = ctx?.task?.title;
@@ -236,35 +233,60 @@ function sendEmail(recipientIds: string[], type: NotificationType, message: stri
   const link = teamId ? `${window.location.origin}/teams/${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
   supabase.functions
     .invoke('send-email', {
-      body: { recipientIds: emailRecipients, subject: fullSubject, message, link, taskDetails },
+      body: { recipientIds, subject: fullSubject, message, link, taskDetails },
     })
     .catch(console.error);
 }
 
-// Notification types that should ONLY appear in-app (no Telegram, no email).
-// Schedule edits are noisy and rarely actionable outside the app.
+// Notification types that should ONLY appear in-app (no Telegram, no email),
+// regardless of user preferences. Schedule edits are noisy and rarely actionable
+// outside the app — see commit b6524d4 for context.
 const IN_APP_ONLY_TYPES: ReadonlySet<NotificationType> = new Set(['schedule_updated']);
+
+function isChannelEnabled(userId: string, type: NotificationType, channel: NotificationChannel): boolean {
+  const category = NOTIFICATION_CATEGORY[type];
+  const prefs = useDataStore.getState().notificationPreferences;
+  const row = prefs.find((p) => p.userId === userId && p.category === category && p.channel === channel);
+  return row ? row.enabled : true;
+}
 
 function notifyMany(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
   const actorId = getCurrentUserId();
-  // Filter out self-notifications
   const recipients = recipientIds.filter((id) => id !== actorId);
   if (recipients.length === 0) return;
-  db.insertNotifications(recipients.map((recipientId) => ({ recipientId, actorId, type, message, entityData }))).catch(
-    console.error,
-  );
+
+  const inAppRecipients = recipients.filter((id) => isChannelEnabled(id, type, 'in_app'));
+  if (inAppRecipients.length > 0) {
+    db.insertNotifications(
+      inAppRecipients.map((recipientId) => ({ recipientId, actorId, type, message, entityData })),
+    ).catch(console.error);
+  }
+
   if (IN_APP_ONLY_TYPES.has(type)) return;
-  sendTelegram(recipients, message, entityData);
-  sendEmail(recipients, type, message, entityData);
+
+  const tgRecipients = recipients.filter((id) => isChannelEnabled(id, type, 'telegram'));
+  if (tgRecipients.length > 0) sendTelegram(tgRecipients, message, entityData);
+
+  const emailRecipients = recipients.filter((id) => isChannelEnabled(id, type, 'email'));
+  if (emailRecipients.length > 0) sendEmail(emailRecipients, type, message, entityData);
 }
 
 function notify(recipientId: string, type: NotificationType, message: string, entityData?: Record<string, any>) {
   const actorId = getCurrentUserId();
-  if (recipientId === actorId) return; // Don't notify yourself
-  db.insertNotification({ recipientId, actorId, type, message, entityData }).catch(console.error);
+  if (recipientId === actorId) return;
+
+  if (isChannelEnabled(recipientId, type, 'in_app')) {
+    db.insertNotification({ recipientId, actorId, type, message, entityData }).catch(console.error);
+  }
+
   if (IN_APP_ONLY_TYPES.has(type)) return;
-  sendTelegram([recipientId], message, entityData);
-  sendEmail([recipientId], type, message, entityData);
+
+  if (isChannelEnabled(recipientId, type, 'telegram')) {
+    sendTelegram([recipientId], message, entityData);
+  }
+  if (isChannelEnabled(recipientId, type, 'email')) {
+    sendEmail([recipientId], type, message, entityData);
+  }
 }
 
 interface DataState {
@@ -289,6 +311,7 @@ interface DataState {
   scheduleTeamOrders: Record<string, number>;
   teamHiddenColumns: Record<string, string[]>;
   teamPersonFieldConfig: PersonFieldConfigMap;
+  notificationPreferences: NotificationPreference[];
 
   // Setters
   setTaskTeamLinks: (links: TaskTeamLink[]) => void;
@@ -403,6 +426,14 @@ interface DataState {
   // Notification helpers
   notifyMention: (recipientIds: string[], actorName: string, taskTitle: string, taskId: string, teamId: string) => void;
 
+  // Notification preference actions
+  setNotificationPreference: (
+    userId: string,
+    category: NotificationCategory,
+    channel: NotificationChannel,
+    enabled: boolean,
+  ) => void;
+
   // Load all data
   loadAllData: (authUserId: string) => Promise<Member | null>;
 }
@@ -429,6 +460,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   scheduleTeamOrders: {},
   teamHiddenColumns: {},
   teamPersonFieldConfig: {},
+  notificationPreferences: [],
 
   // Setters
   setTaskTeamLinks: (links) => set({ taskTeamLinks: links }),
@@ -1565,6 +1597,22 @@ export const useDataStore = create<DataState>((set, get) => ({
     notifyMany(recipientIds, 'comment_mention', msg, { taskId, teamId });
   },
 
+  setNotificationPreference: (userId, category, channel, enabled) => {
+    const { notificationPreferences } = get();
+    const previous = notificationPreferences;
+    const without = previous.filter((p) => !(p.userId === userId && p.category === category && p.channel === channel));
+    const next = enabled ? without : [...without, { userId, category, channel, enabled: false }];
+    set({ notificationPreferences: next });
+
+    const dbCall = enabled
+      ? db.deleteNotificationPreference(userId, category, channel)
+      : db.upsertNotificationPreference({ userId, category, channel, enabled: false });
+    dbCall.catch(() => {
+      set({ notificationPreferences: previous });
+      toast.error('Failed to update notification preference');
+    });
+  },
+
   // Load all data with resilient fetching
   loadAllData: async (authUserId) => {
     // Profile is critical - must succeed
@@ -1592,6 +1640,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchUserTeamOrders(profileResult.id, 'schedule'), // 16
       db.fetchTeamHiddenColumns(), // 17
       db.fetchTeamPersonFieldConfig(), // 18
+      db.fetchAllNotificationPreferences(), // 19
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
@@ -1641,6 +1690,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       teamPlacements: getValue(results[14], {} as Record<string, string[]>),
       teamHiddenColumns: hiddenColumnsMap,
       teamPersonFieldConfig: personFieldMap,
+      notificationPreferences: getValue(results[19], [] as NotificationPreference[]),
     });
 
     // Auto-purge tasks deleted more than 30 days ago (fire-and-forget)

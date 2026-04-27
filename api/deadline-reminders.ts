@@ -147,14 +147,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ sent: { 1: 0, 3: 0 }, scanned: tasks.length });
   }
 
-  // 5. Look up email-notifications preference for involved members in one query.
+  // 5. Look up per-channel notification preferences for involved members.
+  //    Opt-out model: absence of a row = enabled.
   const allMemberIds = [...new Set(pending.flatMap(({ task }) => task.task_assignees.map((a) => a.member_id)))];
   const { data: prefRows } = await sb
-    .from('profiles')
-    .select('id, email_notifications')
-    .in('id', allMemberIds)
-    .returns<{ id: string; email_notifications: boolean | null }[]>();
-  const emailOptOut = new Set((prefRows ?? []).filter((p) => p.email_notifications === false).map((p) => p.id));
+    .from('notification_preferences')
+    .select('user_id, channel, enabled')
+    .eq('category', 'deadlines')
+    .in('user_id', allMemberIds)
+    .returns<{ user_id: string; channel: 'in_app' | 'telegram' | 'email'; enabled: boolean }[]>();
+  const optOut = {
+    in_app: new Set<string>(),
+    telegram: new Set<string>(),
+    email: new Set<string>(),
+  };
+  for (const r of prefRows ?? []) {
+    if (r.enabled === false) optOut[r.channel].add(r.user_id);
+  }
 
   // 6. Dispatch per (task, offset). Insert in-app first, then fire telegram + email.
   const counters: Record<Offset, number> = { 1: 0, 3: 0 };
@@ -166,28 +175,34 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const link = `${appOrigin}/teams/${task.team_id}?task=${task.id}`;
     const entityData = { taskId: task.id, teamId: task.team_id, priority: task.priority, offsetDays: offset };
 
-    // 6a. Bulk in-app notifications.
-    const { error: insertErr } = await sb.from('notifications').insert(
-      recipientIds.map((rid) => ({
-        recipient_id: rid,
-        actor_id: null,
-        type: REMINDER_TYPE,
-        message,
-        entity_data: entityData,
-      })),
-    );
-    if (insertErr) {
-      console.error(`deadline-reminders: notifications insert failed for ${task.id}`, insertErr);
-      continue; // skip channels & dedup so the next run retries
+    // 6a. Bulk in-app notifications (respect in_app opt-out).
+    const inAppRecipients = recipientIds.filter((id) => !optOut.in_app.has(id));
+    if (inAppRecipients.length > 0) {
+      const { error: insertErr } = await sb.from('notifications').insert(
+        inAppRecipients.map((rid) => ({
+          recipient_id: rid,
+          actor_id: null,
+          type: REMINDER_TYPE,
+          message,
+          entity_data: entityData,
+        })),
+      );
+      if (insertErr) {
+        console.error(`deadline-reminders: notifications insert failed for ${task.id}`, insertErr);
+        continue; // skip channels & dedup so the next run retries
+      }
     }
 
-    // 6b. Telegram (best-effort).
-    sb.functions
-      .invoke('send-telegram', { body: { recipientIds, message, link } })
-      .catch((e) => console.error(`send-telegram failed for ${task.id}:`, e));
+    // 6b. Telegram (best-effort, respect opt-out).
+    const tgRecipients = recipientIds.filter((id) => !optOut.telegram.has(id));
+    if (tgRecipients.length > 0) {
+      sb.functions
+        .invoke('send-telegram', { body: { recipientIds: tgRecipients, message, link } })
+        .catch((e) => console.error(`send-telegram failed for ${task.id}:`, e));
+    }
 
     // 6c. Email (best-effort, respect opt-out).
-    const emailRecipients = recipientIds.filter((id) => !emailOptOut.has(id));
+    const emailRecipients = recipientIds.filter((id) => !optOut.email.has(id));
     if (emailRecipients.length > 0) {
       sb.functions
         .invoke('send-email', {

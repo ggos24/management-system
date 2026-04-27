@@ -13,7 +13,6 @@ export interface User {
   teamId: string; // Primary / home team (= teamIds[0]); kept as a denormalized cache
   teamIds: string[]; // All team memberships, primary first. Empty = no teams.
   scheduleSortOrder?: number;
-  emailNotifications?: boolean;
 }
 
 export interface Team {
@@ -209,4 +208,29 @@ export interface Notification {
   entityData: Record<string, any>;
   read: boolean;
   createdAt: string;
+}
+
+export type NotificationCategory = 'tasks' | 'deadlines' | 'mentions' | 'schedule' | 'members';
+export type NotificationChannel = 'in_app' | 'telegram' | 'email';
+
+export const NOTIFICATION_CATEGORY: Record<NotificationType, NotificationCategory> = {
+  task_assigned: 'tasks',
+  task_status_changed: 'tasks',
+  task_updated: 'tasks',
+  task_unassigned: 'tasks',
+  task_deleted: 'tasks',
+  task_deadline_reminder: 'deadlines',
+  comment_mention: 'mentions',
+  absence_submitted: 'schedule',
+  absence_decided: 'schedule',
+  absence_cancelled: 'schedule',
+  schedule_updated: 'schedule',
+  member_invited: 'members',
+};
+
+export interface NotificationPreference {
+  userId: string;
+  category: NotificationCategory;
+  channel: NotificationChannel;
+  enabled: boolean;
 }

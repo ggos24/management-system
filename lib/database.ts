@@ -8,6 +8,9 @@ import {
   LogEntry,
   CustomProperty,
   Notification,
+  NotificationCategory,
+  NotificationChannel,
+  NotificationPreference,
   TaskComment,
   TaskActivity,
   TaskTeamLink,
@@ -35,7 +38,15 @@ function mapProfile(row: any, teamIds: string[] = []): Member {
     teamIds: ordered,
     status: row.status || 'active',
     scheduleSortOrder: row.schedule_sort_order ?? 0,
-    emailNotifications: row.email_notifications ?? true,
+  };
+}
+
+function mapNotificationPreference(row: any): NotificationPreference {
+  return {
+    userId: row.user_id,
+    category: row.category,
+    channel: row.channel,
+    enabled: row.enabled,
   };
 }
 
@@ -121,9 +132,7 @@ function mapLog(row: any): LogEntry {
 
 export async function fetchMembers(): Promise<Member[]> {
   const [{ data: profileRows, error: profileError }, { data: memberRows, error: memberError }] = await Promise.all([
-    supabase
-      .from('profiles')
-      .select('id, name, role, job_title, avatar, team_id, status, schedule_sort_order, email_notifications'),
+    supabase.from('profiles').select('id, name, role, job_title, avatar, team_id, status, schedule_sort_order'),
     supabase.from('team_members').select('profile_id, team_id, is_primary'),
   ]);
   if (profileError) throw profileError;
@@ -973,8 +982,33 @@ export async function setProfileTeams(memberId: string, nextTeamIds: string[]): 
   if (profileErr) throw profileErr;
 }
 
-export async function updateProfileEmailNotifications(memberId: string, enabled: boolean): Promise<void> {
-  const { error } = await supabase.from('profiles').update({ email_notifications: enabled }).eq('id', memberId);
+export async function fetchAllNotificationPreferences(): Promise<NotificationPreference[]> {
+  const { data, error } = await supabase.from('notification_preferences').select('user_id, category, channel, enabled');
+  if (error) throw error;
+  return (data || []).map(mapNotificationPreference);
+}
+
+export async function upsertNotificationPreference(pref: NotificationPreference): Promise<void> {
+  const { error } = await supabase.from('notification_preferences').upsert({
+    user_id: pref.userId,
+    category: pref.category,
+    channel: pref.channel,
+    enabled: pref.enabled,
+  });
+  if (error) throw error;
+}
+
+export async function deleteNotificationPreference(
+  userId: string,
+  category: NotificationCategory,
+  channel: NotificationChannel,
+): Promise<void> {
+  const { error } = await supabase
+    .from('notification_preferences')
+    .delete()
+    .eq('user_id', userId)
+    .eq('category', category)
+    .eq('channel', channel);
   if (error) throw error;
 }
 

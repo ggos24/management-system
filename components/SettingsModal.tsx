@@ -28,7 +28,6 @@ import {
   fetchTelegramLink,
   upsertTelegramLinkCode,
   deleteTelegramLink,
-  updateProfileEmailNotifications,
   TelegramLink,
 } from '../lib/database';
 import { Label, Badge, Input } from './ui';
@@ -36,7 +35,7 @@ import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { isEditorOrAbove, isAdmin } from '../constants';
-import type { LogEntry, Member } from '../types';
+import type { LogEntry, Member, NotificationCategory, NotificationChannel } from '../types';
 
 type BadgeColor = 'zinc' | 'emerald' | 'red' | 'blue' | 'amber' | 'purple';
 
@@ -192,6 +191,8 @@ export const SettingsModal: React.FC = () => {
     addTeamPlacement,
     deleteTeamPlacement,
     renameTeamPlacement,
+    notificationPreferences,
+    setNotificationPreference,
   } = useDataStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -458,49 +459,36 @@ export const SettingsModal: React.FC = () => {
       }
       case 'Notifications': {
         const isLinked = telegramLink?.chatId != null;
-        const emailEnabled = currentUser.emailNotifications !== false;
+        const showAdminCategories = isAdmin(currentUser.role);
+        const categoryRows: { category: NotificationCategory; label: string; description: string }[] = [
+          { category: 'tasks', label: 'Tasks', description: 'Assigned, status, updates, deletions' },
+          { category: 'deadlines', label: 'Deadlines', description: 'Reminders 3 days and 1 day before due' },
+          { category: 'mentions', label: 'Mentions', description: '@mentions in task comments' },
+          {
+            category: 'schedule',
+            label: 'Schedule',
+            description: showAdminCategories
+              ? 'Absence requests, decisions, and schedule edits'
+              : 'Decisions on your absence requests',
+          },
+          ...(showAdminCategories
+            ? ([{ category: 'members', label: 'Members', description: 'New member invitations' }] as const)
+            : []),
+        ];
+        const channels: { channel: NotificationChannel; label: string }[] = [
+          { channel: 'in_app', label: 'In-app' },
+          { channel: 'telegram', label: 'Telegram' },
+          { channel: 'email', label: 'Email' },
+        ];
+        const isEnabled = (category: NotificationCategory, channel: NotificationChannel): boolean => {
+          const row = notificationPreferences.find(
+            (p) => p.userId === currentUser.id && p.category === category && p.channel === channel,
+          );
+          return row ? row.enabled : true;
+        };
+
         return (
           <div className="space-y-4">
-            <div className="p-4 border border-zinc-200 dark:border-zinc-700 rounded-lg space-y-3">
-              <div className="flex justify-between items-center">
-                <div className="flex items-center gap-2">
-                  <Mail size={16} className="text-blue-500" />
-                  <span className="text-sm font-medium">Email Notifications</span>
-                </div>
-                <span
-                  className={`flex items-center gap-1 text-xs font-semibold px-2 py-1 rounded-full ${emailEnabled ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400' : 'text-zinc-500 bg-zinc-100 dark:bg-zinc-800 dark:text-zinc-400'}`}
-                >
-                  {emailEnabled ? (
-                    <>
-                      <CheckCircle2 size={12} /> Enabled
-                    </>
-                  ) : (
-                    'Disabled'
-                  )}
-                </span>
-              </div>
-              <div className="flex items-center justify-between pt-1">
-                <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  {emailEnabled
-                    ? 'You receive email notifications for task assignments and status changes.'
-                    : 'Email notifications are turned off.'}
-                </p>
-                <button
-                  onClick={() => {
-                    const newVal = !emailEnabled;
-                    updateProfileEmailNotifications(currentUser.id, newVal).catch(() =>
-                      toast.error('Failed to update email preference'),
-                    );
-                    setCurrentUser({ ...currentUser, emailNotifications: newVal });
-                    toast.success(newVal ? 'Email notifications enabled' : 'Email notifications disabled');
-                  }}
-                  className={`text-xs px-3 py-1.5 rounded transition-colors ${emailEnabled ? 'text-red-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20' : 'text-emerald-600 hover:text-emerald-700 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'}`}
-                >
-                  {emailEnabled ? 'Turn off' : 'Turn on'}
-                </button>
-              </div>
-            </div>
-
             <div className="p-4 border border-zinc-200 dark:border-zinc-700 rounded-lg space-y-3">
               <div className="flex justify-between items-center">
                 <div className="flex items-center gap-2">
@@ -560,104 +548,56 @@ export const SettingsModal: React.FC = () => {
             <div className="space-y-2">
               <Label variant="section">Your Notifications</Label>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                These are the notifications you receive in-app, via email (if enabled), and via Telegram (if linked).
+                Choose which channels deliver each category. Schedule edits (admin shift/absence changes) are always
+                in-app only.
               </p>
               <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
                 <table className="w-full text-xs">
                   <thead>
                     <tr className="bg-zinc-50 dark:bg-zinc-800/50 text-left">
-                      <th className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">Notification</th>
-                      <th className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">When you receive it</th>
+                      <th className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">Category</th>
+                      {channels.map((c) => (
+                        <th
+                          key={c.channel}
+                          className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400 text-center w-24"
+                        >
+                          {c.label}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                    <tr>
-                      <td className="px-3 py-2 font-medium">Task assigned</td>
-                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">You are assigned to a task</td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 font-medium">Task unassigned</td>
-                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">You are removed from a task</td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 font-medium">Status changed</td>
-                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
-                        A task you're assigned to changes status
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 font-medium">Task updated</td>
-                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
-                        Title, priority, due date, or fields change on your task
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 font-medium">Task deleted</td>
-                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
-                        A task you're assigned to is moved to bin
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 font-medium">Comment mention</td>
-                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
-                        Someone @mentions you in a task comment
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 font-medium">Absence decision</td>
-                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
-                        Your absence request is approved or declined
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="px-3 py-2 font-medium">Schedule updated</td>
-                      <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
-                        An admin adds or changes an absence or shift on your schedule
-                      </td>
-                    </tr>
+                    {categoryRows.map(({ category, label, description }) => (
+                      <tr key={category}>
+                        <td className="px-3 py-2">
+                          <div className="font-medium">{label}</div>
+                          <div className="text-zinc-500 dark:text-zinc-400">{description}</div>
+                        </td>
+                        {channels.map((c) => (
+                          <td key={c.channel} className="px-3 py-2 text-center">
+                            <input
+                              type="checkbox"
+                              aria-label={`${label} via ${c.label}`}
+                              checked={isEnabled(category, c.channel)}
+                              onChange={(e) =>
+                                setNotificationPreference(currentUser.id, category, c.channel, e.target.checked)
+                              }
+                              className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                            />
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
-            </div>
-
-            {isAdmin(currentUser.role) && (
-              <div className="space-y-2">
-                <Label variant="section">Admin Notifications</Label>
+              {!isLinked && (
                 <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                  Additional notifications you receive as an admin.
+                  <Mail size={12} className="inline -mt-0.5 mr-1 text-zinc-400" />
+                  Link Telegram above to actually receive Telegram notifications.
                 </p>
-                <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="bg-zinc-50 dark:bg-zinc-800/50 text-left">
-                        <th className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">Notification</th>
-                        <th className="px-3 py-2 font-medium text-zinc-500 dark:text-zinc-400">When you receive it</th>
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
-                      <tr>
-                        <td className="px-3 py-2 font-medium">Absence submitted</td>
-                        <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
-                          Any team member submits an absence request
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="px-3 py-2 font-medium">Absence cancelled</td>
-                        <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
-                          Any team member cancels their absence request
-                        </td>
-                      </tr>
-                      <tr>
-                        <td className="px-3 py-2 font-medium">Member invited</td>
-                        <td className="px-3 py-2 text-zinc-500 dark:text-zinc-400">
-                          Another admin invites a new member
-                        </td>
-                      </tr>
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
         );
       }
