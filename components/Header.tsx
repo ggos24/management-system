@@ -13,6 +13,7 @@ import {
   MessageCircle,
   UserMinus,
   Trash2,
+  AlarmClock,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { IconButton, Divider } from './ui';
@@ -32,6 +33,8 @@ function getNotificationIcon(type: NotificationType) {
       return <UserMinus size={14} className="shrink-0" />;
     case 'task_deleted':
       return <Trash2 size={14} className="shrink-0" />;
+    case 'task_deadline_reminder':
+      return <AlarmClock size={14} className="shrink-0" />;
     case 'comment_mention':
       return <MessageCircle size={14} className="shrink-0" />;
     case 'absence_submitted':
@@ -114,6 +117,7 @@ export const Header: React.FC = () => {
       n.type === 'task_assigned' ||
       n.type === 'task_status_changed' ||
       n.type === 'task_updated' ||
+      n.type === 'task_deadline_reminder' ||
       n.type === 'comment_mention'
     ) {
       const taskId = n.entityData?.taskId;

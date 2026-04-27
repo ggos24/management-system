@@ -192,6 +192,7 @@ export type NotificationType =
   | 'task_updated'
   | 'task_unassigned'
   | 'task_deleted'
+  | 'task_deadline_reminder'
   | 'absence_submitted'
   | 'absence_decided'
   | 'member_invited'

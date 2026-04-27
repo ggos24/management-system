@@ -197,6 +197,7 @@ const EMAIL_SUBJECTS: Record<NotificationType, string> = {
   task_updated: 'Task updated',
   task_unassigned: 'Task unassigned',
   task_deleted: 'Task deleted',
+  task_deadline_reminder: 'Task deadline approaching',
   absence_submitted: 'New absence request',
   absence_decided: 'Absence request decided',
   absence_cancelled: 'Absence cancelled',

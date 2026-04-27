@@ -62,21 +62,25 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Verify JWT
+    // Allow trusted server-to-server callers (e.g. Vercel cron) to authenticate
+    // with the service role key directly. Otherwise verify a user JWT.
     const jwt = authHeader.replace('Bearer ', '');
-    const {
-      data: { user },
-      error: authError,
-    } = await adminClient.auth.getUser(jwt);
-    if (authError || !user) {
-      console.error('send-email: JWT verification failed', authError?.message);
-      return new Response(JSON.stringify({ error: 'Invalid authentication' }), {
-        status: 401,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (jwt !== supabaseServiceKey) {
+      const {
+        data: { user },
+        error: authError,
+      } = await adminClient.auth.getUser(jwt);
+      if (authError || !user) {
+        console.error('send-email: JWT verification failed', authError?.message);
+        return new Response(JSON.stringify({ error: 'Invalid authentication' }), {
+          status: 401,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      console.log('send-email: authenticated as', user.email);
+    } else {
+      console.log('send-email: authenticated via service role');
     }
-
-    console.log('send-email: authenticated as', user.email);
 
     const { recipientIds, subject, message, link, taskDetails } = await req.json();
     if (!recipientIds?.length || !message || !subject) {
