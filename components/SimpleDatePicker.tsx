@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatDateEU, mondayIndex, WEEKDAYS_MON_INITIALS } from '../lib/utils';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
+import { useExitAnimation } from '../hooks/useExitAnimation';
 import { IconButton } from './ui/Button';
 
 interface SimpleDatePickerProps {
@@ -30,8 +31,9 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
   });
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const { shouldRender, state } = useExitAnimation(isOpen, 120);
   const dropdownPos = useViewportPortalPosition({
-    isOpen,
+    isOpen: shouldRender,
     triggerRef,
     fixedWidth: 288,
     gap: 8,
@@ -102,11 +104,12 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
         </button>
       )}
 
-      {isOpen &&
+      {shouldRender &&
         dropdownPos &&
         createPortal(
           <div
             ref={dropdownRef}
+            data-state={state}
             style={{
               position: 'fixed',
               top: dropdownPos.top,
@@ -115,7 +118,7 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
               maxHeight: dropdownPos.maxHeight,
               transform: dropdownPos.flipUp ? 'translateY(-100%)' : undefined,
             }}
-            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] p-3 overflow-y-auto animate-in fade-in zoom-in-95 duration-100"
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] p-3 overflow-y-auto"
           >
             <div className="flex justify-between items-center mb-2">
               <IconButton size="sm" onClick={() => handleMonthChange(-1)} aria-label="Previous month">

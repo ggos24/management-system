@@ -1,6 +1,7 @@
 import React, { useEffect, useCallback, useRef } from 'react';
 import { X } from 'lucide-react';
 import { IconButton } from './ui/Button';
+import { useExitAnimation } from '../hooks/useExitAnimation';
 
 const sizeClasses = {
   sm: 'max-w-md',
@@ -62,17 +63,21 @@ export const Modal: React.FC<ModalProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isOpen, handleKeyDown]);
 
-  if (!isOpen) return null;
+  const { shouldRender, state } = useExitAnimation(isOpen, 180);
+  if (!shouldRender) return null;
   return (
     <div
-      className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-start md:items-center justify-center p-2 md:p-4 safe-t"
+      className={`fixed inset-0 bg-black/40 backdrop-blur-sm z-[9999] flex items-start md:items-center justify-center p-2 md:p-4 safe-t ${
+        state === 'open' ? 'animate-fade-in' : 'animate-fade-out [animation-fill-mode:forwards]'
+      }`}
       onClick={onClose}
     >
       <div
         ref={modalRef}
         role="dialog"
         aria-modal="true"
-        className={`bg-white dark:bg-zinc-900 w-full ${sizeClasses[size]} rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 animate-in fade-in zoom-in duration-200 flex flex-col ${allowOverflow ? 'overflow-visible max-h-[calc(100dvh-1rem)] md:max-h-[90dvh]' : 'max-h-[calc(100dvh-1rem)] md:max-h-[90dvh]'}`}
+        data-state={state}
+        className={`bg-white dark:bg-zinc-900 w-full ${sizeClasses[size]} rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 flex flex-col ${allowOverflow ? 'overflow-visible max-h-[calc(100dvh-1rem)] md:max-h-[90dvh]' : 'max-h-[calc(100dvh-1rem)] md:max-h-[90dvh]'}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 flex-shrink-0">

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check, Plus, Search, X } from 'lucide-react';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
+import { useExitAnimation } from '../hooks/useExitAnimation';
 
 export interface SelectOption {
   value: string;
@@ -47,7 +48,8 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
-  const dropdownPos = useViewportPortalPosition({ isOpen, triggerRef, minWidth: dropdownMinWidth });
+  const { shouldRender, state } = useExitAnimation(isOpen, 120);
+  const dropdownPos = useViewportPortalPosition({ isOpen: shouldRender, triggerRef, minWidth: dropdownMinWidth });
 
   useEffect(() => {
     if (!isOpen) return;
@@ -123,11 +125,12 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
           </div>
         )}
       </div>
-      {isOpen &&
+      {shouldRender &&
         dropdownPos &&
         createPortal(
           <div
             ref={dropdownRef}
+            data-state={state}
             style={{
               position: 'fixed',
               top: dropdownPos.top,
@@ -136,7 +139,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
               maxHeight: dropdownPos.maxHeight,
               transform: dropdownPos.flipUp ? 'translateY(-100%)' : undefined,
             }}
-            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-[10000] overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-100"
+            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg z-[10000] overflow-hidden flex flex-col"
           >
             {searchable && (
               <div className="sticky top-0 z-10 p-1.5 bg-white dark:bg-zinc-800 border-b border-zinc-100 dark:border-zinc-700 flex-shrink-0">

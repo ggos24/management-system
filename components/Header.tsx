@@ -22,6 +22,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { teamSlug, formatDateEU } from '../lib/utils';
 import type { Notification, NotificationType } from '../types';
+import { useExitAnimation } from '../hooks/useExitAnimation';
 
 function getNotificationIcon(type: NotificationType) {
   switch (type) {
@@ -72,6 +73,10 @@ export const Header: React.FC = () => {
   const searchQuery = useUiStore((s) => s.searchQuery);
   const setSearchQuery = useUiStore((s) => s.setSearchQuery);
   const isNotificationsOpen = useUiStore((s) => s.isNotificationsOpen);
+  const { shouldRender: notificationsShouldRender, state: notificationsState } = useExitAnimation(
+    isNotificationsOpen,
+    120,
+  );
   const setIsNotificationsOpen = useUiStore((s) => s.setIsNotificationsOpen);
   const notifications = useUiStore((s) => s.notifications);
   const unreadCount = useUiStore((s) => s.unreadCount);
@@ -220,8 +225,11 @@ export const Header: React.FC = () => {
               </span>
             )}
           </IconButton>
-          {isNotificationsOpen && (
-            <div className="fixed inset-x-2 top-[calc(4.5rem+env(safe-area-inset-top))] md:absolute md:inset-x-auto md:right-0 md:top-auto md:mt-2 w-auto md:w-80 md:max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[100] animate-in fade-in zoom-in-95 duration-100">
+          {notificationsShouldRender && (
+            <div
+              data-state={notificationsState}
+              className="fixed inset-x-2 top-[calc(4.5rem+env(safe-area-inset-top))] md:absolute md:inset-x-auto md:right-0 md:top-auto md:mt-2 w-auto md:w-80 md:max-w-[calc(100vw-2rem)] bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[100]"
+            >
               <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
                 <h3 className="text-sm font-semibold">
                   Notifications

@@ -323,7 +323,7 @@ export const ManageTeamsModal: React.FC = () => {
         </div>
 
         {teamToDelete && (
-          <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-200 dark:border-red-900 space-y-2 animate-in fade-in slide-in-from-top-2">
+          <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-200 dark:border-red-900 space-y-2 animate-slide-down">
             <p className="text-sm text-red-700 dark:text-red-300 font-semibold">
               Are you sure you want to delete this workspace?
             </p>

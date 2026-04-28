@@ -104,7 +104,7 @@ const Sidebar: React.FC<SidebarProps> = ({
           </button>
           {/* Only show branding when NOT collapsed */}
           {!isCollapsed && (
-            <div className="flex items-center gap-3 overflow-hidden animate-in fade-in duration-200">
+            <div className="flex items-center gap-3 overflow-hidden animate-fade-in">
               <img
                 src="/logo.svg"
                 alt="Logo"

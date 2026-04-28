@@ -33,7 +33,7 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
       <button
         ref={ref}
         className={cn(
-          'inline-flex items-center justify-center cursor-pointer',
+          'inline-flex items-center justify-center cursor-pointer transition-transform duration-fast active:scale-[0.98] motion-reduce:active:scale-100 disabled:active:scale-100',
           buttonVariants[variant],
           sizeClass,
           className,
@@ -61,7 +61,7 @@ export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
       <button
         ref={ref}
         className={cn(
-          'hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 dark:text-zinc-400 transition-colors focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1',
+          'hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded-full text-zinc-500 dark:text-zinc-400 transition-[color,background-color,transform] duration-fast active:scale-[0.92] motion-reduce:active:scale-100 disabled:active:scale-100 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1',
           iconButtonSizes[size],
           className,
         )}

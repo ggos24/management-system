@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Check, Plus, ChevronDown, Trash2 } from 'lucide-react';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
+import { useExitAnimation } from '../hooks/useExitAnimation';
 
 const TAG_COLORS = [
   { name: 'Gray', bg: 'bg-zinc-100 dark:bg-zinc-700', text: 'text-zinc-700 dark:text-zinc-200', hex: '#71717a' },
@@ -85,7 +86,14 @@ export const TagSelect: React.FC<TagSelectProps> = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const colorPickerRef = useRef<HTMLDivElement>(null);
-  const dropdownPos = useViewportPortalPosition({ isOpen, triggerRef, minWidth: 160, estimatedHeight: 288 });
+  const { shouldRender: dropdownShouldRender, state: dropdownState } = useExitAnimation(isOpen, 120);
+  const { shouldRender: pickerShouldRender, state: pickerState } = useExitAnimation(Boolean(editingTagColor), 120);
+  const dropdownPos = useViewportPortalPosition({
+    isOpen: dropdownShouldRender,
+    triggerRef,
+    minWidth: 160,
+    estimatedHeight: 288,
+  });
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
@@ -110,7 +118,6 @@ export const TagSelect: React.FC<TagSelectProps> = ({
     (tag: string, buttonEl: HTMLButtonElement) => {
       if (editingTagColor === tag) {
         setEditingTagColor(null);
-        setColorPickerPos(null);
         return;
       }
       const rect = buttonEl.getBoundingClientRect();
@@ -194,11 +201,12 @@ export const TagSelect: React.FC<TagSelectProps> = ({
         )}
       </div>
 
-      {isOpen &&
+      {dropdownShouldRender &&
         dropdownPos &&
         createPortal(
           <div
             ref={dropdownRef}
+            data-state={dropdownState}
             style={{
               position: 'fixed',
               top: dropdownPos.top,
@@ -207,7 +215,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
               maxHeight: dropdownPos.maxHeight,
               transform: dropdownPos.flipUp ? 'translateY(-100%)' : undefined,
             }}
-            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg z-[10000] overflow-y-auto p-0.5 animate-in fade-in zoom-in-95 duration-100"
+            className="bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-md shadow-lg z-[10000] overflow-y-auto p-0.5"
           >
             {tags.length === 0 && !isAdding && (
               <p className="text-xs text-zinc-400 px-2 py-2 text-center">No tags yet</p>
@@ -314,13 +322,14 @@ export const TagSelect: React.FC<TagSelectProps> = ({
           document.body,
         )}
 
-      {editingTagColor &&
+      {pickerShouldRender &&
         colorPickerPos &&
         onUpdateTagColor &&
         createPortal(
           <div
             ref={colorPickerRef}
-            className="fixed bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg p-2 animate-in fade-in zoom-in-95 duration-100"
+            data-state={pickerState}
+            className="fixed bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-lg p-2"
             style={{
               top: colorPickerPos.top,
               left: colorPickerPos.left,
@@ -335,7 +344,6 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                   onClick={() => {
                     onUpdateTagColor(editingTagColor, c.hex);
                     setEditingTagColor(null);
-                    setColorPickerPos(null);
                   }}
                   className={`w-8 h-8 md:w-5 md:h-5 rounded-full border-2 transition-transform hover:scale-110 ${tagColors[editingTagColor] === c.hex ? 'border-zinc-900 dark:border-white scale-110' : 'border-transparent'}`}
                   style={{ backgroundColor: c.hex }}

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallba
 import { createPortal } from 'react-dom';
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { mondayIndex, formatDateEU } from '../lib/utils';
+import { useExitAnimation } from '../hooks/useExitAnimation';
 
 type PresetKey =
   | 'all'
@@ -235,6 +236,7 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null);
+  const { shouldRender, state } = useExitAnimation(isOpen, 120);
 
   const presets = useMemo(() => buildPresets(), []);
 
@@ -306,17 +308,18 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
         <ChevronDown size={12} className="text-zinc-400 flex-shrink-0" />
       </button>
 
-      {isOpen &&
+      {shouldRender &&
         dropdownPos &&
         createPortal(
           <div
             ref={dropdownRef}
+            data-state={state}
             style={{
               position: 'fixed',
               top: dropdownPos.top,
               right: dropdownPos.right,
             }}
-            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] animate-in fade-in zoom-in-95 duration-100 overflow-hidden w-[240px]"
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] overflow-hidden w-[240px]"
           >
             {/* Tabs */}
             <div className="flex border-b border-zinc-100 dark:border-zinc-800">

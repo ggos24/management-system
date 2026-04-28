@@ -18,6 +18,7 @@ import { OfflineBanner } from '../components/OfflineBanner';
 import { PWAUpdater } from '../components/PWAUpdater';
 import { useTaskDeepLink } from '../hooks/useTaskDeepLink';
 import { useHashRedirect } from '../hooks/useHashRedirect';
+import { useViewTransitionNavigate } from '../hooks/useViewTransitionNavigate';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { useUiStore } from '../stores/uiStore';
@@ -30,6 +31,7 @@ const AppLayout: React.FC = () => {
 
   const { teamId: teamParam } = useParams<{ teamId: string }>();
   const navigate = useNavigate();
+  const viewTransitionNavigate = useViewTransitionNavigate();
   const location = useLocation();
 
   const currentUser = useAuthStore((s) => s.currentUser)!;
@@ -147,15 +149,15 @@ const AppLayout: React.FC = () => {
           taskCounts={taskCounts}
           onChangeView={(view) => {
             setMobileSidebarOpen(false);
-            if (view === 'my-workspace') navigate('/workspace');
-            else if (view === 'dashboard') navigate('/dashboard');
-            else if (view === 'schedule') navigate('/schedule');
-            else if (view === 'bin') navigate('/bin');
-            else if (view === 'docs-help') navigate('/docs/help');
-            else if (view === 'docs-kb') navigate('/docs/kb');
+            if (view === 'my-workspace') viewTransitionNavigate('/workspace');
+            else if (view === 'dashboard') viewTransitionNavigate('/dashboard');
+            else if (view === 'schedule') viewTransitionNavigate('/schedule');
+            else if (view === 'bin') viewTransitionNavigate('/bin');
+            else if (view === 'docs-help') viewTransitionNavigate('/docs/help');
+            else if (view === 'docs-kb') viewTransitionNavigate('/docs/kb');
             else {
               const team = teams.find((t) => t.id === view);
-              navigate(`/teams/${team ? teamSlug(team) : view}`);
+              viewTransitionNavigate(`/teams/${team ? teamSlug(team) : view}`);
             }
           }}
           onLogout={() => setIsLogoutModalOpen(true)}
@@ -182,7 +184,9 @@ const AppLayout: React.FC = () => {
                 </div>
               }
             >
-              <Outlet context={{ openTaskModal, currentView }} />
+              <div key={location.pathname} className="h-full animate-fade-in">
+                <Outlet context={{ openTaskModal, currentView }} />
+              </div>
             </React.Suspense>
           </main>
         </div>

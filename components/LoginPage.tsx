@@ -92,7 +92,7 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
 
   return (
     <div className="min-h-screen w-full bg-zinc-50 dark:bg-black flex items-center justify-center p-4 transition-colors duration-300">
-      <Card className="w-full max-w-md shadow-xl p-8 animate-in fade-in zoom-in-95 duration-500">
+      <Card className="w-full max-w-md shadow-xl p-8 animate-pop-in">
         <div className="text-center mb-8">
           <img src="/logo.svg" alt="Logo" className="w-12 h-12 rounded-lg mx-auto mb-4" />
           <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">
