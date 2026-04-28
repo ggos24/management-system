@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
 import {
   Trash2,
@@ -213,6 +213,14 @@ export const TaskModal: React.FC = () => {
   const [mentionCursorPos, setMentionCursorPos] = useState(0);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
   const commentsEndRef = useRef<HTMLDivElement>(null);
+  const titleRef = useRef<HTMLTextAreaElement>(null);
+
+  useLayoutEffect(() => {
+    const el = titleRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${el.scrollHeight}px`;
+  }, [taskModalData.title]);
 
   // Load comments when modal opens with an existing task
   const loadComments = useCallback(async (taskId: string) => {
@@ -686,12 +694,16 @@ export const TaskModal: React.FC = () => {
         )}
 
         <div className={taskModalData.deletedAt ? 'pointer-events-none opacity-60 space-y-6' : 'space-y-6'}>
-          <input
-            type="text"
+          <textarea
+            ref={titleRef}
+            rows={1}
             placeholder="Task Title"
             value={taskModalData.title || ''}
-            onChange={(e) => setTaskModalData({ ...taskModalData, title: e.target.value })}
-            className="w-full text-2xl font-bold bg-transparent border-none outline-none placeholder-zinc-300 dark:placeholder-zinc-700"
+            onChange={(e) => setTaskModalData({ ...taskModalData, title: e.target.value.replace(/\r?\n/g, ' ') })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') e.preventDefault();
+            }}
+            className="w-full text-2xl font-bold bg-transparent border-none outline-none resize-none overflow-hidden break-words placeholder-zinc-300 dark:placeholder-zinc-700"
             autoFocus={!taskModalData.deletedAt && !taskModalData.id}
           />
 
