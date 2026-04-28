@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, Check, Plus, Search, X } from 'lucide-react';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
@@ -70,11 +70,10 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
     };
   }, [isOpen]);
 
-  useEffect(() => {
-    if (isOpen && searchable) {
-      requestAnimationFrame(() => searchInputRef.current?.focus());
-    }
-  }, [isOpen, searchable]);
+  const setSearchInputRef = useCallback((el: HTMLInputElement | null) => {
+    searchInputRef.current = el;
+    if (el) el.focus();
+  }, []);
 
   const normalizeOption = (opt: string | SelectOption): SelectOption => {
     if (typeof opt === 'string') return { value: opt, label: opt };
@@ -146,7 +145,7 @@ export const CustomSelect: React.FC<CustomSelectProps> = ({
                 <div className="relative">
                   <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" />
                   <input
-                    ref={searchInputRef}
+                    ref={setSearchInputRef}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search..."

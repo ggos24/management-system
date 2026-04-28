@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronDown, X, Check, Plus, Search } from 'lucide-react';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
@@ -74,11 +74,10 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
 
-  useEffect(() => {
-    if (isOpen && searchable) {
-      requestAnimationFrame(() => searchInputRef.current?.focus());
-    }
-  }, [isOpen, searchable]);
+  const setSearchInputRef = useCallback((el: HTMLInputElement | null) => {
+    searchInputRef.current = el;
+    if (el) el.focus();
+  }, []);
 
   // Flat options list for chip label lookup (from groups or options)
   const allOptions = groups ? groups.flatMap((g) => g.options) : options;
@@ -216,7 +215,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                 <div className="relative">
                   <Search size={14} className="absolute left-2 top-1/2 -translate-y-1/2 text-zinc-400" />
                   <input
-                    ref={searchInputRef}
+                    ref={setSearchInputRef}
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                     placeholder="Search..."
