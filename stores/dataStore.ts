@@ -385,8 +385,13 @@ interface DataState {
   toggleTeamAdminOnly: (id: string) => void;
   toggleTeamRapidResponse: (id: string) => void;
   reorderSidebarTeams: (draggedId: string, targetId: string) => void;
-  reorderScheduleTeams: (draggedId: string, targetId: string) => void;
-  reorderTeamMembers: (teamId: string, draggedMemberId: string, targetMemberId: string) => void;
+  reorderScheduleTeams: (draggedId: string, targetId: string, position: 'before' | 'after') => void;
+  reorderTeamMembers: (
+    teamId: string,
+    draggedMemberId: string,
+    targetMemberId: string,
+    position: 'before' | 'after',
+  ) => void;
 
   // Status/Type actions
   addStatus: (teamId: string, status: string) => void;
@@ -1247,7 +1252,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
   },
 
-  reorderScheduleTeams: (draggedId, targetId) => {
+  reorderScheduleTeams: (draggedId, targetId, position) => {
     const { scheduleTeamOrders, teams } = get();
     // Build a schedule-sorted copy to find indices
     const scheduleTeams = [...teams];
@@ -1259,9 +1264,12 @@ export const useDataStore = create<DataState>((set, get) => ({
     const targetIndex = scheduleTeams.findIndex((t) => t.id === targetId);
     if (draggedIndex === -1 || targetIndex === -1) return;
 
+    let insertAt = position === 'after' ? targetIndex + 1 : targetIndex;
+    if (draggedIndex < insertAt) insertAt--;
+    if (insertAt === draggedIndex) return;
+
     const reordered = [...scheduleTeams];
     const [item] = reordered.splice(draggedIndex, 1);
-    const insertAt = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
     reordered.splice(insertAt, 0, item);
 
     const newOrders: Record<string, number> = {};
@@ -1278,7 +1286,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
   },
 
-  reorderTeamMembers: (teamId: string, draggedMemberId: string, targetMemberId: string) => {
+  reorderTeamMembers: (teamId: string, draggedMemberId: string, targetMemberId: string, position) => {
     const { members } = get();
     const teamMembers = members.filter((m) => m.teamIds.includes(teamId));
     const otherMembers = members.filter((m) => !m.teamIds.includes(teamId));
@@ -1287,9 +1295,12 @@ export const useDataStore = create<DataState>((set, get) => ({
     const targetIndex = teamMembers.findIndex((m) => m.id === targetMemberId);
     if (draggedIndex === -1 || targetIndex === -1) return;
 
+    let insertAt = position === 'after' ? targetIndex + 1 : targetIndex;
+    if (draggedIndex < insertAt) insertAt--;
+    if (insertAt === draggedIndex) return;
+
     const reordered = [...teamMembers];
     const [item] = reordered.splice(draggedIndex, 1);
-    const insertAt = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
     reordered.splice(insertAt, 0, item);
 
     const orderRows = reordered.map((m, i) => ({ memberId: m.id, sortOrder: i }));

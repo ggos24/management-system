@@ -39,8 +39,8 @@ interface ScheduleProps {
   onCancelAbsence: (id: string) => void;
   onUpdateShift: (shift: Shift) => void;
   onDeleteShift: (id: string) => void;
-  onReorderTeams: (draggedId: string, targetId: string) => void;
-  onReorderMembers: (teamId: string, draggedId: string, targetId: string) => void;
+  onReorderTeams: (draggedId: string, targetId: string, position: 'before' | 'after') => void;
+  onReorderMembers: (teamId: string, draggedId: string, targetId: string, position: 'before' | 'after') => void;
 }
 
 const Schedule: React.FC<ScheduleProps> = ({
@@ -553,10 +553,15 @@ const Schedule: React.FC<ScheduleProps> = ({
               {membersByTeam.map((group) => {
                 const isCurrentUserTeam = group.members.some((m) => m.id === currentUserId);
                 const isTeamDragOver = dragState.dragType === 'team' && dragState.dragOverId === group.team.id;
+                const teamDropClass = isTeamDragOver
+                  ? dragState.dropPosition === 'after'
+                    ? 'border-b-2 border-b-blue-400 dark:border-b-blue-500'
+                    : 'border-t-2 border-t-blue-400 dark:border-t-blue-500'
+                  : '';
                 return (
                   <div key={group.team.id} onDragEnd={handleDragEnd}>
                     <div
-                      className={`flex border-b border-zinc-200 dark:border-zinc-800 ${isTeamDragOver ? 'border-t-2 border-t-blue-400 dark:border-t-blue-500' : ''}`}
+                      className={`flex border-b border-zinc-200 dark:border-zinc-800 ${teamDropClass}`}
                       draggable={isAdminUser}
                       onDragStart={(e) => handleTeamDragStart(e, group.team.id)}
                       onDragOver={(e) => handleTeamDragOver(e, group.team.id)}
@@ -586,11 +591,16 @@ const Schedule: React.FC<ScheduleProps> = ({
                       group.members.map((member) => {
                         const isCurrentUser = member.id === currentUserId;
                         const isMemberDragOver = dragState.dragType === 'member' && dragState.dragOverId === member.id;
+                        const memberDropClass = isMemberDragOver
+                          ? dragState.dropPosition === 'after'
+                            ? 'border-b-2 border-b-blue-400 dark:border-b-blue-500'
+                            : 'border-t-2 border-t-blue-400 dark:border-t-blue-500'
+                          : '';
                         return (
                           <div
                             // Composite key — a multi-team member appears in multiple rows
                             key={`${group.team.id}-${member.id}`}
-                            className={`flex border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors h-10 ${isCurrentUser ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''} ${isMemberDragOver ? 'border-t-2 border-t-blue-400 dark:border-t-blue-500' : ''}`}
+                            className={`flex border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors h-10 ${isCurrentUser ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''} ${memberDropClass}`}
                             onDragOver={(e) => handleMemberDragOver(e, member.id)}
                             onDrop={(e) => handleMemberDrop(e, member.id)}
                             onDragEnd={handleDragEnd}

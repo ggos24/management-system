@@ -1,17 +1,24 @@
 import { useState, useCallback } from 'react';
 
 type DragType = 'team' | 'member' | null;
+type DropPosition = 'before' | 'after';
 
 interface DragState {
   dragType: DragType;
   draggedId: string | null;
   dragOverId: string | null;
+  dropPosition: DropPosition | null;
 }
 
 interface UseScheduleDragReorderOptions {
   isAdminUser: boolean;
-  onReorderTeams: (draggedId: string, targetId: string) => void;
-  onReorderMembers: (teamId: string, draggedId: string, targetId: string) => void;
+  onReorderTeams: (draggedId: string, targetId: string, position: DropPosition) => void;
+  onReorderMembers: (teamId: string, draggedId: string, targetId: string, position: DropPosition) => void;
+}
+
+function getDropPosition(e: React.DragEvent): DropPosition {
+  const rect = e.currentTarget.getBoundingClientRect();
+  return e.clientY < rect.top + rect.height / 2 ? 'before' : 'after';
 }
 
 export function useScheduleDragReorder({
@@ -23,6 +30,7 @@ export function useScheduleDragReorder({
     dragType: null,
     draggedId: null,
     dragOverId: null,
+    dropPosition: null,
   });
 
   // --- Team drag handlers ---
@@ -32,7 +40,7 @@ export function useScheduleDragReorder({
       if (!isAdminUser) return;
       e.dataTransfer.setData('text/plain', `schedule-team:${teamId}`);
       e.dataTransfer.effectAllowed = 'move';
-      setDragState({ dragType: 'team', draggedId: teamId, dragOverId: null });
+      setDragState({ dragType: 'team', draggedId: teamId, dragOverId: null, dropPosition: null });
     },
     [isAdminUser],
   );
@@ -42,11 +50,12 @@ export function useScheduleDragReorder({
       if (!isAdminUser || dragState.dragType !== 'team') return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      if (dragState.dragOverId !== teamId) {
-        setDragState((prev) => ({ ...prev, dragOverId: teamId }));
+      const position = getDropPosition(e);
+      if (dragState.dragOverId !== teamId || dragState.dropPosition !== position) {
+        setDragState((prev) => ({ ...prev, dragOverId: teamId, dropPosition: position }));
       }
     },
-    [isAdminUser, dragState.dragType, dragState.dragOverId],
+    [isAdminUser, dragState.dragType, dragState.dragOverId, dragState.dropPosition],
   );
 
   const handleTeamDrop = useCallback(
@@ -55,10 +64,11 @@ export function useScheduleDragReorder({
       const data = e.dataTransfer.getData('text/plain');
       if (!data.startsWith('schedule-team:')) return;
       const draggedId = data.replace('schedule-team:', '');
+      const position = getDropPosition(e);
       if (draggedId && draggedId !== targetTeamId) {
-        onReorderTeams(draggedId, targetTeamId);
+        onReorderTeams(draggedId, targetTeamId, position);
       }
-      setDragState({ dragType: null, draggedId: null, dragOverId: null });
+      setDragState({ dragType: null, draggedId: null, dragOverId: null, dropPosition: null });
     },
     [onReorderTeams],
   );
@@ -70,7 +80,7 @@ export function useScheduleDragReorder({
       if (!isAdminUser) return;
       e.dataTransfer.setData('text/plain', `schedule-member:${teamId}:${memberId}`);
       e.dataTransfer.effectAllowed = 'move';
-      setDragState({ dragType: 'member', draggedId: memberId, dragOverId: null });
+      setDragState({ dragType: 'member', draggedId: memberId, dragOverId: null, dropPosition: null });
     },
     [isAdminUser],
   );
@@ -80,11 +90,12 @@ export function useScheduleDragReorder({
       if (!isAdminUser || dragState.dragType !== 'member') return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
-      if (dragState.dragOverId !== memberId) {
-        setDragState((prev) => ({ ...prev, dragOverId: memberId }));
+      const position = getDropPosition(e);
+      if (dragState.dragOverId !== memberId || dragState.dropPosition !== position) {
+        setDragState((prev) => ({ ...prev, dragOverId: memberId, dropPosition: position }));
       }
     },
-    [isAdminUser, dragState.dragType, dragState.dragOverId],
+    [isAdminUser, dragState.dragType, dragState.dragOverId, dragState.dropPosition],
   );
 
   const handleMemberDrop = useCallback(
@@ -95,10 +106,11 @@ export function useScheduleDragReorder({
       const parts = data.replace('schedule-member:', '').split(':');
       const teamId = parts[0];
       const draggedId = parts[1];
+      const position = getDropPosition(e);
       if (draggedId && draggedId !== memberId) {
-        onReorderMembers(teamId, draggedId, memberId);
+        onReorderMembers(teamId, draggedId, memberId, position);
       }
-      setDragState({ dragType: null, draggedId: null, dragOverId: null });
+      setDragState({ dragType: null, draggedId: null, dragOverId: null, dropPosition: null });
     },
     [onReorderMembers],
   );
@@ -106,7 +118,7 @@ export function useScheduleDragReorder({
   // --- Shared ---
 
   const handleDragEnd = useCallback(() => {
-    setDragState({ dragType: null, draggedId: null, dragOverId: null });
+    setDragState({ dragType: null, draggedId: null, dragOverId: null, dropPosition: null });
   }, []);
 
   return {
