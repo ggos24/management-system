@@ -1230,7 +1230,8 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     const newTeams = [...teams];
     const [reorderedItem] = newTeams.splice(draggedIndex, 1);
-    newTeams.splice(targetIndex, 0, reorderedItem);
+    const insertAt = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    newTeams.splice(insertAt, 0, reorderedItem);
 
     const newOrders: Record<string, number> = {};
     const orderRows = newTeams.map((t, i) => {
@@ -1260,7 +1261,8 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     const reordered = [...scheduleTeams];
     const [item] = reordered.splice(draggedIndex, 1);
-    reordered.splice(targetIndex, 0, item);
+    const insertAt = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    reordered.splice(insertAt, 0, item);
 
     const newOrders: Record<string, number> = {};
     const orderRows = reordered.map((t, i) => {
@@ -1287,7 +1289,8 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     const reordered = [...teamMembers];
     const [item] = reordered.splice(draggedIndex, 1);
-    reordered.splice(targetIndex, 0, item);
+    const insertAt = draggedIndex < targetIndex ? targetIndex - 1 : targetIndex;
+    reordered.splice(insertAt, 0, item);
 
     const orderRows = reordered.map((m, i) => ({ memberId: m.id, sortOrder: i }));
     const updatedTeamMembers = reordered.map((m, i) => ({ ...m, scheduleSortOrder: i }));
