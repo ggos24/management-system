@@ -26,7 +26,7 @@ import { toDateOnly } from './utils';
 
 // === Mappers ===
 
-function mapProfile(row: any, teamIds: string[] = []): Member {
+function mapProfile(row: any, teamIds: string[] = [], scheduleSortOrders: Record<string, number> = {}): Member {
   const primaryTeamId = row.team_id || '';
   // Ensure the primary team (profiles.team_id) sorts first in teamIds if both are present
   const ordered = primaryTeamId ? [primaryTeamId, ...teamIds.filter((id) => id !== primaryTeamId)] : teamIds.slice();
@@ -39,7 +39,7 @@ function mapProfile(row: any, teamIds: string[] = []): Member {
     teamId: primaryTeamId,
     teamIds: ordered,
     status: row.status || 'active',
-    scheduleSortOrder: row.schedule_sort_order ?? 0,
+    scheduleSortOrders,
   };
 }
 
@@ -134,22 +134,29 @@ function mapLog(row: any): LogEntry {
 
 export async function fetchMembers(): Promise<Member[]> {
   const [{ data: profileRows, error: profileError }, { data: memberRows, error: memberError }] = await Promise.all([
-    supabase.from('profiles').select('id, name, role, job_title, avatar, team_id, status, schedule_sort_order'),
-    supabase.from('team_members').select('profile_id, team_id, is_primary'),
+    supabase.from('profiles').select('id, name, role, job_title, avatar, team_id, status'),
+    supabase.from('team_members').select('profile_id, team_id, is_primary, sort_order'),
   ]);
   if (profileError) throw profileError;
   if (memberError) throw memberError;
 
-  // Build profile_id -> teamIds[], primary first
-  const byProfile = new Map<string, string[]>();
+  // Build profile_id -> teamIds[] (primary first) and profile_id -> { team_id: sort_order }
+  const teamsByProfile = new Map<string, string[]>();
+  const ordersByProfile = new Map<string, Record<string, number>>();
   for (const row of memberRows || []) {
-    const list = byProfile.get(row.profile_id) || [];
+    const list = teamsByProfile.get(row.profile_id) || [];
     if (row.is_primary) list.unshift(row.team_id);
     else list.push(row.team_id);
-    byProfile.set(row.profile_id, list);
+    teamsByProfile.set(row.profile_id, list);
+
+    const orders = ordersByProfile.get(row.profile_id) || {};
+    orders[row.team_id] = row.sort_order ?? 0;
+    ordersByProfile.set(row.profile_id, orders);
   }
 
-  return (profileRows || []).map((row) => mapProfile(row, byProfile.get(row.id) || []));
+  return (profileRows || []).map((row) =>
+    mapProfile(row, teamsByProfile.get(row.id) || [], ordersByProfile.get(row.id) || {}),
+  );
 }
 
 export async function fetchTeams(): Promise<Team[]> {
@@ -344,17 +351,19 @@ export async function addPlacement(name: string): Promise<void> {
 export async function findProfileByAuthId(authUserId: string): Promise<Member | null> {
   const { data, error } = await supabase.from('profiles').select('*').eq('auth_user_id', authUserId).single();
   if (error || !data) return null;
-  // Hydrate teamIds from the junction so session-initiated loads carry full membership
+  // Hydrate teamIds + per-team schedule sort_order from the junction
   const { data: memberships } = await supabase
     .from('team_members')
-    .select('team_id, is_primary')
+    .select('team_id, is_primary, sort_order')
     .eq('profile_id', data.id);
   const teamIds: string[] = [];
+  const orders: Record<string, number> = {};
   for (const row of memberships || []) {
     if (row.is_primary) teamIds.unshift(row.team_id);
     else teamIds.push(row.team_id);
+    orders[row.team_id] = row.sort_order ?? 0;
   }
-  return mapProfile(data, teamIds);
+  return mapProfile(data, teamIds, orders);
 }
 
 // === Mutation Functions ===
@@ -747,10 +756,16 @@ export async function deleteTeamPersonFieldConfig(teamId: string, fieldKey: Pers
   if (error) throw error;
 }
 
-export async function updateMemberScheduleOrders(orders: { memberId: string; sortOrder: number }[]) {
+export async function updateMemberScheduleOrders(teamId: string, orders: { memberId: string; sortOrder: number }[]) {
   if (orders.length === 0) return;
   await Promise.all(
-    orders.map((o) => supabase.from('profiles').update({ schedule_sort_order: o.sortOrder }).eq('id', o.memberId)),
+    orders.map((o) =>
+      supabase
+        .from('team_members')
+        .update({ sort_order: o.sortOrder })
+        .eq('team_id', teamId)
+        .eq('profile_id', o.memberId),
+    ),
   );
 }
 

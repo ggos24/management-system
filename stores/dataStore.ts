@@ -1305,8 +1305,9 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   reorderTeamMembers: (teamId: string, draggedMemberId: string, targetMemberId: string, position) => {
     const { members } = get();
-    const teamMembers = members.filter((m) => m.teamIds.includes(teamId));
-    const otherMembers = members.filter((m) => !m.teamIds.includes(teamId));
+    const teamMembers = members
+      .filter((m) => m.teamIds.includes(teamId))
+      .sort((a, b) => (a.scheduleSortOrders?.[teamId] ?? 0) - (b.scheduleSortOrders?.[teamId] ?? 0));
 
     const draggedIndex = teamMembers.findIndex((m) => m.id === draggedMemberId);
     const targetIndex = teamMembers.findIndex((m) => m.id === targetMemberId);
@@ -1320,12 +1321,21 @@ export const useDataStore = create<DataState>((set, get) => ({
     const [item] = reordered.splice(draggedIndex, 1);
     reordered.splice(insertAt, 0, item);
 
+    // Build memberId -> new position within this team
+    const newPositions = new Map<string, number>();
+    reordered.forEach((m, i) => newPositions.set(m.id, i));
+
+    // Apply only this team's sort_order; preserve every other team's value
+    const updatedMembers = members.map((m) => {
+      const pos = newPositions.get(m.id);
+      if (pos === undefined) return m;
+      return { ...m, scheduleSortOrders: { ...(m.scheduleSortOrders || {}), [teamId]: pos } };
+    });
+
+    set({ members: updatedMembers });
+
     const orderRows = reordered.map((m, i) => ({ memberId: m.id, sortOrder: i }));
-    const updatedTeamMembers = reordered.map((m, i) => ({ ...m, scheduleSortOrder: i }));
-
-    set({ members: [...otherMembers, ...updatedTeamMembers] });
-
-    db.updateMemberScheduleOrders(orderRows).catch(() => toast.error('Failed to reorder members'));
+    db.updateMemberScheduleOrders(teamId, orderRows).catch(() => toast.error('Failed to reorder members'));
   },
 
   // Status/Type actions

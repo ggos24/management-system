@@ -12,7 +12,7 @@ export interface User {
   avatar: string;
   teamId: string; // Primary / home team (= teamIds[0]); kept as a denormalized cache
   teamIds: string[]; // All team memberships, primary first. Empty = no teams.
-  scheduleSortOrder?: number;
+  scheduleSortOrders?: Record<string, number>; // teamId -> sort order within that team (Schedule view)
 }
 
 export interface Team {

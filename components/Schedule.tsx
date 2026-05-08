@@ -340,7 +340,7 @@ const Schedule: React.FC<ScheduleProps> = ({
         // This is the line that makes Rapid Response members show up as a second row.
         let teamMembers = members
           .filter((m) => m.teamIds.includes(team.id))
-          .sort((a, b) => (a.scheduleSortOrder ?? 0) - (b.scheduleSortOrder ?? 0));
+          .sort((a, b) => (a.scheduleSortOrders?.[team.id] ?? 0) - (b.scheduleSortOrders?.[team.id] ?? 0));
         if (filterPerson !== 'all') {
           teamMembers = teamMembers.filter((m) => m.id === filterPerson);
         }
