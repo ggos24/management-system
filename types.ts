@@ -1,5 +1,5 @@
 export type TeamType = 'editorial' | 'video' | 'social' | 'management' | string;
-export type TaskStatus = string; // Was specific union, now string to support custom columns
+export type StatusCategory = 'active' | 'completed' | 'backlog' | 'ignored';
 export type Priority = 'low' | 'medium' | 'high';
 export type UserRole = 'admin' | 'editor' | 'user';
 export type AbsenceStatus = 'pending' | 'approved' | 'declined';
@@ -54,12 +54,19 @@ export interface CustomProperty {
   sortOrder?: number;
 }
 
+export interface TeamStatus {
+  id: string;
+  name: string;
+  category: StatusCategory;
+  sortOrder: number;
+}
+
 export interface Task {
   id: string;
   title: string;
   description: string;
   teamId: string; // was 'type' — correlates to Team ID
-  status: TaskStatus;
+  statusId: string | null;
   assigneeIds: string[];
   priority: Priority;
   dueDate: string;
@@ -164,7 +171,7 @@ export interface TaskTeamLink {
   id: string;
   taskId: string;
   teamId: string;
-  status: string;
+  statusId: string | null;
   sortOrder: number;
   customFieldValues: Record<string, any>;
   addedBy?: string;

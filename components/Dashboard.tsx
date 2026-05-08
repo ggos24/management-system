@@ -11,7 +11,7 @@ import {
   Pie,
   Cell,
 } from 'recharts';
-import { Task, Member, Absence, Team } from '../types';
+import { Task, Member, Absence, Team, TeamStatus } from '../types';
 import { Briefcase, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { CustomSelect } from './CustomSelect';
 import { DateRangeFilter } from './DateRangeFilter';
@@ -19,13 +19,14 @@ import { Avatar } from './Avatar';
 import { Card } from './ui';
 import { getStatusHexColor } from '../constants';
 import { formatDateRangeEU, getDateDiffFromToday, toDateOnly } from '../lib/utils';
+import { getStatusName } from '../lib/statusUtils';
 
 interface DashboardProps {
   tasks: Task[];
   members: Member[];
   absences: Absence[];
   teams: Team[];
-  statusCategories: Record<string, Record<string, string>>;
+  teamStatuses: Record<string, TeamStatus[]>;
 }
 
 const ALL_TEAMS = '__all__';
@@ -68,7 +69,7 @@ const TrendBadge: React.FC<{ value: number | null; invertColor?: boolean; suffix
 };
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, statusCategories }) => {
+const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, teamStatuses }) => {
   const [teamFilter, setTeamFilter] = useState<string>(ALL_TEAMS);
   const [startDate, setStartDate] = useState<string>(() => {
     const d = new Date();
@@ -90,17 +91,13 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
     }
   }, [teams, teamFilter, visibleTeams]);
 
-  const getStatusCategory = (status: string, teamId: string): 'active' | 'completed' | 'ignored' => {
-    // Use per-team category from DB if available
-    const teamCats = statusCategories[teamId];
-    if (teamCats && teamCats[status]) {
-      return teamCats[status] as 'active' | 'completed' | 'ignored';
+  const getStatusCategory = (statusId: string | null, teamId: string): 'active' | 'completed' | 'ignored' => {
+    if (!statusId) return 'active';
+    const status = teamStatuses[teamId]?.find((s) => s.id === statusId);
+    if (status) {
+      // 'backlog' rolls up as 'active' for dashboard rollups (it's still pre-completed work).
+      return status.category === 'completed' || status.category === 'ignored' ? status.category : 'active';
     }
-
-    // Fallback for statuses without an explicit category
-    const s = status.toLowerCase().trim();
-    if (['dropped', 'archive'].includes(s)) return 'ignored';
-    if (['published', 'done', 'published this week'].includes(s)) return 'completed';
     return 'active';
   };
 
@@ -127,7 +124,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
   }, [tasks, teamFilter, visibleTeamIds, startDate, endDate]);
 
   const chartTasks = useMemo(() => {
-    return filteredTasks.filter((t) => getStatusCategory(t.status, t.teamId) !== 'ignored');
+    return filteredTasks.filter((t) => getStatusCategory(t.statusId, t.teamId) !== 'ignored');
   }, [filteredTasks]);
 
   const previousPeriodTasks = useMemo(() => {
@@ -159,7 +156,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
       const prevEndDate = toDateOnly(prevEnd);
       if (!taskDate) return false;
       if (taskDate < prevStartDate || taskDate > prevEndDate) return false;
-      return getStatusCategory(task.status, task.teamId) !== 'ignored';
+      return getStatusCategory(task.statusId, task.teamId) !== 'ignored';
     });
   }, [tasks, teamFilter, visibleTeamIds, startDate, endDate]);
 
@@ -170,7 +167,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
     let totalOverdueDays = 0;
 
     chartTasks.forEach((t) => {
-      const category = getStatusCategory(t.status, t.teamId);
+      const category = getStatusCategory(t.statusId, t.teamId);
 
       if (category === 'completed') {
         completed++;
@@ -192,7 +189,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
     let prevOverdue = 0;
 
     previousPeriodTasks.forEach((t) => {
-      const category = getStatusCategory(t.status, t.teamId);
+      const category = getStatusCategory(t.statusId, t.teamId);
       if (category === 'completed') {
         prevCompleted++;
       } else if (category === 'active') {
@@ -225,7 +222,8 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
   const pieData = useMemo(() => {
     const counts: Record<string, number> = {};
     chartTasks.forEach((t) => {
-      counts[t.status] = (counts[t.status] || 0) + 1;
+      const name = getStatusName(teamStatuses, t.teamId, t.statusId);
+      counts[name] = (counts[name] || 0) + 1;
     });
     return Object.keys(counts)
       .map((status) => ({
@@ -233,7 +231,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
         value: counts[status],
       }))
       .sort((a, b) => b.value - a.value);
-  }, [chartTasks]);
+  }, [chartTasks, teamStatuses]);
 
   const totalTasks = useMemo(() => pieData.reduce((sum, d) => sum + d.value, 0), [pieData]);
 
@@ -250,16 +248,17 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
         let overdueCount = 0;
 
         memberTasks.forEach((t) => {
-          statusCounts[t.status] = (statusCounts[t.status] || 0) + 1;
+          const name = getStatusName(teamStatuses, t.teamId, t.statusId);
+          statusCounts[name] = (statusCounts[name] || 0) + 1;
           const dueDiff = getDateDiffFromToday(t.dueDate);
-          if (getStatusCategory(t.status, t.teamId) === 'active' && dueDiff !== null && dueDiff < 0) {
+          if (getStatusCategory(t.statusId, t.teamId) === 'active' && dueDiff !== null && dueDiff < 0) {
             overdueCount++;
           }
         });
         return { member, total: memberTasks.length, statusCounts, overdueCount };
       })
       .sort((a, b) => b.total - a.total);
-  }, [members, chartTasks, teamFilter, visibleTeamIds]);
+  }, [members, chartTasks, teamFilter, visibleTeamIds, teamStatuses]);
 
   const maxWorkload = useMemo(() => Math.max(1, ...workloadData.map((w) => w.total)), [workloadData]);
 

@@ -65,6 +65,11 @@ export function useRealtimeSync() {
       .catch(console.error);
   }, 300);
 
+  const debouncedFetchTeamStatuses = useDebouncedCallback(() => {
+    const { setTeamStatuses } = storeRef.current.getState();
+    db.fetchTeamStatuses().then(setTeamStatuses).catch(console.error);
+  }, 300);
+
   const debouncedFetchPersonFieldConfig = useDebouncedCallback(() => {
     const { setTeamPersonFieldConfig } = storeRef.current.getState();
     db.fetchTeamPersonFieldConfig()
@@ -102,6 +107,9 @@ export function useRealtimeSync() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'task_team_links' }, () => {
         debouncedFetchTaskTeamLinks();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'team_statuses' }, () => {
+        debouncedFetchTeamStatuses();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'team_placements' }, () => {
         debouncedFetchTeamPlacements();

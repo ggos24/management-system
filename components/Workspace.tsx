@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import {
   Task,
-  TaskStatus,
+  TeamStatus,
+  StatusCategory,
   TeamType,
   Member,
   Priority,
@@ -12,6 +13,7 @@ import {
   UserRole,
   PersonFieldKey,
 } from '../types';
+import { getStatusName } from '../lib/statusUtils';
 import {
   PRIORITY_COLORS,
   PRIORITY_DOT,
@@ -402,17 +404,19 @@ interface WorkspaceProps {
   teamName: string;
   members: Member[];
   currentUserId: string;
-  onUpdateTaskStatus: (taskId: string, newStatus: TaskStatus) => void;
+  onUpdateTaskStatus: (taskId: string, newStatusId: string | null) => void;
   onAddTask: (preset?: Partial<Task>) => void;
   searchQuery: string;
   onTaskClick: (task: Task) => void;
 
   onUpdateTask: (task: Task) => void;
-  teamStatuses: Record<string, string[]>;
-  onUpdateTeamStatuses: (teamId: string, newStatuses: string[]) => void;
-  statusCategories: Record<string, Record<string, string>>;
-  onDuplicateStatus: (teamId: string, status: string, withData: boolean) => void;
-  onSetStatusCategory: (teamId: string, statusName: string, category: string) => void;
+  teamStatuses: Record<string, TeamStatus[]>;
+  onAddStatus: (teamId: string, name: string) => void;
+  onRenameStatus: (teamId: string, statusId: string, newName: string) => void;
+  onDeleteStatus: (teamId: string, statusId: string) => void;
+  onReorderStatuses: (teamId: string, idsInOrder: string[]) => void;
+  onDuplicateStatus: (teamId: string, statusId: string, withData: boolean) => void;
+  onSetStatusCategory: (teamId: string, statusId: string, category: StatusCategory) => void;
   customProperties?: CustomProperty[];
   onAddProperty?: (property: CustomProperty) => void;
   onUpdateProperty?: (property: CustomProperty) => void;
@@ -447,8 +451,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
   onTaskClick,
   onUpdateTask,
   teamStatuses,
-  onUpdateTeamStatuses,
-  statusCategories,
+  onAddStatus,
+  onRenameStatus,
+  onDeleteStatus,
+  onReorderStatuses,
   onDuplicateStatus,
   onSetStatusCategory,
   customProperties = [],
@@ -650,35 +656,50 @@ const Workspace: React.FC<WorkspaceProps> = ({
     [personPropIds],
   );
 
+  type WorkspaceColumn = { id: string; label: string; category: StatusCategory };
+
+  // Quick lookup: any statusId -> its TeamStatus across all teams
+  const statusByIdAcrossTeams = useMemo(() => {
+    const map = new Map<string, TeamStatus & { teamId: string }>();
+    for (const [teamId, list] of Object.entries(teamStatuses)) {
+      for (const s of list) map.set(s.id, { ...s, teamId });
+    }
+    return map;
+  }, [teamStatuses]);
+
   // Determine current column list
-  const currentStatusList = useMemo(() => {
+  // - For team views: columns mirror the team's TeamStatus[] (id = statusId).
+  // - For "my-work": columns are derived from user's tasks. Statuses with the same
+  //   display name across teams are merged into a single column (a representative
+  //   statusId is used as col.id for keying; matching is by name).
+  const currentColumns = useMemo<WorkspaceColumn[]>(() => {
     if (teamFilter === 'my-work') {
-      // Dynamic columns for My Work — exclude statuses marked as Done or Archive
       const myTasks = tasks.filter((t) => {
         const isInvolved =
           t.assigneeIds.includes(currentUserId) ||
           t.contentInfo?.editorIds?.includes(currentUserId) ||
           t.contentInfo?.designerIds?.includes(currentUserId) ||
           taskHasPersonInCustomFields(t, currentUserId);
-        const cat = statusCategories[t.teamId]?.[t.status] || 'active';
+        const status = t.statusId ? statusByIdAcrossTeams.get(t.statusId) : undefined;
+        const cat = status?.category ?? 'active';
         return isInvolved && (cat === 'active' || cat === 'backlog');
       });
-      const uniqueStatuses = Array.from(new Set(myTasks.map((t) => t.status)));
-
-      // Apply saved order if available
-      const savedOrder = teamStatuses['my-work'];
-      if (savedOrder && savedOrder.length > 0) {
-        const newStatuses = uniqueStatuses.filter((s) => !savedOrder.includes(s));
-        return [...savedOrder, ...newStatuses];
+      const seen = new Map<string, WorkspaceColumn>();
+      for (const t of myTasks) {
+        if (!t.statusId) continue;
+        const status = statusByIdAcrossTeams.get(t.statusId);
+        if (!status) continue;
+        if (!seen.has(status.name)) {
+          seen.set(status.name, { id: status.id, label: status.name, category: status.category });
+        }
       }
-      return uniqueStatuses;
+      return Array.from(seen.values());
     }
-    return teamStatuses[teamFilter] || teamStatuses['default'] || [];
-  }, [teamStatuses, teamFilter, tasks, currentUserId, taskHasPersonInCustomFields, statusCategories]);
+    const list = teamStatuses[teamFilter] || [];
+    return list.map((s) => ({ id: s.id, label: s.name, category: s.category }));
+  }, [teamStatuses, teamFilter, tasks, currentUserId, taskHasPersonInCustomFields, statusByIdAcrossTeams]);
 
-  const columns = useMemo(() => {
-    return currentStatusList.map((s) => ({ id: s, label: s }));
-  }, [currentStatusList]);
+  const columns = currentColumns;
 
   // Inline Editing State
   const [editingColumnId, setEditingColumnId] = useState<string | null>(null);
@@ -711,14 +732,29 @@ const Workspace: React.FC<WorkspaceProps> = ({
     return map;
   }, [taskTeamLinks]);
 
-  // Resolve a task's status within the current team context
+  // Resolve a task's statusId within the current team context.
+  // For the task's home team / cross-team views, returns task.statusId.
+  // For a foreign team view of a linked task, returns the link's statusId.
   const getTaskStatusInTeam = useCallback(
-    (task: Task): string => {
-      if (teamFilter === 'my-work' || teamFilter === 'all' || task.teamId === teamFilter) return task.status;
+    (task: Task): string | null => {
+      if (teamFilter === 'my-work' || teamFilter === 'all' || task.teamId === teamFilter) return task.statusId;
       const link = taskTeamLinkMap.get(`${task.id}::${teamFilter}`);
-      return link ? link.status : task.status;
+      return link ? link.statusId : task.statusId;
     },
     [teamFilter, taskTeamLinkMap],
+  );
+
+  // Match a task to a column. In team views, comparison is by statusId.
+  // In my-work, columns are deduped by name, so we compare by resolved name.
+  const taskInColumn = useCallback(
+    (task: Task, col: WorkspaceColumn): boolean => {
+      if (teamFilter === 'my-work') {
+        if (!task.statusId) return false;
+        return statusByIdAcrossTeams.get(task.statusId)?.name === col.label;
+      }
+      return getTaskStatusInTeam(task) === col.id;
+    },
+    [teamFilter, statusByIdAcrossTeams, getTaskStatusInTeam],
   );
 
   // Resolve custom field values for the current team context
@@ -753,7 +789,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           (t.contentInfo?.designerIds?.includes(currentUserId) ?? false) ||
           taskHasPersonInCustomFields(t, currentUserId);
         // Exclude tasks whose status is marked as Done or Archive in their home team
-        const taskCategory = statusCategories[t.teamId]?.[t.status] || 'active';
+        const taskCategory = t.statusId ? (statusByIdAcrossTeams.get(t.statusId)?.category ?? 'active') : 'active';
         matchTeam = isInvolved && (taskCategory === 'active' || taskCategory === 'backlog');
       } else {
         matchTeam = teamFilter === 'all' || t.teamId === teamFilter || linkedTaskIdsForTeam.has(t.id);
@@ -787,7 +823,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
     currentUserId,
     linkedTaskIdsForTeam,
     taskHasPersonInCustomFields,
-    statusCategories,
+    statusByIdAcrossTeams,
   ]);
 
   // Derived columns to display: If searching, only show columns with tasks; then apply status sort
@@ -845,44 +881,49 @@ const Workspace: React.FC<WorkspaceProps> = ({
     return Object.entries(grouped)
       .map(([teamId, teamTasks]) => {
         const team = allTeams.find((te) => te.id === teamId);
-        const uniqueStatuses = Array.from(new Set(teamTasks.map((ta) => ta.status)));
+        const presentStatusIds = new Set(teamTasks.map((t) => t.statusId).filter((id): id is string => !!id));
+        const teamStatusList = teamStatuses[teamId] || [];
+        const statuses: WorkspaceColumn[] = teamStatusList
+          .filter((s) => presentStatusIds.has(s.id))
+          .map((s) => ({ id: s.id, label: s.name, category: s.category }));
         return {
           teamId,
           teamName: team?.name || 'Unknown Team',
-          statuses: uniqueStatuses.map((s) => ({ id: s, label: s })),
+          statuses,
           tasks: teamTasks,
         };
       })
       .sort((a, b) => a.teamName.localeCompare(b.teamName));
-  }, [teamFilter, filteredTasks, allTeams]);
+  }, [teamFilter, filteredTasks, allTeams, teamStatuses]);
 
-  // Column Management
-  const updateParentStatuses = (newStatuses: string[]) => {
-    const keyToUpdate = teamFilter === 'my-work' ? 'my-work' : teamStatuses[teamFilter] ? teamFilter : 'default';
-    onUpdateTeamStatuses(keyToUpdate, newStatuses);
-  };
+  // Column Management — status mutations are scoped to a real team only.
+  // (My-work view derives columns from task data; mutating its columns has no DB target.)
+  const isStatusEditable = teamFilter !== 'my-work' && teamFilter !== 'all';
 
   const handleAddColumn = () => {
-    if (teamFilter === 'my-work') return;
+    if (!isStatusEditable) return;
     if (!userRole || !isEditorOrAbove(userRole)) return;
-    const name = 'New Status';
-    let uniqueName = name;
+    const existingNames = (teamStatuses[teamFilter] || []).map((s) => s.name);
+    const base = 'New Status';
+    let uniqueName = base;
     let counter = 1;
-    while (currentStatusList.includes(uniqueName)) {
-      uniqueName = `${name} ${counter++}`;
+    while (existingNames.includes(uniqueName)) {
+      uniqueName = `${base} ${counter++}`;
     }
-
-    const newStatuses = [...currentStatusList, uniqueName];
-    updateParentStatuses(newStatuses);
-
+    onAddStatus(teamFilter, uniqueName);
+    // Auto-enter edit mode on the new column once it appears in state.
     setTimeout(() => {
-      setEditingColumnId(uniqueName);
-      setTempColumnName(uniqueName);
-    }, 100);
+      const created = (teamStatuses[teamFilter] || []).find((s) => s.name === uniqueName);
+      if (created) {
+        setEditingColumnId(created.id);
+        setTempColumnName(uniqueName);
+      }
+    }, 120);
   };
 
   const handleStartRename = (id: string, currentLabel: string) => {
     if (!userRole || !isEditorOrAbove(userRole)) return;
+    // In my-work, only custom properties are renameable (status columns are virtual).
     if (teamFilter === 'my-work' && !customProperties.find((p) => p.id === id)) return;
     setEditingColumnId(id);
     setTempColumnName(currentLabel);
@@ -891,32 +932,38 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleSaveRename = () => {
-    if (editingColumnId && tempColumnName.trim()) {
-      // Check if it's a status column
-      if (currentStatusList.includes(editingColumnId)) {
-        if (editingColumnId !== tempColumnName.trim()) {
-          const newStatuses = currentStatusList.map((s) => (s === editingColumnId ? tempColumnName.trim() : s));
-          updateParentStatuses(newStatuses);
-        }
-      } else {
-        // It's a custom property
-        const prop = customProperties.find((p) => p.id === editingColumnId);
-        if (prop && onUpdateProperty) {
-          onUpdateProperty({ ...prop, name: tempColumnName.trim() });
-        }
+    if (!editingColumnId || !tempColumnName.trim()) {
+      setEditingColumnId(null);
+      return;
+    }
+    const newName = tempColumnName.trim();
+    // Try as a status column first (only meaningful in a team view).
+    if (isStatusEditable) {
+      const target = (teamStatuses[teamFilter] || []).find((s) => s.id === editingColumnId);
+      if (target) {
+        if (target.name !== newName) onRenameStatus(teamFilter, editingColumnId, newName);
+        setEditingColumnId(null);
+        return;
       }
+    }
+    // Otherwise, treat as a custom property rename.
+    const prop = customProperties.find((p) => p.id === editingColumnId);
+    if (prop && onUpdateProperty) {
+      onUpdateProperty({ ...prop, name: newName });
     }
     setEditingColumnId(null);
   };
 
   const handleDeleteColumn = (id: string) => {
+    if (!isStatusEditable) return;
     if (!userRole || !isEditorOrAbove(userRole)) {
       toast.error('Only editors can delete statuses.');
       return;
     }
-    if (confirm(`Delete "${id}" status? Tasks in this column will be hidden.`)) {
-      const newStatuses = currentStatusList.filter((s) => s !== id);
-      updateParentStatuses(newStatuses);
+    const target = (teamStatuses[teamFilter] || []).find((s) => s.id === id);
+    if (!target) return;
+    if (confirm(`Delete "${target.name}" status? Tasks in this column will be hidden.`)) {
+      onDeleteStatus(teamFilter, id);
     }
     setActiveColumnMenu(null);
   };
@@ -931,15 +978,20 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Move a status group up or down
   const handleMoveStatus = (statusId: string, direction: 'up' | 'down') => {
+    if (!isStatusEditable) return;
     if (!userRole || !isEditorOrAbove(userRole)) return;
-    const idx = currentStatusList.indexOf(statusId);
+    const list = teamStatuses[teamFilter] || [];
+    const idx = list.findIndex((s) => s.id === statusId);
     if (idx === -1) return;
     const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
-    if (targetIdx < 0 || targetIdx >= currentStatusList.length) return;
+    if (targetIdx < 0 || targetIdx >= list.length) return;
 
-    const newStatuses = [...currentStatusList];
-    [newStatuses[idx], newStatuses[targetIdx]] = [newStatuses[targetIdx], newStatuses[idx]];
-    updateParentStatuses(newStatuses);
+    const reordered = [...list];
+    [reordered[idx], reordered[targetIdx]] = [reordered[targetIdx], reordered[idx]];
+    onReorderStatuses(
+      teamFilter,
+      reordered.map((s) => s.id),
+    );
   };
 
   // Column sort handler
@@ -1073,13 +1125,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
     lastClickedTaskRef.current = null;
   };
 
-  const handleBulkMove = (targetStatus: string) => {
+  const handleBulkMove = (targetStatusId: string, targetLabel: string) => {
     const tasksToMove = filteredTasks.filter(
-      (t) => selectedTaskIds.has(t.id) && getTaskStatusInTeam(t) !== targetStatus,
+      (t) => selectedTaskIds.has(t.id) && getTaskStatusInTeam(t) !== targetStatusId,
     );
     if (tasksToMove.length > 0) {
-      tasksToMove.forEach((t) => onUpdateTaskStatus(t.id, targetStatus as TaskStatus));
-      toast.success(`Moved ${tasksToMove.length} task${tasksToMove.length > 1 ? 's' : ''} to ${targetStatus}`);
+      tasksToMove.forEach((t) => onUpdateTaskStatus(t.id, targetStatusId));
+      toast.success(`Moved ${tasksToMove.length} task${tasksToMove.length > 1 ? 's' : ''} to ${targetLabel}`);
       clearSelection();
     } else {
       setBulkStatusMenuOpen(false);
@@ -1384,11 +1436,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           const col = status;
                           const statusCollapseKey = `${col.id}::${group.teamId}`;
                           const isCollapsed = collapsedSections[statusCollapseKey];
-                          const statusCategory = statusCategories[group.teamId]?.[col.id] || 'active';
+                          const statusCategory = col.category;
                           const isDoneStatus = statusCategory === 'completed';
                           const isBacklogStatus = statusCategory === 'backlog';
                           const isIgnoredStatus = statusCategory === 'ignored';
-                          const colTasks = group.tasks.filter((t) => t.status === col.id);
+                          const colTasks = group.tasks.filter((t) => t.statusId === col.id);
                           return (
                             <div
                               key={statusCollapseKey}
@@ -1563,7 +1615,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
             <div className="flex gap-4 sm:gap-6 overflow-x-auto pb-4 h-full snap-x snap-mandatory sm:snap-none">
               {displayColumns.map((col) => {
                 const isCollapsed = collapsedSections[col.id];
-                const statusCategory = statusCategories[teamFilter]?.[col.id] || 'active';
+                const statusCategory = col.category;
                 const isDoneStatus = statusCategory === 'completed';
                 const isBacklogStatus = statusCategory === 'backlog';
                 const isIgnoredStatus = statusCategory === 'ignored';
@@ -1688,7 +1740,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 </button>
                                 {teamFilter !== 'my-work' && (
                                   <button
-                                    onClick={() => onAddTask({ status: col.id })}
+                                    onClick={() => onAddTask({ statusId: col.id })}
                                     className="text-zinc-400 hover:text-black dark:hover:text-white transition-colors p-1"
                                   >
                                     <Plus size={14} />
@@ -1711,27 +1763,32 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   setActiveColumnMenu(null);
                                 }}
                                 onToggleDone={() => {
-                                  const current = statusCategories[teamFilter]?.[col.id] || 'active';
                                   onSetStatusCategory(
                                     teamFilter,
                                     col.id,
-                                    current === 'completed' ? 'active' : 'completed',
+                                    col.category === 'completed' ? 'active' : 'completed',
                                   );
                                   setActiveColumnMenu(null);
                                 }}
                                 onDelete={() => handleDeleteColumn(col.id)}
-                                isDone={statusCategories[teamFilter]?.[col.id] === 'completed'}
-                                isBacklog={statusCategories[teamFilter]?.[col.id] === 'backlog'}
+                                isDone={col.category === 'completed'}
+                                isBacklog={col.category === 'backlog'}
                                 onToggleBacklog={() => {
-                                  const current = statusCategories[teamFilter]?.[col.id] || 'active';
-                                  onSetStatusCategory(teamFilter, col.id, current === 'backlog' ? 'active' : 'backlog');
+                                  onSetStatusCategory(
+                                    teamFilter,
+                                    col.id,
+                                    col.category === 'backlog' ? 'active' : 'backlog',
+                                  );
                                   setActiveColumnMenu(null);
                                 }}
-                                isArchiveCategory={statusCategories[teamFilter]?.[col.id] === 'ignored'}
+                                isArchiveCategory={col.category === 'ignored'}
                                 canEditCategories={!!userRole && isEditorOrAbove(userRole)}
                                 onToggleArchiveCategory={() => {
-                                  const current = statusCategories[teamFilter]?.[col.id] || 'active';
-                                  onSetStatusCategory(teamFilter, col.id, current === 'ignored' ? 'active' : 'ignored');
+                                  onSetStatusCategory(
+                                    teamFilter,
+                                    col.id,
+                                    col.category === 'ignored' ? 'active' : 'ignored',
+                                  );
                                   setActiveColumnMenu(null);
                                 }}
                               />
@@ -1888,7 +1945,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       type: 'status' as const,
                       key: `${s.id}::${group.teamId}`,
                       col: s,
-                      colTasks: group.tasks.filter((t) => t.status === s.id),
+                      colTasks: group.tasks.filter((t) => t.statusId === s.id),
                       teamId: group.teamId,
                       indent: true,
                       resolvedProps: allTeamProperties[group.teamId] || [],
@@ -1928,9 +1985,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
               const { col, colTasks, teamId, indent, resolvedProps } = item;
               const colKey = item.key;
               const isCollapsed = collapsedSections[colKey];
-              const isDoneTable = statusCategories[teamId]?.[col.id] === 'completed';
-              const isBacklogTable = statusCategories[teamId]?.[col.id] === 'backlog';
-              const isIgnoredTable = statusCategories[teamId]?.[col.id] === 'ignored';
+              const isDoneTable = col.category === 'completed';
+              const isBacklogTable = col.category === 'backlog';
+              const isIgnoredTable = col.category === 'ignored';
 
               return (
                 <div
@@ -1940,24 +1997,30 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   onDragOver={indent ? undefined : handleDragOver}
                 >
                   <div className="flex items-center gap-2 sticky top-0 bg-white dark:bg-black z-10 py-2 group/header">
-                    {!statusSort && teamFilter !== 'my-work' && (
-                      <div className="flex flex-col">
-                        <button
-                          onClick={() => handleMoveStatus(col.id, 'up')}
-                          className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 leading-none disabled:opacity-30 disabled:cursor-not-allowed"
-                          disabled={currentStatusList.indexOf(col.id) === 0}
-                        >
-                          <ChevronUp size={14} />
-                        </button>
-                        <button
-                          onClick={() => handleMoveStatus(col.id, 'down')}
-                          className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 leading-none disabled:opacity-30 disabled:cursor-not-allowed"
-                          disabled={currentStatusList.indexOf(col.id) === currentStatusList.length - 1}
-                        >
-                          <ChevronDown size={14} />
-                        </button>
-                      </div>
-                    )}
+                    {!statusSort &&
+                      isStatusEditable &&
+                      (() => {
+                        const list = teamStatuses[teamFilter] || [];
+                        const idxInTeam = list.findIndex((s) => s.id === col.id);
+                        return (
+                          <div className="flex flex-col">
+                            <button
+                              onClick={() => handleMoveStatus(col.id, 'up')}
+                              className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 leading-none disabled:opacity-30 disabled:cursor-not-allowed"
+                              disabled={idxInTeam <= 0}
+                            >
+                              <ChevronUp size={14} />
+                            </button>
+                            <button
+                              onClick={() => handleMoveStatus(col.id, 'down')}
+                              className="text-zinc-400 hover:text-zinc-900 dark:hover:text-white p-0 leading-none disabled:opacity-30 disabled:cursor-not-allowed"
+                              disabled={idxInTeam < 0 || idxInTeam === list.length - 1}
+                            >
+                              <ChevronDown size={14} />
+                            </button>
+                          </div>
+                        );
+                      })()}
                     <span
                       className={`text-xs px-2 py-0.5 rounded font-medium ${isIgnoredTable ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400' : isDoneTable ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400' : isBacklogTable ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400' : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'}`}
                     >
@@ -2037,23 +2100,20 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             setActiveColumnMenu(null);
                           }}
                           onToggleDone={() => {
-                            const current = statusCategories[teamId]?.[col.id] || 'active';
-                            onSetStatusCategory(teamId, col.id, current === 'completed' ? 'active' : 'completed');
+                            onSetStatusCategory(teamId, col.id, col.category === 'completed' ? 'active' : 'completed');
                             setActiveColumnMenu(null);
                           }}
                           onDelete={() => handleDeleteColumn(col.id)}
-                          isDone={statusCategories[teamId]?.[col.id] === 'completed'}
-                          isBacklog={statusCategories[teamId]?.[col.id] === 'backlog'}
+                          isDone={col.category === 'completed'}
+                          isBacklog={col.category === 'backlog'}
                           onToggleBacklog={() => {
-                            const current = statusCategories[teamId]?.[col.id] || 'active';
-                            onSetStatusCategory(teamId, col.id, current === 'backlog' ? 'active' : 'backlog');
+                            onSetStatusCategory(teamId, col.id, col.category === 'backlog' ? 'active' : 'backlog');
                             setActiveColumnMenu(null);
                           }}
-                          isArchiveCategory={statusCategories[teamId]?.[col.id] === 'ignored'}
+                          isArchiveCategory={col.category === 'ignored'}
                           canEditCategories={!!userRole && isEditorOrAbove(userRole)}
                           onToggleArchiveCategory={() => {
-                            const current = statusCategories[teamId]?.[col.id] || 'active';
-                            onSetStatusCategory(teamId, col.id, current === 'ignored' ? 'active' : 'ignored');
+                            onSetStatusCategory(teamId, col.id, col.category === 'ignored' ? 'active' : 'ignored');
                             setActiveColumnMenu(null);
                           }}
                         />
@@ -2120,7 +2180,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         )}
                         {!searchQuery && teamFilter !== 'my-work' && (
                           <button
-                            onClick={() => onAddTask({ status: col.id })}
+                            onClick={() => onAddTask({ statusId: col.id })}
                             className="w-full p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium flex items-center gap-2"
                           >
                             <Plus size={14} /> Add Task
@@ -2638,7 +2698,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             {!searchQuery && teamFilter !== 'my-work' && (
                               <tr
                                 className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
-                                onClick={() => onAddTask({ status: col.id })}
+                                onClick={() => onAddTask({ statusId: col.id })}
                               >
                                 <td
                                   colSpan={visibleTableColumns.length + (indent ? 1 : 2)}
@@ -2898,14 +2958,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 {bulkStatusMenuOpen && (
                   <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-xl py-1 min-w-[180px] text-zinc-900 dark:text-zinc-100">
                     {displayColumns.map((col) => {
-                      const cat = statusCategories[teamFilter]?.[col.id] || 'active';
+                      const cat = col.category;
                       const isDone = cat === 'completed';
                       const isArchive = cat === 'ignored';
                       const isBacklog = cat === 'backlog';
                       return (
                         <button
                           key={col.id}
-                          onClick={() => handleBulkMove(col.id)}
+                          onClick={() => handleBulkMove(col.id, col.label)}
                           className={`w-full text-left px-3 py-2 text-xs transition-colors flex items-center gap-2 font-medium ${
                             isDone
                               ? 'text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-900/20'
@@ -3025,7 +3085,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           <div
                             key={t.id}
                             onClick={() => onTaskClick(t)}
-                            className={`cursor-pointer rounded-lg border border-zinc-200 dark:border-zinc-700 border-l-[3px] bg-white dark:bg-zinc-900 px-3 py-2 flex items-center gap-2 ${getStatusAccent(getTaskStatusInTeam(t))}`}
+                            className={`cursor-pointer rounded-lg border border-zinc-200 dark:border-zinc-700 border-l-[3px] bg-white dark:bg-zinc-900 px-3 py-2 flex items-center gap-2 ${getStatusAccent(getStatusName(teamStatuses, t.teamId, getTaskStatusInTeam(t)))}`}
                           >
                             <span
                               className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[t.priority] || 'bg-zinc-400'}`}
@@ -3102,11 +3162,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               onTaskClick(t);
                             }}
                             draggable
-                            onDragStart={(e) => handleDragStart(e, t.id, getTaskStatusInTeam(t))}
+                            onDragStart={(e) => handleDragStart(e, t.id, getTaskStatusInTeam(t) ?? '')}
                             className="group cursor-grab active:cursor-grabbing"
                           >
                             <div
-                              className={`text-[10px] px-1.5 py-1 rounded border border-zinc-200 dark:border-zinc-700 border-l-[3px] shadow-sm bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 flex items-center gap-1 ${getStatusAccent(getTaskStatusInTeam(t))}`}
+                              className={`text-[10px] px-1.5 py-1 rounded border border-zinc-200 dark:border-zinc-700 border-l-[3px] shadow-sm bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 flex items-center gap-1 ${getStatusAccent(getStatusName(teamStatuses, t.teamId, getTaskStatusInTeam(t)))}`}
                             >
                               <span
                                 className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[t.priority] || 'bg-zinc-400'}`}

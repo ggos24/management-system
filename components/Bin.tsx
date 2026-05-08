@@ -8,6 +8,7 @@ import { useUiStore } from '../stores/uiStore';
 import { Task } from '../types';
 import { getStatusColor } from '../constants';
 import { formatDateEU } from '../lib/utils';
+import { getStatusName } from '../lib/statusUtils';
 
 function formatRelativeTime(iso: string): string {
   const d = new Date(iso);
@@ -35,7 +36,7 @@ export const Bin: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isEmptyBinModalOpen, setIsEmptyBinModalOpen] = useState(false);
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
-  const { deletedTasks, members, teams, restoreTask, permanentlyDeleteTask, emptyBin } = useDataStore();
+  const { deletedTasks, members, teams, teamStatuses, restoreTask, permanentlyDeleteTask, emptyBin } = useDataStore();
   const { setIsTaskModalOpen, setTaskModalData } = useUiStore();
 
   const filteredTasks = searchQuery
@@ -169,11 +170,16 @@ export const Bin: React.FC = () => {
                       <span className="text-xs text-zinc-500 dark:text-zinc-400">{getTeamName(task.teamId)}</span>
                     </td>
                     <td className="px-3 py-3">
-                      <span
-                        className={`inline-flex px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusColor(task.status)}`}
-                      >
-                        {task.status}
-                      </span>
+                      {(() => {
+                        const name = getStatusName(teamStatuses, task.teamId, task.statusId);
+                        return (
+                          <span
+                            className={`inline-flex px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusColor(name)}`}
+                          >
+                            {name}
+                          </span>
+                        );
+                      })()}
                     </td>
                     <td className="px-3 py-3">
                       <span className="text-xs capitalize text-zinc-600 dark:text-zinc-400">{task.priority}</span>
@@ -257,11 +263,16 @@ export const Bin: React.FC = () => {
                     </div>
                   </div>
                   <div className="flex items-center gap-2 mt-2 flex-wrap">
-                    <span
-                      className={`inline-flex px-2 py-0.5 rounded text-[11px] md:text-[10px] font-medium border ${getStatusColor(task.status)}`}
-                    >
-                      {task.status}
-                    </span>
+                    {(() => {
+                      const name = getStatusName(teamStatuses, task.teamId, task.statusId);
+                      return (
+                        <span
+                          className={`inline-flex px-2 py-0.5 rounded text-[11px] md:text-[10px] font-medium border ${getStatusColor(name)}`}
+                        >
+                          {name}
+                        </span>
+                      );
+                    })()}
                     <span className="text-[11px] capitalize text-zinc-600 dark:text-zinc-400">{task.priority}</span>
                     <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
                       {task.deletedAt ? formatRelativeTime(task.deletedAt) : ''}

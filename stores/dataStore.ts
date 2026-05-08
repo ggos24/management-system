@@ -9,6 +9,8 @@ import {
   LogEntry,
   CustomProperty,
   TaskTeamLink,
+  TeamStatus,
+  StatusCategory,
   NotificationType,
   NotificationCategory,
   NotificationChannel,
@@ -23,6 +25,7 @@ import { formatDateEU, toDateOnly } from '../lib/utils';
 import { useAuthStore } from './authStore';
 import { supabase } from '../lib/supabase';
 import { PERSON_FIELD_DEFAULT_LABELS } from '../constants';
+import { getStatusName } from '../lib/statusUtils';
 
 export type PersonFieldConfigEntry = { label: string | null; hidden: boolean };
 export type PersonFieldConfigMap = Record<string, Partial<Record<PersonFieldKey, PersonFieldConfigEntry>>>;
@@ -43,13 +46,14 @@ export function resolvePersonFieldConfig(
 // Returns the doneDate that should be persisted for the task in its new status.
 export function resolveDoneDate(
   prevDoneDate: string | null | undefined,
-  prevStatus: string | undefined,
-  nextStatus: string,
+  prevStatusId: string | null | undefined,
+  nextStatusId: string | null,
   teamId: string | undefined,
-  statusCategories: Record<string, Record<string, string>>,
+  teamStatuses: Record<string, TeamStatus[]>,
 ): string | null {
-  const prevCategory = teamId ? statusCategories[teamId]?.[prevStatus ?? ''] : undefined;
-  const nextCategory = teamId ? statusCategories[teamId]?.[nextStatus] : undefined;
+  const teamList = teamId ? teamStatuses[teamId] : undefined;
+  const prevCategory = prevStatusId ? teamList?.find((s) => s.id === prevStatusId)?.category : undefined;
+  const nextCategory = nextStatusId ? teamList?.find((s) => s.id === nextStatusId)?.category : undefined;
   if (nextCategory === 'completed' && !prevDoneDate) {
     return toDateOnly(new Date());
   }
@@ -167,10 +171,11 @@ function formatShortDate(iso: string): string {
 /** Build task context available at notification time */
 function getTaskContext(entityData?: Record<string, any>) {
   if (!entityData) return null;
-  const { teams, tasks } = useDataStore.getState();
+  const { teams, tasks, teamStatuses } = useDataStore.getState();
   const task = entityData.taskId ? tasks.find((t) => t.id === entityData.taskId) : null;
   const teamName = entityData.teamId ? teams.find((t) => t.id === entityData.teamId)?.name : undefined;
-  return { task, teamName };
+  const statusName = task ? getStatusName(teamStatuses, task.teamId, task.statusId) : undefined;
+  return { task, teamName, statusName };
 }
 
 function sendTelegram(recipientIds: string[], message: string, entityData?: Record<string, any>) {
@@ -183,7 +188,7 @@ function sendTelegram(recipientIds: string[], message: string, entityData?: Reco
     if (ctx.task?.dueDate) details.push(`📅 Due: ${formatShortDate(ctx.task.dueDate)}`);
     const p = entityData?.priority || ctx.task?.priority;
     if (p) details.push(`${PRIORITY_EMOJI[p] || ''} Priority: ${p.charAt(0).toUpperCase() + p.slice(1)}`);
-    if (ctx.task?.status) details.push(`📌 ${ctx.task.status}`);
+    if (ctx.statusName && ctx.task?.statusId) details.push(`📌 ${ctx.statusName}`);
     if (details.length > 0) text += '\n\n' + details.join('\n');
   } else if (entityData?.priority) {
     text += `\nPriority: ${PRIORITY_EMOJI[entityData.priority] || ''} ${entityData.priority}`;
@@ -224,7 +229,7 @@ function sendEmail(recipientIds: string[], type: NotificationType, message: stri
           teamName: ctx.teamName,
           dueDate: ctx.task?.dueDate,
           priority: entityData?.priority || ctx.task?.priority,
-          status: ctx.task?.status,
+          status: ctx.statusName,
         }
       : undefined;
 
@@ -296,8 +301,7 @@ interface DataState {
   absences: Absence[];
   shifts: Shift[];
   logs: LogEntry[];
-  teamStatuses: Record<string, string[]>;
-  statusCategories: Record<string, Record<string, string>>;
+  teamStatuses: Record<string, TeamStatus[]>;
   teamTypes: Record<string, string[]>;
   teamProperties: Record<string, CustomProperty[]>;
   permissions: Record<string, { canEdit: boolean; canDelete: boolean; canCreate: boolean }>;
@@ -321,8 +325,7 @@ interface DataState {
   setAbsences: (absences: Absence[]) => void;
   setShifts: (shifts: Shift[]) => void;
   setLogs: (logs: LogEntry[]) => void;
-  setTeamStatuses: (statuses: Record<string, string[]>) => void;
-  setStatusCategories: (cats: Record<string, Record<string, string>>) => void;
+  setTeamStatuses: (statuses: Record<string, TeamStatus[]>) => void;
   setTeamTypes: (types: Record<string, string[]>) => void;
   setTeamProperties: (props: Record<string, CustomProperty[]>) => void;
   setPermissions: (perms: Record<string, { canEdit: boolean; canDelete: boolean; canCreate: boolean }>) => void;
@@ -356,11 +359,11 @@ interface DataState {
   // Task team link actions
   linkTaskToTeam: (taskId: string, teamId: string) => void;
   unlinkTaskFromTeam: (taskId: string, teamId: string) => void;
-  updateLinkedTaskStatus: (taskId: string, teamId: string, newStatus: string) => void;
+  updateLinkedTaskStatus: (taskId: string, teamId: string, newStatusId: string | null) => void;
   updateLinkedTaskFields: (taskId: string, teamId: string, values: Record<string, any>) => void;
 
   // Task actions
-  updateTaskStatus: (taskId: string, newStatus: string, teamContext?: string) => void;
+  updateTaskStatus: (taskId: string, newStatusId: string | null, teamContext?: string) => void;
   updateTask: (updatedTask: Task) => void;
   deleteTask: (taskId: string) => void;
   addTask: (task: Task) => void;
@@ -394,11 +397,12 @@ interface DataState {
   ) => void;
 
   // Status/Type actions
-  addStatus: (teamId: string, status: string) => void;
-  deleteStatus: (teamId: string, status: string) => void;
-  reorderStatuses: (teamId: string, newStatuses: string[]) => void;
-  duplicateStatus: (teamId: string, status: string, withData: boolean) => void;
-  setStatusCategory: (teamId: string, statusName: string, category: string) => void;
+  addStatus: (teamId: string, name: string) => void;
+  renameStatus: (teamId: string, statusId: string, newName: string) => void;
+  deleteStatus: (teamId: string, statusId: string) => void;
+  reorderStatuses: (teamId: string, idsInOrder: string[]) => void;
+  duplicateStatus: (teamId: string, statusId: string, withData: boolean) => void;
+  setStatusCategory: (teamId: string, statusId: string, category: StatusCategory) => void;
   addType: (teamId: string, type: string) => void;
   deleteType: (teamId: string, type: string) => void;
 
@@ -451,7 +455,6 @@ export const useDataStore = create<DataState>((set, get) => ({
   shifts: [],
   logs: [],
   teamStatuses: {},
-  statusCategories: {},
   teamTypes: {},
   teamProperties: {},
   permissions: {},
@@ -482,7 +485,6 @@ export const useDataStore = create<DataState>((set, get) => ({
   setShifts: (shifts) => set({ shifts }),
   setLogs: (logs) => set({ logs }),
   setTeamStatuses: (statuses) => set({ teamStatuses: statuses }),
-  setStatusCategories: (cats: Record<string, Record<string, string>>) => set({ statusCategories: cats }),
   setTeamTypes: (types) => set({ teamTypes: types }),
   setTeamProperties: (props) => set({ teamProperties: props }),
   setPermissions: (perms) => set({ permissions: perms }),
@@ -627,32 +629,35 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   // Task team link actions
-  linkTaskToTeam: (taskId, teamId) => {
-    const { taskTeamLinks, teamStatuses, statusCategories } = get();
+  linkTaskToTeam: async (taskId, teamId) => {
+    const { taskTeamLinks, teamStatuses } = get();
     const statuses = teamStatuses[teamId] || [];
-    const defaultStatus = 'Backlog';
-    if (!statuses.includes('Backlog')) {
-      const newStatuses = ['Backlog', ...statuses];
-      const newCats = { ...(statusCategories[teamId] || {}), Backlog: 'backlog' };
-      set({
-        teamStatuses: { ...get().teamStatuses, [teamId]: newStatuses },
-        statusCategories: { ...get().statusCategories, [teamId]: newCats },
-      });
-      db.syncTeamStatuses(teamId, newStatuses, newCats).catch(console.error);
+    let backlog = statuses.find((s) => s.name === 'Backlog');
+    if (!backlog) {
+      // Insert a Backlog status row for this team and use its id as the link's default.
+      const sortOrder = statuses.length;
+      const { data, error } = await db.addTeamStatus(teamId, 'Backlog', sortOrder, 'backlog');
+      if (error || !data) {
+        toast.error('Failed to link task');
+        return;
+      }
+      backlog = data;
+      set({ teamStatuses: { ...get().teamStatuses, [teamId]: [...statuses, data] } });
     }
+    const defaultStatusId = backlog.id;
     const addedBy = getCurrentUserId() || undefined;
     const optimisticLink: TaskTeamLink = {
       id: crypto.randomUUID(),
       taskId,
       teamId,
-      status: defaultStatus,
+      statusId: defaultStatusId,
       sortOrder: 0,
       customFieldValues: {},
       addedBy,
       createdAt: new Date().toISOString(),
     };
     set({ taskTeamLinks: [...taskTeamLinks, optimisticLink] });
-    db.insertTaskTeamLink(taskId, teamId, defaultStatus, addedBy).catch(() => {
+    db.insertTaskTeamLink(taskId, teamId, defaultStatusId, addedBy).catch(() => {
       set({ taskTeamLinks: get().taskTeamLinks.filter((l) => l.id !== optimisticLink.id) });
       toast.error('Failed to link task');
     });
@@ -667,12 +672,14 @@ export const useDataStore = create<DataState>((set, get) => ({
     });
   },
 
-  updateLinkedTaskStatus: (taskId, teamId, newStatus) => {
+  updateLinkedTaskStatus: (taskId, teamId, newStatusId) => {
     const prev = get().taskTeamLinks;
     set({
-      taskTeamLinks: prev.map((l) => (l.taskId === taskId && l.teamId === teamId ? { ...l, status: newStatus } : l)),
+      taskTeamLinks: prev.map((l) =>
+        l.taskId === taskId && l.teamId === teamId ? { ...l, statusId: newStatusId } : l,
+      ),
     });
-    db.updateTaskTeamLinkStatus(taskId, teamId, newStatus).catch(() => set({ taskTeamLinks: prev }));
+    db.updateTaskTeamLinkStatus(taskId, teamId, newStatusId).catch(() => set({ taskTeamLinks: prev }));
   },
 
   updateLinkedTaskFields: (taskId, teamId, values) => {
@@ -686,29 +693,30 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   // Task actions
-  updateTaskStatus: (taskId, newStatus, teamContext?) => {
+  updateTaskStatus: (taskId, newStatusId, teamContext?) => {
     // If teamContext is provided and differs from the task's home team, update the link instead
     if (teamContext && teamContext !== 'my-work') {
       const task = get().tasks.find((t) => t.id === taskId);
       if (task && task.teamId !== teamContext) {
         const link = get().taskTeamLinks.find((l) => l.taskId === taskId && l.teamId === teamContext);
         if (link) {
-          get().updateLinkedTaskStatus(taskId, teamContext, newStatus);
+          get().updateLinkedTaskStatus(taskId, teamContext, newStatusId);
           return;
         }
       }
     }
     const prev = get().tasks;
     const task = prev.find((t) => t.id === taskId);
-    if (task && task.status === newStatus) return; // Same status, no-op
+    if (task && task.statusId === newStatusId) return; // Same status, no-op
+    const teamStatuses = get().teamStatuses;
     const nextDoneDate = task
-      ? resolveDoneDate(task.doneDate, task.status, newStatus, task.teamId, get().statusCategories)
+      ? resolveDoneDate(task.doneDate, task.statusId, newStatusId, task.teamId, teamStatuses)
       : null;
     const doneDateChanged = task ? (task.doneDate ?? null) !== nextDoneDate : false;
     set({
-      tasks: prev.map((t) => (t.id === taskId ? { ...t, status: newStatus, doneDate: nextDoneDate } : t)),
+      tasks: prev.map((t) => (t.id === taskId ? { ...t, statusId: newStatusId, doneDate: nextDoneDate } : t)),
     });
-    db.updateTaskStatus(taskId, newStatus)
+    db.updateTaskStatus(taskId, newStatusId)
       .then(() => {
         if (doneDateChanged) {
           db.updateTaskDoneDate(taskId, nextDoneDate).catch(() => {});
@@ -716,25 +724,27 @@ export const useDataStore = create<DataState>((set, get) => ({
       })
       .catch(() => set({ tasks: prev }));
     if (task) {
-      logAction('Task Status Changed', `Moved "${task.title}" to ${newStatus}`, 'task');
+      const oldName = getStatusName(teamStatuses, task.teamId, task.statusId);
+      const newName = getStatusName(teamStatuses, task.teamId, newStatusId);
+      logAction('Task Status Changed', `Moved "${task.title}" to ${newName}`, 'task');
       const activity: Array<{ field: string; oldValue?: string | null; newValue?: string | null }> = [
-        { field: 'status', oldValue: task.status, newValue: newStatus },
+        { field: 'status', oldValue: oldName, newValue: newName },
       ];
       if (doneDateChanged) {
         activity.push({ field: 'doneDate', oldValue: task.doneDate ?? null, newValue: nextDoneDate });
       }
       logTaskActivity(taskId, activity);
-    }
 
-    // Notify all people on task about status change
-    const statusPeople = task ? getAllTaskPeople(task) : [];
-    if (task && statusPeople.length > 0) {
-      const actorName = getCurrentUserName();
-      notifyMany(statusPeople, 'task_status_changed', `${actorName} changed "${task.title}" status to ${newStatus}`, {
-        taskId,
-        teamId: task.teamId,
-        priority: task.priority,
-      });
+      // Notify all people on task about status change
+      const statusPeople = getAllTaskPeople(task);
+      if (statusPeople.length > 0) {
+        const actorName = getCurrentUserName();
+        notifyMany(statusPeople, 'task_status_changed', `${actorName} changed "${task.title}" status to ${newName}`, {
+          taskId,
+          teamId: task.teamId,
+          priority: task.priority,
+        });
+      }
     }
   },
 
@@ -744,13 +754,13 @@ export const useDataStore = create<DataState>((set, get) => ({
     // Auto-stamp/clear doneDate on status-category transitions, unless the caller
     // already changed doneDate explicitly (TaskModal manual entry must win).
     let finalTask = updatedTask;
-    if (oldTask && oldTask.status !== updatedTask.status && oldTask.doneDate === updatedTask.doneDate) {
+    if (oldTask && oldTask.statusId !== updatedTask.statusId && oldTask.doneDate === updatedTask.doneDate) {
       const resolvedDoneDate = resolveDoneDate(
         updatedTask.doneDate,
-        oldTask.status,
-        updatedTask.status,
+        oldTask.statusId,
+        updatedTask.statusId,
         updatedTask.teamId,
-        get().statusCategories,
+        get().teamStatuses,
       );
       if (resolvedDoneDate !== (updatedTask.doneDate ?? null)) {
         finalTask = { ...updatedTask, doneDate: resolvedDoneDate };
@@ -870,11 +880,11 @@ export const useDataStore = create<DataState>((set, get) => ({
     const { tasks } = get();
     const task = tasks.find((t) => t.id === taskId);
     const targetTask = tasks.find((t) => t.id === targetTaskId);
-    if (!task || !targetTask || task.status !== targetTask.status) return;
+    if (!task || !targetTask || task.statusId !== targetTask.statusId) return;
 
     // Get tasks in the same status, sorted by current sortOrder
     const statusTasks = tasks
-      .filter((t) => t.status === task.status && t.teamId === task.teamId)
+      .filter((t) => t.statusId === task.statusId && t.teamId === task.teamId)
       .sort((a, b) => (a.sortOrder ?? 0) - (b.sortOrder ?? 0));
 
     // Remove the dragged task
@@ -905,8 +915,11 @@ export const useDataStore = create<DataState>((set, get) => ({
 
     const existingTask = taskData.id ? get().tasks.find((t) => t.id === taskData.id) : null;
     const isNew = !existingTask;
-    const incomingStatus = taskData.status || 'Not Started';
     const incomingTeamId = taskData.teamId || teams[0]?.id || '';
+    // statusId comes from taskData (the picker writes a uuid). For brand-new tasks
+    // with no explicit pick, default to the first available status of the home team.
+    const teamStatusList = get().teamStatuses[incomingTeamId] || [];
+    const incomingStatusId = taskData.statusId ?? teamStatusList[0]?.id ?? null;
     // Auto-stamp/clear doneDate when the save crosses a `completed` category boundary,
     // unless the caller supplied an explicit doneDate that differs from the existing.
     const callerDoneDate = taskData.doneDate ? toDateOnly(taskData.doneDate) : null;
@@ -915,17 +928,17 @@ export const useDataStore = create<DataState>((set, get) => ({
       ? callerDoneDate
       : resolveDoneDate(
           existingTask?.doneDate ?? null,
-          existingTask?.status,
-          incomingStatus,
+          existingTask?.statusId,
+          incomingStatusId,
           incomingTeamId,
-          get().statusCategories,
+          get().teamStatuses,
         );
     const newTask: Task = {
       id: taskData.id || crypto.randomUUID(),
       title: taskData.title!,
       description: taskData.description || '',
       teamId: incomingTeamId,
-      status: incomingStatus,
+      statusId: incomingStatusId,
       priority: taskData.priority || 'medium',
       dueDate: toDateOnly(taskData.dueDate),
       doneDate: resolvedDoneDate,
@@ -1166,17 +1179,21 @@ export const useDataStore = create<DataState>((set, get) => ({
   // Team actions
   addTeam: (team) => {
     set({ teams: [...get().teams, team] });
-    const { teamStatuses, statusCategories, teamTypes } = get();
-    const defaultCats = { Backlog: 'backlog' };
+    const { teamTypes } = get();
     set({
-      teamStatuses: { ...teamStatuses, [team.id]: ['Backlog', 'To Do', 'In Progress', 'Done'] },
-      statusCategories: { ...statusCategories, [team.id]: defaultCats },
       teamTypes: { ...teamTypes, [team.id]: ['General'] },
     });
 
     db.upsertTeam(team)
-      .then(() => {
-        db.syncTeamStatuses(team.id, ['Backlog', 'To Do', 'In Progress', 'Done'], defaultCats);
+      .then(async () => {
+        const seedEntries: { name: string; category: StatusCategory }[] = [
+          { name: 'Backlog', category: 'backlog' },
+          { name: 'To Do', category: 'active' },
+          { name: 'In Progress', category: 'active' },
+          { name: 'Done', category: 'completed' },
+        ];
+        const { data: seeded } = await db.seedTeamStatuses(team.id, seedEntries);
+        set({ teamStatuses: { ...get().teamStatuses, [team.id]: seeded } });
         db.syncTeamContentTypes(team.id, ['General']);
       })
       .catch(() => toast.error('Failed to create team'));
@@ -1312,56 +1329,116 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   // Status/Type actions
-  addStatus: (teamId, status) => {
-    if (!status) return;
-    const { teamStatuses, statusCategories } = get();
-    const newStatuses = [...(teamStatuses[teamId] || []), status];
-    set({ teamStatuses: { ...teamStatuses, [teamId]: newStatuses } });
-    db.syncTeamStatuses(teamId, newStatuses, statusCategories[teamId]).catch(() =>
-      toast.error('Failed to save status'),
-    );
-  },
-
-  deleteStatus: (teamId, status) => {
-    const { teamStatuses, statusCategories } = get();
-    const newStatuses = (teamStatuses[teamId] || []).filter((s) => s !== status);
-    set({ teamStatuses: { ...teamStatuses, [teamId]: newStatuses } });
-    db.syncTeamStatuses(teamId, newStatuses, statusCategories[teamId]).catch(() =>
-      toast.error('Failed to delete status'),
-    );
-  },
-
-  reorderStatuses: (teamId, newStatuses) => {
-    set({ teamStatuses: { ...get().teamStatuses, [teamId]: newStatuses } });
-    db.syncTeamStatuses(teamId, newStatuses, get().statusCategories[teamId]).catch(() =>
-      toast.error('Failed to reorder statuses'),
-    );
-  },
-
-  duplicateStatus: (teamId, status, withData) => {
-    const { teamStatuses, tasks } = get();
-    const currentStatuses = teamStatuses[teamId] || teamStatuses['default'] || [];
-    let uniqueName = `${status} Copy`;
-    let counter = 1;
-    while (currentStatuses.includes(uniqueName)) {
-      uniqueName = `${status} Copy ${counter++}`;
+  addStatus: async (teamId, name) => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    const { teamStatuses } = get();
+    const current = teamStatuses[teamId] || [];
+    if (current.some((s) => s.name === trimmed)) {
+      toast.error('A status with this name already exists.');
+      return;
     }
+    const sortOrder = current.length;
+    const { data, error } = await db.addTeamStatus(teamId, trimmed, sortOrder, 'active');
+    if (error || !data) {
+      toast.error('Failed to save status');
+      return;
+    }
+    set({ teamStatuses: { ...get().teamStatuses, [teamId]: [...(get().teamStatuses[teamId] || []), data] } });
+  },
 
-    const newStatuses = [...currentStatuses, uniqueName];
-    set({ teamStatuses: { ...teamStatuses, [teamId]: newStatuses } });
-    db.syncTeamStatuses(teamId, newStatuses, get().statusCategories[teamId]).catch(() =>
-      toast.error('Failed to duplicate status'),
-    );
+  renameStatus: (teamId, statusId, newName) => {
+    const trimmed = newName.trim();
+    if (!trimmed) return;
+    const prevTeamStatuses = get().teamStatuses;
+    const list = prevTeamStatuses[teamId] || [];
+    const target = list.find((s) => s.id === statusId);
+    if (!target || target.name === trimmed) return;
+    if (list.some((s) => s.name === trimmed && s.id !== statusId)) {
+      toast.error('A status with this name already exists.');
+      return;
+    }
+    set({
+      teamStatuses: {
+        ...prevTeamStatuses,
+        [teamId]: list.map((s) => (s.id === statusId ? { ...s, name: trimmed } : s)),
+      },
+    });
+    db.renameTeamStatus(statusId, trimmed).catch(() => {
+      set({ teamStatuses: prevTeamStatuses });
+      toast.error('Failed to rename status');
+    });
+  },
+
+  deleteStatus: (teamId, statusId) => {
+    const prevTeamStatuses = get().teamStatuses;
+    const prevTasks = get().tasks;
+    const prevLinks = get().taskTeamLinks;
+    set({
+      teamStatuses: {
+        ...prevTeamStatuses,
+        [teamId]: (prevTeamStatuses[teamId] || []).filter((s) => s.id !== statusId),
+      },
+      // Mirror DB ON DELETE SET NULL
+      tasks: prevTasks.map((t) => (t.statusId === statusId ? { ...t, statusId: null } : t)),
+      taskTeamLinks: prevLinks.map((l) => (l.statusId === statusId ? { ...l, statusId: null } : l)),
+    });
+    db.deleteTeamStatus(statusId).catch(() => {
+      set({ teamStatuses: prevTeamStatuses, tasks: prevTasks, taskTeamLinks: prevLinks });
+      toast.error('Failed to delete status');
+    });
+  },
+
+  reorderStatuses: (teamId, idsInOrder) => {
+    const prev = get().teamStatuses;
+    const list = prev[teamId] || [];
+    const byId = new Map(list.map((s) => [s.id, s]));
+    const reordered: TeamStatus[] = [];
+    idsInOrder.forEach((id, index) => {
+      const status = byId.get(id);
+      if (status) reordered.push({ ...status, sortOrder: index });
+    });
+    // Append any not in idsInOrder (defensive)
+    for (const s of list) {
+      if (!idsInOrder.includes(s.id)) reordered.push({ ...s, sortOrder: reordered.length });
+    }
+    set({ teamStatuses: { ...prev, [teamId]: reordered } });
+    db.reorderTeamStatuses(
+      teamId,
+      reordered.map((s) => s.id),
+    ).catch(() => {
+      set({ teamStatuses: prev });
+      toast.error('Failed to reorder statuses');
+    });
+  },
+
+  duplicateStatus: async (teamId, statusId, withData) => {
+    const { teamStatuses, tasks } = get();
+    const list = teamStatuses[teamId] || [];
+    const original = list.find((s) => s.id === statusId);
+    if (!original) return;
+    let uniqueName = `${original.name} Copy`;
+    let counter = 1;
+    while (list.some((s) => s.name === uniqueName)) {
+      uniqueName = `${original.name} Copy ${counter++}`;
+    }
+    const sortOrder = list.length;
+    const { data: newStatus, error } = await db.addTeamStatus(teamId, uniqueName, sortOrder, original.category);
+    if (error || !newStatus) {
+      toast.error('Failed to duplicate status');
+      return;
+    }
+    set({ teamStatuses: { ...get().teamStatuses, [teamId]: [...list, newStatus] } });
 
     if (withData) {
-      const tasksToClone = tasks.filter((t) => t.teamId === teamId && t.status === status);
-      const newTasks = tasksToClone.map((t) => ({
+      const tasksToClone = tasks.filter((t) => t.teamId === teamId && t.statusId === statusId);
+      const newTasks: Task[] = tasksToClone.map((t) => ({
         ...t,
         id: crypto.randomUUID(),
         title: `${t.title} (Copy)`,
-        status: uniqueName,
+        statusId: newStatus.id,
       }));
-      set({ tasks: [...tasks, ...newTasks] });
+      set({ tasks: [...get().tasks, ...newTasks] });
       for (const task of newTasks) {
         db.upsertTask(task)
           .then(() => {
@@ -1373,23 +1450,23 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
   },
 
-  setStatusCategory: (teamId, statusName, category) => {
-    const { statusCategories } = get();
-    const teamCats = { ...(statusCategories[teamId] || {}) };
-
-    // Only one status per non-active category — reset previous holder
-    if (category !== 'active') {
-      for (const [name, cat] of Object.entries(teamCats)) {
-        if (cat === category && name !== statusName) {
-          teamCats[name] = 'active';
-          db.updateStatusCategory(teamId, name, 'active').catch(console.error);
-        }
+  setStatusCategory: (teamId, statusId, category) => {
+    const prev = get().teamStatuses;
+    const list = prev[teamId] || [];
+    const next = list.map((s) => {
+      if (s.id === statusId) return { ...s, category };
+      // Only one status per non-active category — reset previous holder
+      if (category !== 'active' && s.category === category) {
+        db.setStatusCategory(s.id, 'active').catch(console.error);
+        return { ...s, category: 'active' as StatusCategory };
       }
-    }
-
-    teamCats[statusName] = category;
-    set({ statusCategories: { ...statusCategories, [teamId]: teamCats } });
-    db.updateStatusCategory(teamId, statusName, category).catch(() => toast.error('Failed to update status category'));
+      return s;
+    });
+    set({ teamStatuses: { ...prev, [teamId]: next } });
+    db.setStatusCategory(statusId, category).catch(() => {
+      set({ teamStatuses: prev });
+      toast.error('Failed to update status category');
+    });
   },
 
   addType: (teamId, type) => {
@@ -1641,7 +1718,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchAbsences(), // 3
       db.fetchShifts(), // 4
       db.fetchLogs(), // 5
-      db.fetchTeamStatusData(), // 6 - combined statuses + categories
+      db.fetchTeamStatuses(), // 6 - statuses with id/name/category/sortOrder
       db.fetchTeamContentTypes(), // 7
       db.fetchPermissions(), // 8
       db.fetchCustomProperties(), // 9
@@ -1660,7 +1737,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
       result.status === 'fulfilled' ? result.value : fallback;
 
-    const teamStatusData = getValue(results[6], { statuses: {}, categories: {} });
+    const teamStatusesMap = getValue(results[6], {} as Record<string, TeamStatus[]>);
     const sidebarOrders = getValue(results[15], {} as Record<string, number>);
     const scheduleOrders = getValue(results[16], {} as Record<string, number>);
     const hiddenColumnsRows = getValue(results[17], [] as { teamId: string; columnKey: string }[]);
@@ -1692,13 +1769,12 @@ export const useDataStore = create<DataState>((set, get) => ({
       absences: getValue(results[3], []),
       shifts: getValue(results[4], []),
       logs: getValue(results[5], []),
-      teamStatuses: teamStatusData.statuses,
+      teamStatuses: teamStatusesMap,
       teamTypes: getValue(results[7], {}),
       permissions: getValue(results[8], {}),
       teamProperties: getValue(results[9], {}),
       allPlacements: getValue(results[10], []),
       integrations: getValue(results[11], {}),
-      statusCategories: teamStatusData.categories,
       deletedTaskCount: getValue(results[12], 0),
       taskTeamLinks: getValue(results[13], []),
       teamPlacements: getValue(results[14], {} as Record<string, string[]>),

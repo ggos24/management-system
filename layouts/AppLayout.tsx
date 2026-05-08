@@ -36,13 +36,12 @@ const AppLayout: React.FC = () => {
 
   const currentUser = useAuthStore((s) => s.currentUser)!;
 
-  const { tasks, teams, teamStatuses, teamTypes, statusCategories, absences } = useDataStore(
+  const { tasks, teams, teamStatuses, teamTypes, absences } = useDataStore(
     useShallow((s) => ({
       tasks: s.tasks,
       teams: s.teams,
       teamStatuses: s.teamStatuses,
       teamTypes: s.teamTypes,
-      statusCategories: s.statusCategories,
       absences: s.absences,
     })),
   );
@@ -77,20 +76,16 @@ const AppLayout: React.FC = () => {
 
   // Compute active task counts per team + my-workspace (excluding completed statuses)
   const taskCounts = useMemo(() => {
-    const getCategory = (status: string, teamId: string): string => {
-      const teamCats = statusCategories[teamId];
-      if (teamCats && teamCats[status]) return teamCats[status];
-      const s = status.toLowerCase().trim();
-      if (['dropped', 'archive'].includes(s)) return 'ignored';
-      if (['published', 'done', 'published this week'].includes(s)) return 'completed';
-      return 'active';
+    const getCategory = (statusId: string | null, teamId: string): string => {
+      if (!statusId) return 'active';
+      return teamStatuses[teamId]?.find((s) => s.id === statusId)?.category ?? 'active';
     };
 
     const counts: Record<string, number> = {};
     let myCount = 0;
 
     for (const task of tasks) {
-      const cat = getCategory(task.status, task.teamId);
+      const cat = getCategory(task.statusId, task.teamId);
       if (cat === 'completed') continue;
       counts[task.teamId] = (counts[task.teamId] || 0) + 1;
       if (currentUser && task.assigneeIds.includes(currentUser.id)) {
@@ -99,7 +94,7 @@ const AppLayout: React.FC = () => {
     }
     counts['my-workspace'] = myCount;
     return counts;
-  }, [tasks, statusCategories, currentUser]);
+  }, [tasks, teamStatuses, currentUser]);
 
   const pendingAbsenceCount = useMemo(() => absences.filter((a) => a.status === 'pending').length, [absences]);
 
@@ -109,8 +104,8 @@ const AppLayout: React.FC = () => {
         ? currentView
         : teams[0]?.id || '';
 
-    const statusList = teamStatuses[defaultTeamId] || teamStatuses['default'] || ['To Do'];
-    const defaultStatus = statusList.includes('Pitch') ? 'Pitch' : statusList[0] || 'To Do';
+    const statusList = teamStatuses[defaultTeamId] || [];
+    const defaultStatus = statusList.find((s) => s.name === 'Pitch') || statusList[0];
 
     const typeList = teamTypes[defaultTeamId] || teamTypes['default'] || ['General'];
     const defaultContentType = typeList[0];
@@ -119,7 +114,7 @@ const AppLayout: React.FC = () => {
       title: '',
       description: '',
       teamId: defaultTeamId,
-      status: defaultStatus,
+      statusId: defaultStatus?.id ?? null,
       priority: 'medium',
       placements: [],
       links: [],

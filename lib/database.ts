@@ -19,6 +19,8 @@ import {
   PersonFieldKey,
   Doc,
   DocSection,
+  TeamStatus,
+  StatusCategory,
 } from '../types';
 import { toDateOnly } from './utils';
 
@@ -70,7 +72,7 @@ function mapTask(row: any, assigneeIds: string[], placements: string[]): Task {
     title: row.title,
     description: row.description || '',
     teamId: row.team_id,
-    status: row.status,
+    statusId: row.status_id ?? null,
     priority: row.priority || 'medium',
     dueDate: toDateOnly(row.due_date),
     doneDate: row.done_date ? toDateOnly(row.done_date) : null,
@@ -208,57 +210,33 @@ export async function fetchLogs(): Promise<LogEntry[]> {
   return (data || []).map(mapLog);
 }
 
-export async function fetchTeamStatuses(): Promise<Record<string, string[]>> {
-  const { data, error } = await supabase.from('team_statuses').select('team_id, name, sort_order').order('sort_order');
+function mapTeamStatus(row: any): TeamStatus {
+  return {
+    id: row.id,
+    name: row.name,
+    category: (row.category as StatusCategory) || 'active',
+    sortOrder: row.sort_order ?? 0,
+  };
+}
+
+export async function fetchTeamStatuses(): Promise<Record<string, TeamStatus[]>> {
+  const { data, error } = await supabase
+    .from('team_statuses')
+    .select('id, team_id, name, category, sort_order')
+    .order('sort_order');
   if (error) throw error;
 
-  const result: Record<string, string[]> = {};
+  const result: Record<string, TeamStatus[]> = {};
   for (const row of data || []) {
     const key = row.team_id;
     if (!result[key]) result[key] = [];
-    result[key].push(row.name);
+    result[key].push(mapTeamStatus(row));
   }
   return result;
 }
 
-export async function fetchStatusCategories(): Promise<Record<string, Record<string, string>>> {
-  const { data, error } = await supabase.from('team_statuses').select('team_id, name, category');
-  if (error) throw error;
-
-  const result: Record<string, Record<string, string>> = {};
-  for (const row of data || []) {
-    if (!result[row.team_id]) result[row.team_id] = {};
-    result[row.team_id][row.name] = row.category || 'active';
-  }
-  return result;
-}
-
-export async function fetchTeamStatusData(): Promise<{
-  statuses: Record<string, string[]>;
-  categories: Record<string, Record<string, string>>;
-}> {
-  const { data, error } = await supabase
-    .from('team_statuses')
-    .select('team_id, name, category, sort_order')
-    .order('sort_order');
-  if (error) throw error;
-  const statuses: Record<string, string[]> = {};
-  const categories: Record<string, Record<string, string>> = {};
-  for (const row of data || []) {
-    if (!statuses[row.team_id]) statuses[row.team_id] = [];
-    statuses[row.team_id].push(row.name);
-    if (!categories[row.team_id]) categories[row.team_id] = {};
-    categories[row.team_id][row.name] = row.category || 'active';
-  }
-  return { statuses, categories };
-}
-
-export async function updateStatusCategory(teamId: string, statusName: string, category: string) {
-  const { error } = await supabase
-    .from('team_statuses')
-    .update({ category })
-    .eq('team_id', teamId)
-    .eq('name', statusName);
+export async function setStatusCategory(statusId: string, category: StatusCategory) {
+  const { error } = await supabase.from('team_statuses').update({ category }).eq('id', statusId);
   return { error };
 }
 
@@ -387,7 +365,7 @@ export async function upsertTask(task: Task) {
     title: task.title,
     description: task.description,
     team_id: task.teamId,
-    status: task.status,
+    status_id: task.statusId,
     priority: task.priority,
     due_date: task.dueDate ? toDateOnly(task.dueDate) : null,
     done_date: task.doneDate ? toDateOnly(task.doneDate) : null,
@@ -498,8 +476,8 @@ export async function updateTaskSortOrders(updates: { id: string; sort_order: nu
   if (error) throw error;
 }
 
-export async function updateTaskStatus(taskId: string, newStatus: string) {
-  const { error } = await supabase.from('tasks').update({ status: newStatus }).eq('id', taskId);
+export async function updateTaskStatus(taskId: string, newStatusId: string | null) {
+  const { error } = await supabase.from('tasks').update({ status_id: newStatusId }).eq('id', taskId);
   return { error };
 }
 
@@ -829,32 +807,57 @@ export async function insertLog(log: Omit<LogEntry, 'id'>) {
 
 // === Team status mutations ===
 
-export async function syncTeamStatuses(teamId: string, statuses: string[], categories?: Record<string, string>) {
-  // Read existing categories before delete so we can preserve them
-  let cats = categories;
-  if (!cats) {
-    const { data } = await supabase.from('team_statuses').select('name, category').eq('team_id', teamId);
-    cats = {};
-    for (const row of data || []) {
-      cats[row.name] = row.category || 'active';
-    }
-  }
+export async function addTeamStatus(
+  teamId: string,
+  name: string,
+  sortOrder: number,
+  category: StatusCategory = 'active',
+): Promise<{ data: TeamStatus | null; error: any }> {
+  const { data, error } = await supabase
+    .from('team_statuses')
+    .insert({ team_id: teamId, name, sort_order: sortOrder, category })
+    .select('id, team_id, name, category, sort_order')
+    .single();
+  if (error || !data) return { data: null, error };
+  return { data: mapTeamStatus(data), error: null };
+}
 
-  // Delete existing statuses for this team
-  await supabase.from('team_statuses').delete().eq('team_id', teamId);
+export async function renameTeamStatus(statusId: string, newName: string) {
+  const { error } = await supabase.from('team_statuses').update({ name: newName }).eq('id', statusId);
+  return { error };
+}
 
-  // Insert new statuses with sort order and preserved categories
-  if (statuses.length > 0) {
-    const rows = statuses.map((name, index) => ({
-      team_id: teamId,
-      name,
-      sort_order: index,
-      category: cats![name] || 'active',
-    }));
-    const { error } = await supabase.from('team_statuses').insert(rows);
-    return { error };
-  }
-  return { error: null };
+export async function deleteTeamStatus(statusId: string) {
+  const { error } = await supabase.from('team_statuses').delete().eq('id', statusId);
+  return { error };
+}
+
+export async function reorderTeamStatuses(_teamId: string, idsInOrder: string[]) {
+  if (idsInOrder.length === 0) return { error: null };
+  // Postgres UNIQUE(team_id, name) lets us bulk-update sort_order via upsert by id.
+  const rows = idsInOrder.map((id, index) => ({ id, sort_order: index }));
+  const { error } = await supabase.from('team_statuses').upsert(rows, { onConflict: 'id' });
+  return { error };
+}
+
+export async function seedTeamStatuses(
+  teamId: string,
+  entries: { name: string; category: StatusCategory }[],
+): Promise<{ data: TeamStatus[]; error: any }> {
+  if (entries.length === 0) return { data: [], error: null };
+  const rows = entries.map((entry, index) => ({
+    team_id: teamId,
+    name: entry.name,
+    sort_order: index,
+    category: entry.category,
+  }));
+  const { data, error } = await supabase
+    .from('team_statuses')
+    .insert(rows)
+    .select('id, team_id, name, category, sort_order')
+    .order('sort_order');
+  if (error || !data) return { data: [], error };
+  return { data: data.map(mapTeamStatus), error: null };
 }
 
 // === Team content type mutations ===
@@ -1267,7 +1270,7 @@ function mapTaskTeamLink(row: any): TaskTeamLink {
     id: row.id,
     taskId: row.task_id,
     teamId: row.team_id,
-    status: row.status,
+    statusId: row.status_id ?? null,
     sortOrder: row.sort_order ?? 0,
     customFieldValues: row.custom_field_values || {},
     addedBy: row.added_by || undefined,
@@ -1284,13 +1287,13 @@ export async function fetchTaskTeamLinks(): Promise<TaskTeamLink[]> {
 export async function insertTaskTeamLink(
   taskId: string,
   teamId: string,
-  status: string,
+  statusId: string | null,
   addedBy?: string,
 ): Promise<TaskTeamLink> {
   const row: Record<string, unknown> = {
     task_id: taskId,
     team_id: teamId,
-    status,
+    status_id: statusId,
   };
   if (addedBy) row.added_by = addedBy;
   const { data, error } = await supabase.from('task_team_links').insert(row).select().single();
@@ -1303,10 +1306,10 @@ export async function deleteTaskTeamLink(taskId: string, teamId: string) {
   return { error };
 }
 
-export async function updateTaskTeamLinkStatus(taskId: string, teamId: string, status: string) {
+export async function updateTaskTeamLinkStatus(taskId: string, teamId: string, statusId: string | null) {
   const { error } = await supabase
     .from('task_team_links')
-    .update({ status })
+    .update({ status_id: statusId })
     .eq('task_id', taskId)
     .eq('team_id', teamId);
   return { error };

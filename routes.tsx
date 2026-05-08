@@ -29,18 +29,16 @@ interface LayoutContext {
 // These map store data to the existing prop interfaces, keeping page components untouched.
 
 const DashboardRoute: React.FC = () => {
-  const { tasks, members, absences, teams, statusCategories } = useDataStore(
+  const { tasks, members, absences, teams, teamStatuses } = useDataStore(
     useShallow((s) => ({
       tasks: s.tasks,
       members: s.members,
       absences: s.absences,
       teams: s.teams,
-      statusCategories: s.statusCategories,
+      teamStatuses: s.teamStatuses,
     })),
   );
-  return (
-    <Dashboard tasks={tasks} members={members} absences={absences} teams={teams} statusCategories={statusCategories} />
-  );
+  return <Dashboard tasks={tasks} members={members} absences={absences} teams={teams} teamStatuses={teamStatuses} />;
 };
 
 const ScheduleRoute: React.FC = () => {
@@ -106,8 +104,10 @@ const MyWorkspaceRoute: React.FC = () => {
     updateTaskStatus,
     updateTask,
     teamStatuses,
+    addStatus,
+    renameStatus,
+    deleteStatus,
     reorderStatuses,
-    statusCategories,
     duplicateStatus,
     setStatusCategory,
     teamProperties,
@@ -134,8 +134,10 @@ const MyWorkspaceRoute: React.FC = () => {
       updateTaskStatus: s.updateTaskStatus,
       updateTask: s.updateTask,
       teamStatuses: s.teamStatuses,
+      addStatus: s.addStatus,
+      renameStatus: s.renameStatus,
+      deleteStatus: s.deleteStatus,
       reorderStatuses: s.reorderStatuses,
-      statusCategories: s.statusCategories,
       duplicateStatus: s.duplicateStatus,
       setStatusCategory: s.setStatusCategory,
       teamProperties: s.teamProperties,
@@ -180,8 +182,10 @@ const MyWorkspaceRoute: React.FC = () => {
       onTaskClick={openTaskModal}
       onUpdateTask={updateTask}
       teamStatuses={teamStatuses}
-      onUpdateTeamStatuses={reorderStatuses}
-      statusCategories={statusCategories}
+      onAddStatus={addStatus}
+      onRenameStatus={renameStatus}
+      onDeleteStatus={deleteStatus}
+      onReorderStatuses={reorderStatuses}
       onDuplicateStatus={duplicateStatus}
       onSetStatusCategory={setStatusCategory}
       customProperties={teamProperties['my-work'] || []}
@@ -216,8 +220,10 @@ const TeamWorkspaceRoute: React.FC = () => {
     updateTaskStatus,
     updateTask,
     teamStatuses,
+    addStatus,
+    renameStatus,
+    deleteStatus,
     reorderStatuses,
-    statusCategories,
     duplicateStatus,
     setStatusCategory,
     teamProperties,
@@ -244,8 +250,10 @@ const TeamWorkspaceRoute: React.FC = () => {
       updateTaskStatus: s.updateTaskStatus,
       updateTask: s.updateTask,
       teamStatuses: s.teamStatuses,
+      addStatus: s.addStatus,
+      renameStatus: s.renameStatus,
+      deleteStatus: s.deleteStatus,
       reorderStatuses: s.reorderStatuses,
-      statusCategories: s.statusCategories,
       duplicateStatus: s.duplicateStatus,
       setStatusCategory: s.setStatusCategory,
       teamProperties: s.teamProperties,
@@ -293,8 +301,10 @@ const TeamWorkspaceRoute: React.FC = () => {
       onTaskClick={(task) => openTaskModal({ ...task, viewingTeamId: team.id })}
       onUpdateTask={updateTask}
       teamStatuses={teamStatuses}
-      onUpdateTeamStatuses={reorderStatuses}
-      statusCategories={statusCategories}
+      onAddStatus={addStatus}
+      onRenameStatus={renameStatus}
+      onDeleteStatus={deleteStatus}
+      onReorderStatuses={reorderStatuses}
       onDuplicateStatus={duplicateStatus}
       onSetStatusCategory={setStatusCategory}
       customProperties={teamProperties[team.id] || []}

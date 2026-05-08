@@ -42,6 +42,7 @@ import { Task, TaskComment, TaskActivity, CustomProperty } from '../types';
 import { cn } from '../lib/cn';
 import { formatDateEU, toDateOnly } from '../lib/utils';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusColor } from '../constants';
+import { getStatusName } from '../lib/statusUtils';
 import * as db from '../lib/database';
 import { supabase } from '../lib/supabase';
 
@@ -720,12 +721,17 @@ export const TaskModal: React.FC = () => {
                 icon={CheckCircle}
                 label="Section"
                 hint="Current workflow stage of this task"
-                options={teamStatuses[taskModalData.teamId || 'default'] || teamStatuses['default'] || ['To Do']}
-                value={taskModalData.status || ''}
-                onChange={(val) => setTaskModalData({ ...taskModalData, status: val })}
-                onAdd={(val) => {
-                  addStatus(taskModalData.teamId || 'default', val);
-                  setTaskModalData({ ...taskModalData, status: val });
+                options={(teamStatuses[taskModalData.teamId || ''] || []).map((s) => ({ value: s.id, label: s.name }))}
+                value={taskModalData.statusId || ''}
+                onChange={(val) => setTaskModalData({ ...taskModalData, statusId: val })}
+                onAdd={async (name) => {
+                  const teamId = taskModalData.teamId;
+                  if (!teamId) return;
+                  await addStatus(teamId, name);
+                  const created = (useDataStore.getState().teamStatuses[teamId] || []).find((s) => s.name === name);
+                  if (created) {
+                    setTaskModalData({ ...taskModalData, statusId: created.id });
+                  }
                 }}
               />
               <CustomSelect
@@ -905,16 +911,18 @@ export const TaskModal: React.FC = () => {
                     {/* Home workspace */}
                     {(() => {
                       const homeTeam = teams.find((t) => t.id === taskModalData.teamId);
-                      return homeTeam ? (
+                      if (!homeTeam) return null;
+                      const homeStatusName = getStatusName(teamStatuses, homeTeam.id, taskModalData.statusId ?? null);
+                      return (
                         <div className="flex items-center justify-between px-3 py-2">
                           <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">{homeTeam.name}</span>
                           <span
-                            className={`text-[11px] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(taskModalData.status || '')}`}
+                            className={`text-[11px] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(homeStatusName)}`}
                           >
-                            {taskModalData.status}
+                            {homeStatusName}
                           </span>
                         </div>
-                      ) : null;
+                      );
                     })()}
                     {/* Linked workspaces */}
                     {taskTeamLinks
@@ -922,15 +930,16 @@ export const TaskModal: React.FC = () => {
                       .map((link) => {
                         const linkedTeam = teams.find((t) => t.id === link.teamId);
                         if (!linkedTeam) return null;
+                        const linkStatusName = getStatusName(teamStatuses, linkedTeam.id, link.statusId);
                         return (
                           <div key={link.id} className="flex items-center justify-between px-3 py-2">
                             <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
                               {linkedTeam.name}
                             </span>
                             <span
-                              className={`text-[11px] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(link.status)}`}
+                              className={`text-[11px] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(linkStatusName)}`}
                             >
-                              {link.status}
+                              {linkStatusName}
                             </span>
                           </div>
                         );
