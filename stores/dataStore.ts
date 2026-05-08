@@ -1389,7 +1389,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     });
   },
 
-  reorderStatuses: (teamId, idsInOrder) => {
+  reorderStatuses: async (teamId, idsInOrder) => {
     const prev = get().teamStatuses;
     const list = prev[teamId] || [];
     const byId = new Map(list.map((s) => [s.id, s]));
@@ -1403,13 +1403,14 @@ export const useDataStore = create<DataState>((set, get) => ({
       if (!idsInOrder.includes(s.id)) reordered.push({ ...s, sortOrder: reordered.length });
     }
     set({ teamStatuses: { ...prev, [teamId]: reordered } });
-    db.reorderTeamStatuses(
+    const { error } = await db.reorderTeamStatuses(
       teamId,
       reordered.map((s) => s.id),
-    ).catch(() => {
+    );
+    if (error) {
       set({ teamStatuses: prev });
       toast.error('Failed to reorder statuses');
-    });
+    }
   },
 
   duplicateStatus: async (teamId, statusId, withData) => {

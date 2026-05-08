@@ -834,10 +834,13 @@ export async function deleteTeamStatus(statusId: string) {
 
 export async function reorderTeamStatuses(_teamId: string, idsInOrder: string[]) {
   if (idsInOrder.length === 0) return { error: null };
-  // Postgres UNIQUE(team_id, name) lets us bulk-update sort_order via upsert by id.
-  const rows = idsInOrder.map((id, index) => ({ id, sort_order: index }));
-  const { error } = await supabase.from('team_statuses').upsert(rows, { onConflict: 'id' });
-  return { error };
+  // N parallel UPDATEs — upsert won't work here because id-only INSERTs violate
+  // NOT NULL on team_id/name before ON CONFLICT can resolve to an UPDATE.
+  const results = await Promise.all(
+    idsInOrder.map((id, index) => supabase.from('team_statuses').update({ sort_order: index }).eq('id', id)),
+  );
+  const firstError = results.find((r) => r.error)?.error;
+  return { error: firstError ?? null };
 }
 
 export async function seedTeamStatuses(
