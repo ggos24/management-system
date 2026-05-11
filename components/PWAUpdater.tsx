@@ -6,7 +6,7 @@ const HOURLY_UPDATE_CHECK_MS = 60 * 60 * 1000;
 
 export const PWAUpdater: React.FC = () => {
   const {
-    needRefresh: [needRefresh, setNeedRefresh],
+    needRefresh: [needRefresh],
     updateServiceWorker,
   } = useRegisterSW({
     onRegisteredSW(_swUrl, registration) {
@@ -29,12 +29,11 @@ export const PWAUpdater: React.FC = () => {
           void updateServiceWorker(true);
         },
       },
-      onDismiss: () => setNeedRefresh(false),
     });
     return () => {
       toast.dismiss(toastId);
     };
-  }, [needRefresh, setNeedRefresh, updateServiceWorker]);
+  }, [needRefresh, updateServiceWorker]);
 
   return null;
 };

@@ -263,3 +263,15 @@ Minimal test coverage. Vitest with jsdom and Testing Library. Run with `npm run 
 3. Use `(SELECT id FROM profiles WHERE auth_user_id = auth.uid())` for user-scoped RLS — NOT `auth.uid()` directly (profiles.id differs from auth.uid)
 4. Add mapper and fetch/upsert functions to `lib/database.ts`
 5. Add Realtime subscription in `hooks/useRealtimeSync.ts` if needed
+
+### Breaking schema changes (drop / rename columns)
+
+PWA SW strategy auto-activates new versions, but the **already-loaded page** keeps the old JS bundle in memory until the user reloads. Therefore a column drop or rename must NEVER ship in the same release that introduces the replacement — old clients on a stale tab still issue queries against the removed column and crash (see incident around `tasks.status` → `tasks.status_id` rollout).
+
+Two-phase rollout for any breaking column change:
+
+1. **Release A** — add the new column / FK, backfill it, deploy code that reads both old and new (mapper falls back). Old column stays alive.
+2. **Wait ≥ 1 week** so SW-updated clients finish reloading.
+3. **Release B** — drop the legacy column. Now even cached tabs talk to the new schema.
+
+Audit/log columns that store frozen labels can be skipped (see how `notifications.entity_data` was left untouched in `20260508000000_status_id_fk.sql`).
