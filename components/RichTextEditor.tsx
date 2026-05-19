@@ -8,6 +8,118 @@ interface RichTextEditorProps {
   minHeight?: string;
 }
 
+const ALLOWED_TAGS = new Set([
+  'A',
+  'B',
+  'STRONG',
+  'I',
+  'EM',
+  'U',
+  'S',
+  'STRIKE',
+  'DEL',
+  'CODE',
+  'PRE',
+  'P',
+  'BR',
+  'DIV',
+  'SPAN',
+  'H1',
+  'H2',
+  'H3',
+  'H4',
+  'H5',
+  'H6',
+  'UL',
+  'OL',
+  'LI',
+  'BLOCKQUOTE',
+]);
+
+const STRIP_STYLE_PROPS = /(?:^|;)\s*(?:color|background-color|background|font-family|font-size)\s*:[^;]*/gi;
+
+function sanitizePastedHtml(html: string): string {
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+
+  const walk = (node: Node) => {
+    // Iterate children snapshot — we mutate the tree during traversal
+    const children = Array.from(node.childNodes);
+    for (const child of children) {
+      if (child.nodeType === Node.ELEMENT_NODE) {
+        const el = child as Element;
+        const tag = el.tagName.toUpperCase();
+
+        if (
+          tag === 'SCRIPT' ||
+          tag === 'STYLE' ||
+          tag === 'IFRAME' ||
+          tag === 'OBJECT' ||
+          tag === 'EMBED' ||
+          tag === 'META' ||
+          tag === 'LINK' ||
+          tag === 'NOSCRIPT'
+        ) {
+          el.remove();
+          continue;
+        }
+
+        if (!ALLOWED_TAGS.has(tag)) {
+          // Unwrap: replace element with its children
+          const parent = el.parentNode;
+          if (parent) {
+            while (el.firstChild) parent.insertBefore(el.firstChild, el);
+            parent.removeChild(el);
+          }
+          // Re-walk parent's children (we already snapshotted, but unwrapped nodes
+          // are now siblings — they'll be in the snapshot at their original positions
+          // only if they were already child references; safer to re-walk parent)
+          if (parent) walk(parent);
+          continue;
+        }
+
+        // Strip dangerous + presentational attributes
+        for (const attr of Array.from(el.attributes)) {
+          const name = attr.name.toLowerCase();
+          const value = attr.value;
+          if (name.startsWith('on')) {
+            el.removeAttribute(attr.name);
+            continue;
+          }
+          if ((name === 'href' || name === 'src') && /^\s*javascript:/i.test(value)) {
+            el.removeAttribute(attr.name);
+            continue;
+          }
+          if (name === 'style') {
+            const cleaned = value
+              .replace(STRIP_STYLE_PROPS, '')
+              .replace(/^\s*;+\s*/, '')
+              .trim();
+            if (cleaned) el.setAttribute('style', cleaned);
+            else el.removeAttribute('style');
+            continue;
+          }
+          // Keep href, target, rel on links; drop everything else
+          if (tag === 'A' && (name === 'href' || name === 'target' || name === 'rel')) continue;
+          el.removeAttribute(attr.name);
+        }
+
+        // Ensure external links open safely
+        if (tag === 'A' && el.getAttribute('href')) {
+          el.setAttribute('target', '_blank');
+          el.setAttribute('rel', 'noopener noreferrer');
+        }
+
+        walk(el);
+      } else if (child.nodeType === Node.COMMENT_NODE) {
+        child.parentNode?.removeChild(child);
+      }
+    }
+  };
+
+  walk(doc.body);
+  return doc.body.innerHTML;
+}
+
 const ToolbarButton: React.FC<{
   onClick: () => void;
   title: string;
@@ -60,15 +172,18 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
-    const html = e.clipboardData.getData('text/html');
+    const rawHtml = e.clipboardData.getData('text/html');
     const text = e.clipboardData.getData('text/plain');
-    if (html) {
-      const cleaned = html.replace(/color\s*:\s*[^;"']+(;?)/gi, '').replace(/background-color\s*:\s*[^;"']+(;?)/gi, '');
-      document.execCommand('insertHTML', false, cleaned);
-    } else {
+
+    const sanitized = rawHtml ? sanitizePastedHtml(rawHtml) : '';
+    const hasTextContent =
+      sanitized.length > 0 && !!new DOMParser().parseFromString(sanitized, 'text/html').body.textContent?.trim();
+
+    if (hasTextContent) {
+      document.execCommand('insertHTML', false, sanitized);
+    } else if (text) {
       document.execCommand('insertText', false, text);
     }
-    handleInput();
   };
 
   const handleLink = () => {
