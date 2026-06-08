@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { AuthGuard } from './components/AuthGuard';
 import AppLayout from './layouts/AppLayout';
 import LoginPage from './components/LoginPage';
+import { RouteError } from './components/RouteError';
 import { useAuthStore } from './stores/authStore';
 import { useDataStore } from './stores/dataStore';
 import { useUiStore } from './stores/uiStore';
@@ -371,9 +372,11 @@ export const router = createBrowserRouter([
   {
     path: '/login',
     element: <LoginRoute />,
+    errorElement: <RouteError />,
   },
   {
     element: <AuthGuard />,
+    errorElement: <RouteError />,
     children: [
       {
         element: <AppLayout />,

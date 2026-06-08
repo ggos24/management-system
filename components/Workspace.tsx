@@ -779,6 +779,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Filtering Logic
   const filteredTasks = useMemo(() => {
+    // Hoisted out of the per-task loop (query is task-independent). Null-coalesce the
+    // title/description reads so a malformed task — e.g. a stale bundle seeing a
+    // schema it predates — degrades to "no match" instead of white-screening on
+    // `undefined.toLowerCase()`.
+    const lowerQuery = searchQuery.toLowerCase();
     return tasks.filter((t) => {
       let matchTeam = false;
       if (teamFilter === 'my-work') {
@@ -805,11 +810,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
       const matchPlacement =
         filterPlacements.length === 0 || t.placements.some((tag) => filterPlacements.includes(tag));
 
-      const lowerQuery = searchQuery.toLowerCase();
       const matchSearch =
         !searchQuery ||
-        t.title.toLowerCase().includes(lowerQuery) ||
-        (t.description && t.description.toLowerCase().includes(lowerQuery));
+        (t.title ?? '').toLowerCase().includes(lowerQuery) ||
+        (t.description ?? '').toLowerCase().includes(lowerQuery);
 
       return matchTeam && matchPerson && matchPriority && matchPlacement && matchSearch;
     });
