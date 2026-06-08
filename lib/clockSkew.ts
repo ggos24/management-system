@@ -48,3 +48,21 @@ export function skewSecondsFromToken(accessToken: string | undefined | null): nu
   if (iat == null) return null;
   return Math.round(Date.now() / 1000) - iat;
 }
+
+/**
+ * Force a fresh skew measurement on demand (e.g. after the user corrects their
+ * clock). Skew can only be measured reliably from a just-issued token — the stored
+ * one can't be told apart from clock drift — so this mints a new token and reads it.
+ * Returns null if the refresh fails (e.g. rate-limited), in which case the caller
+ * should KEEP the previous reading rather than falsely clearing the warning.
+ */
+export async function recheckClockSkew(): Promise<number | null> {
+  try {
+    const { supabase } = await import('./supabase');
+    const { data, error } = await supabase.auth.refreshSession();
+    if (error || !data.session) return null;
+    return skewSecondsFromToken(data.session.access_token);
+  } catch {
+    return null;
+  }
+}
