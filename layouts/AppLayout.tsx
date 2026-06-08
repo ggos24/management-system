@@ -15,6 +15,7 @@ const InviteModal = React.lazy(() => import('../components/InviteModal').then((m
 import { Modal } from '../components/Modal';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { OfflineBanner } from '../components/OfflineBanner';
+import { ClockSkewBanner } from '../components/ClockSkewBanner';
 import { PWAUpdater } from '../components/PWAUpdater';
 import { useTaskDeepLink } from '../hooks/useTaskDeepLink';
 import { useHashRedirect } from '../hooks/useHashRedirect';
@@ -169,6 +170,7 @@ const AppLayout: React.FC = () => {
         />
 
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
+          <ClockSkewBanner />
           <OfflineBanner />
           <Header />
           <main className="flex-1 overflow-hidden relative">

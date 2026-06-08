@@ -3,7 +3,10 @@ import { toast } from 'sonner';
 import { Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react';
 import { supabase } from '../lib/supabase';
 import { AlertBanner } from './AlertBanner';
+import { ClockSkewBanner } from './ClockSkewBanner';
 import { Button, Input, FormField, Card } from './ui';
+import { useUiStore } from '../stores/uiStore';
+import { skewSecondsFromToken } from '../lib/clockSkew';
 import type { Session } from '@supabase/supabase-js';
 
 interface LoginPageProps {
@@ -86,137 +89,143 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
     }
 
     if (data.session) {
+      // The token was just minted, so its `iat` reveals any device clock skew —
+      // the usual cause of the "logs in then immediately logs out" refresh loop.
+      useUiStore.getState().setClockSkew(skewSecondsFromToken(data.session.access_token));
       onLogin(data.session);
     }
   };
 
   return (
-    <div className="min-h-screen w-full bg-zinc-50 dark:bg-black flex items-center justify-center p-4 transition-colors duration-300">
-      <Card className="w-full max-w-md shadow-xl p-8 animate-pop-in">
-        <div className="text-center mb-8">
-          <img src="/logo.svg" alt="Logo" className="w-12 h-12 rounded-lg mx-auto mb-4" />
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">
-            {currentMode === 'set-password'
-              ? 'Set Your Password'
-              : currentMode === 'reset-password'
-                ? 'Reset Password'
-                : 'Welcome back'}
-          </h1>
-          <p className="text-sm text-zinc-500 mt-2">
-            {currentMode === 'set-password'
-              ? 'Create a password to complete your account setup'
-              : currentMode === 'reset-password'
-                ? "Enter your email and we'll send you a reset link"
-                : 'Sign in to your account'}
-          </p>
-        </div>
-
-        {error && (
-          <div className="mb-4">
-            <AlertBanner message={error} />
+    <div className="min-h-screen w-full bg-zinc-50 dark:bg-black flex flex-col transition-colors duration-300">
+      <ClockSkewBanner />
+      <div className="flex-1 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl p-8 animate-pop-in">
+          <div className="text-center mb-8">
+            <img src="/logo.svg" alt="Logo" className="w-12 h-12 rounded-lg mx-auto mb-4" />
+            <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">
+              {currentMode === 'set-password'
+                ? 'Set Your Password'
+                : currentMode === 'reset-password'
+                  ? 'Reset Password'
+                  : 'Welcome back'}
+            </h1>
+            <p className="text-sm text-zinc-500 mt-2">
+              {currentMode === 'set-password'
+                ? 'Create a password to complete your account setup'
+                : currentMode === 'reset-password'
+                  ? "Enter your email and we'll send you a reset link"
+                  : 'Sign in to your account'}
+            </p>
           </div>
-        )}
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {(currentMode === 'login' || currentMode === 'reset-password') && (
-            <FormField label="Email">
-              <Input
-                type="email"
-                required
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="name@company.com"
-              />
-            </FormField>
-          )}
-
-          {currentMode !== 'reset-password' && (
-            <FormField label={currentMode === 'set-password' ? 'New Password' : 'Password'}>
-              <div className="relative">
-                <Input
-                  type={showPassword ? 'text' : 'password'}
-                  required
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  className="pl-3 pr-10"
-                  placeholder={currentMode === 'set-password' ? 'Choose a strong password' : '••••••••'}
-                  minLength={6}
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                  className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                >
-                  {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
-                </button>
-              </div>
-            </FormField>
-          )}
-
-          {currentMode === 'set-password' && (
-            <FormField label="Confirm Password">
-              <Input
-                type={showPassword ? 'text' : 'password'}
-                required
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                className="pl-3 pr-10"
-                placeholder="Re-enter your password"
-                minLength={6}
-              />
-            </FormField>
-          )}
-
-          {currentMode === 'login' && (
-            <div className="flex items-center justify-end py-2">
-              <button
-                type="button"
-                onClick={() => {
-                  setError(null);
-                  setCurrentMode('reset-password');
-                }}
-                className="text-xs font-medium text-zinc-900 dark:text-white hover:underline py-1"
-              >
-                Forgot password?
-              </button>
+          {error && (
+            <div className="mb-4">
+              <AlertBanner message={error} />
             </div>
           )}
 
-          <Button
-            type="submit"
-            disabled={isLoading}
-            className="w-full py-2.5 flex items-center justify-center gap-2 disabled:opacity-70"
-          >
-            {isLoading
-              ? currentMode === 'set-password'
-                ? 'Setting password...'
-                : currentMode === 'reset-password'
-                  ? 'Sending...'
-                  : 'Logging in...'
-              : currentMode === 'set-password'
-                ? 'Set Password & Continue'
-                : currentMode === 'reset-password'
-                  ? 'Send Reset Link'
-                  : 'Sign In'}
-            {!isLoading && <ArrowRight size={16} />}
-          </Button>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {(currentMode === 'login' || currentMode === 'reset-password') && (
+              <FormField label="Email">
+                <Input
+                  type="email"
+                  required
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  placeholder="name@company.com"
+                />
+              </FormField>
+            )}
 
-          {currentMode === 'reset-password' && (
+            {currentMode !== 'reset-password' && (
+              <FormField label={currentMode === 'set-password' ? 'New Password' : 'Password'}>
+                <div className="relative">
+                  <Input
+                    type={showPassword ? 'text' : 'password'}
+                    required
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    className="pl-3 pr-10"
+                    placeholder={currentMode === 'set-password' ? 'Choose a strong password' : '••••••••'}
+                    minLength={6}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    aria-label={showPassword ? 'Hide password' : 'Show password'}
+                    className="absolute right-1 top-1/2 -translate-y-1/2 w-9 h-9 flex items-center justify-center text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+              </FormField>
+            )}
+
+            {currentMode === 'set-password' && (
+              <FormField label="Confirm Password">
+                <Input
+                  type={showPassword ? 'text' : 'password'}
+                  required
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  className="pl-3 pr-10"
+                  placeholder="Re-enter your password"
+                  minLength={6}
+                />
+              </FormField>
+            )}
+
+            {currentMode === 'login' && (
+              <div className="flex items-center justify-end py-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setError(null);
+                    setCurrentMode('reset-password');
+                  }}
+                  className="text-xs font-medium text-zinc-900 dark:text-white hover:underline py-1"
+                >
+                  Forgot password?
+                </button>
+              </div>
+            )}
+
             <Button
-              variant="ghost"
-              type="button"
-              onClick={() => {
-                setError(null);
-                setCurrentMode('login');
-              }}
-              className="w-full flex items-center justify-center gap-1"
+              type="submit"
+              disabled={isLoading}
+              className="w-full py-2.5 flex items-center justify-center gap-2 disabled:opacity-70"
             >
-              <ArrowLeft size={14} /> Back to sign in
+              {isLoading
+                ? currentMode === 'set-password'
+                  ? 'Setting password...'
+                  : currentMode === 'reset-password'
+                    ? 'Sending...'
+                    : 'Logging in...'
+                : currentMode === 'set-password'
+                  ? 'Set Password & Continue'
+                  : currentMode === 'reset-password'
+                    ? 'Send Reset Link'
+                    : 'Sign In'}
+              {!isLoading && <ArrowRight size={16} />}
             </Button>
-          )}
-        </form>
-      </Card>
+
+            {currentMode === 'reset-password' && (
+              <Button
+                variant="ghost"
+                type="button"
+                onClick={() => {
+                  setError(null);
+                  setCurrentMode('login');
+                }}
+                className="w-full flex items-center justify-center gap-1"
+              >
+                <ArrowLeft size={14} /> Back to sign in
+              </Button>
+            )}
+          </form>
+        </Card>
+      </div>
     </div>
   );
 };

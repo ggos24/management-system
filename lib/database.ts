@@ -1059,7 +1059,9 @@ export async function updateIntegrations(integrations: Record<string, boolean>) 
 }
 
 export async function fetchIntegrations(): Promise<Record<string, boolean>> {
-  const { data, error } = await supabase.from('app_settings').select('integrations').eq('id', 1).single();
+  // maybeSingle() returns data=null (not a PostgREST 406) when the singleton row is
+  // missing or the request lands mid-session-teardown, keeping the console clean.
+  const { data, error } = await supabase.from('app_settings').select('integrations').eq('id', 1).maybeSingle();
   if (error || !data) return {};
   return data.integrations || {};
 }
