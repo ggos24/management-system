@@ -13,6 +13,10 @@ interface UiState {
   notifications: Notification[];
   unreadCount: number;
 
+  // Device-vs-server clock skew in seconds (positive = device clock is ahead).
+  // null = not measured yet. Drives ClockSkewBanner.
+  clockSkewSeconds: number | null;
+
   // Modal states
   isTaskModalOpen: boolean;
   taskModalData: TaskModalData;
@@ -45,6 +49,7 @@ interface UiState {
   loadNotifications: () => Promise<void>;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
+  setClockSkew: (seconds: number | null) => void;
 
   setIsTaskModalOpen: (open: boolean) => void;
   setTaskModalData: (data: TaskModalData | ((prev: TaskModalData) => TaskModalData)) => void;
@@ -86,6 +91,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   isNotificationsOpen: false,
   notifications: [],
   unreadCount: 0,
+  clockSkewSeconds: null,
 
   isTaskModalOpen: false,
   taskModalData: {},
@@ -143,6 +149,8 @@ export const useUiStore = create<UiState>((set, get) => ({
     set({ notifications: updated, unreadCount: 0 });
     db.markAllNotificationsRead().catch(console.error);
   },
+
+  setClockSkew: (seconds) => set({ clockSkewSeconds: seconds }),
 
   setIsTaskModalOpen: (open) => set({ isTaskModalOpen: open }),
   setTaskModalData: (data) =>
