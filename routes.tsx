@@ -19,6 +19,7 @@ const Workspace = React.lazy(() => import('./components/Workspace'));
 const Schedule = React.lazy(() => import('./components/Schedule'));
 const Bin = React.lazy(() => import('./components/Bin'));
 const DocsView = React.lazy(() => import('./components/DocsView').then((m) => ({ default: m.DocsView })));
+const Support = React.lazy(() => import('./components/Support'));
 
 // Outlet context type used by route wrappers
 interface LayoutContext {
@@ -385,6 +386,7 @@ export const router = createBrowserRouter([
           { path: 'dashboard', element: <DashboardRoute /> },
           { path: 'workspace', element: <MyWorkspaceRoute /> },
           { path: 'schedule', element: <ScheduleRoute /> },
+          { path: 'support', element: <Support /> },
           { path: 'bin', element: <BinRoute /> },
           {
             path: 'docs',

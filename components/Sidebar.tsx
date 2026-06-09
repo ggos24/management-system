@@ -11,6 +11,7 @@ import {
   Trash2,
   HelpCircle,
   BookOpen,
+  LifeBuoy,
   X,
 } from 'lucide-react';
 import { Team, UserRole } from '../types';
@@ -33,6 +34,7 @@ interface SidebarProps {
   deletedTaskCount?: number;
   taskCounts?: Record<string, number>;
   pendingAbsenceCount?: number;
+  openTicketCount?: number;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -51,6 +53,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   deletedTaskCount = 0,
   taskCounts = {},
   pendingAbsenceCount = 0,
+  openTicketCount = 0,
 }) => {
   // Icon rendering uses the shared IconComponent
 
@@ -186,6 +189,27 @@ const Sidebar: React.FC<SidebarProps> = ({
               {!isCollapsed && isAdmin(userRole) && pendingAbsenceCount > 0 && (
                 <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center bg-amber-500 text-white text-[10px] font-semibold rounded-full px-1">
                   {pendingAbsenceCount}
+                </span>
+              )}
+            </button>
+            <button
+              onClick={() => onChangeView('support')}
+              className={`w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                currentView === 'support' ? activeClass : inactiveClass
+              } ${isCollapsed ? 'justify-center px-0' : ''}`}
+              title="Support"
+            >
+              <LifeBuoy size={18} />
+              <span
+                className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+              >
+                Support
+              </span>
+              {!isCollapsed && openTicketCount > 0 && (
+                <span
+                  className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'support' ? activeBadgeClass : inactiveBadgeClass}`}
+                >
+                  {openTicketCount}
                 </span>
               )}
             </button>

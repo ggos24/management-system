@@ -12,6 +12,9 @@ const ManageTeamsModal = React.lazy(() =>
   import('../components/ManageTeamsModal').then((m) => ({ default: m.ManageTeamsModal })),
 );
 const InviteModal = React.lazy(() => import('../components/InviteModal').then((m) => ({ default: m.InviteModal })));
+const NewTicketModal = React.lazy(() =>
+  import('../components/NewTicketModal').then((m) => ({ default: m.NewTicketModal })),
+);
 import { Modal } from '../components/Modal';
 import { ErrorBoundary } from '../components/ErrorBoundary';
 import { OfflineBanner } from '../components/OfflineBanner';
@@ -25,6 +28,7 @@ import { useDataStore } from '../stores/dataStore';
 import { useUiStore } from '../stores/uiStore';
 import { Task } from '../types';
 import { teamSlug, findTeamByParam } from '../lib/utils';
+import { isAdmin } from '../constants';
 
 const AppLayout: React.FC = () => {
   useTaskDeepLink();
@@ -37,9 +41,10 @@ const AppLayout: React.FC = () => {
 
   const currentUser = useAuthStore((s) => s.currentUser)!;
 
-  const { tasks, teams, teamStatuses, teamTypes, absences } = useDataStore(
+  const { tasks, tickets, teams, teamStatuses, teamTypes, absences } = useDataStore(
     useShallow((s) => ({
       tasks: s.tasks,
+      tickets: s.tickets,
       teams: s.teams,
       teamStatuses: s.teamStatuses,
       teamTypes: s.teamTypes,
@@ -69,6 +74,7 @@ const AppLayout: React.FC = () => {
     if (activeTeam) return activeTeam.id;
     if (location.pathname === '/workspace') return 'my-workspace';
     if (location.pathname === '/schedule') return 'schedule';
+    if (location.pathname === '/support') return 'support';
     if (location.pathname === '/bin') return 'bin';
     if (location.pathname.startsWith('/docs/help')) return 'docs-help';
     if (location.pathname.startsWith('/docs/kb')) return 'docs-kb';
@@ -98,6 +104,12 @@ const AppLayout: React.FC = () => {
   }, [tasks, teamStatuses, currentUser]);
 
   const pendingAbsenceCount = useMemo(() => absences.filter((a) => a.status === 'pending').length, [absences]);
+
+  // Open support tickets: admins see all active; everyone else sees their own active tickets.
+  const openTicketCount = useMemo(() => {
+    const active = tickets.filter((t) => t.status !== 'resolved' && t.status !== 'closed');
+    return isAdmin(currentUser.role) ? active.length : active.filter((t) => t.reporterId === currentUser.id).length;
+  }, [tickets, currentUser]);
 
   const openTaskModal = (taskOrPreset?: Partial<Task>) => {
     const defaultTeamId =
@@ -148,6 +160,7 @@ const AppLayout: React.FC = () => {
             if (view === 'my-workspace') viewTransitionNavigate('/workspace');
             else if (view === 'dashboard') viewTransitionNavigate('/dashboard');
             else if (view === 'schedule') viewTransitionNavigate('/schedule');
+            else if (view === 'support') viewTransitionNavigate('/support');
             else if (view === 'bin') viewTransitionNavigate('/bin');
             else if (view === 'docs-help') viewTransitionNavigate('/docs/help');
             else if (view === 'docs-kb') viewTransitionNavigate('/docs/kb');
@@ -167,6 +180,7 @@ const AppLayout: React.FC = () => {
           isMobileOpen={mobileSidebarOpen}
           setIsMobileOpen={setMobileSidebarOpen}
           pendingAbsenceCount={pendingAbsenceCount}
+          openTicketCount={openTicketCount}
         />
 
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">
@@ -194,6 +208,7 @@ const AppLayout: React.FC = () => {
           <SettingsModal />
           <ManageTeamsModal />
           <InviteModal />
+          <NewTicketModal />
         </React.Suspense>
 
         {/* Logout Confirmation Modal */}

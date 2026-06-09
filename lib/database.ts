@@ -21,6 +21,10 @@ import {
   DocSection,
   TeamStatus,
   StatusCategory,
+  Ticket,
+  TicketComment,
+  TicketStatus,
+  TicketAttachment,
 } from '../types';
 import { toDateOnly } from './utils';
 
@@ -1438,4 +1442,153 @@ export async function uploadDocImage(file: File): Promise<string> {
   if (error) throw error;
   const { data } = supabase.storage.from('docs-assets').getPublicUrl(path);
   return data.publicUrl;
+}
+
+// === Support Tickets ===
+
+function mapTicket(row: any): Ticket {
+  return {
+    id: row.id,
+    title: row.title,
+    description: row.description || '',
+    category: row.category,
+    priority: row.priority || 'medium',
+    status: row.status || 'open',
+    reporterId: row.reporter_id,
+    assigneeId: row.assignee_id ?? null,
+    attachments: row.attachments || [],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at || undefined,
+    resolvedAt: row.resolved_at ?? null,
+    resolvedBy: row.resolved_by ?? null,
+  };
+}
+
+export async function fetchTickets(): Promise<Ticket[]> {
+  const { data, error } = await supabase.from('tickets').select('*').order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapTicket);
+}
+
+export async function fetchTicketById(id: string): Promise<Ticket | null> {
+  const { data, error } = await supabase.from('tickets').select('*').eq('id', id).maybeSingle();
+  if (error) throw error;
+  return data ? mapTicket(data) : null;
+}
+
+export async function insertTicket(input: {
+  title: string;
+  description: string;
+  category: Ticket['category'];
+  priority: Ticket['priority'];
+  reporterId: string;
+  attachments?: TicketAttachment[];
+}): Promise<Ticket> {
+  const { data, error } = await supabase
+    .from('tickets')
+    .insert({
+      title: input.title,
+      description: input.description,
+      category: input.category,
+      priority: input.priority,
+      reporter_id: input.reporterId,
+      attachments: input.attachments || [],
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return mapTicket(data);
+}
+
+/** Partial update of a ticket (status, priority, assignee, title, description, attachments, resolution). */
+export async function updateTicket(
+  id: string,
+  patch: Partial<{
+    title: string;
+    description: string;
+    category: Ticket['category'];
+    priority: Ticket['priority'];
+    status: TicketStatus;
+    assigneeId: string | null;
+    attachments: TicketAttachment[];
+    resolvedAt: string | null;
+    resolvedBy: string | null;
+  }>,
+) {
+  const row: Record<string, any> = {};
+  if (patch.title !== undefined) row.title = patch.title;
+  if (patch.description !== undefined) row.description = patch.description;
+  if (patch.category !== undefined) row.category = patch.category;
+  if (patch.priority !== undefined) row.priority = patch.priority;
+  if (patch.status !== undefined) row.status = patch.status;
+  if (patch.assigneeId !== undefined) row.assignee_id = patch.assigneeId;
+  if (patch.attachments !== undefined) row.attachments = patch.attachments;
+  if (patch.resolvedAt !== undefined) row.resolved_at = patch.resolvedAt;
+  if (patch.resolvedBy !== undefined) row.resolved_by = patch.resolvedBy;
+  const { error } = await supabase.from('tickets').update(row).eq('id', id);
+  return { error };
+}
+
+export async function deleteTicket(id: string) {
+  const { error } = await supabase.from('tickets').delete().eq('id', id);
+  return { error };
+}
+
+export async function uploadTicketAttachment(file: File): Promise<TicketAttachment> {
+  const path = `tickets/${crypto.randomUUID()}-${file.name}`;
+  const { error } = await supabase.storage.from('ticket-attachments').upload(path, file);
+  if (error) throw error;
+  const { data } = supabase.storage.from('ticket-attachments').getPublicUrl(path);
+  return { name: file.name, url: data.publicUrl, size: file.size, type: file.type };
+}
+
+// === Ticket Comments (mirrors task_comments) ===
+
+function mapTicketComment(row: any): TicketComment {
+  return {
+    id: row.id,
+    ticketId: row.ticket_id,
+    userId: row.user_id,
+    content: row.content,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at || undefined,
+    userName: row.profiles?.name || '',
+    userAvatar: row.profiles?.avatar || '',
+  };
+}
+
+export async function fetchTicketComments(ticketId: string): Promise<TicketComment[]> {
+  const { data, error } = await supabase
+    .from('ticket_comments')
+    .select('*, profiles(name, avatar)')
+    .eq('ticket_id', ticketId)
+    .order('created_at', { ascending: true });
+  if (error) throw error;
+  return (data || []).map(mapTicketComment);
+}
+
+export async function insertTicketComment(ticketId: string, userId: string, content: string): Promise<TicketComment> {
+  const { data, error } = await supabase
+    .from('ticket_comments')
+    .insert({ ticket_id: ticketId, user_id: userId, content })
+    .select('*, profiles(name, avatar)')
+    .single();
+  if (error) throw error;
+  return mapTicketComment(data);
+}
+
+export async function updateTicketComment(commentId: string, content: string): Promise<TicketComment> {
+  const { data, error } = await supabase
+    .from('ticket_comments')
+    .update({ content, updated_at: new Date().toISOString() })
+    .eq('id', commentId)
+    .select('*, profiles(name, avatar)')
+    .single();
+  if (error) throw error;
+  return mapTicketComment(data);
+}
+
+export async function deleteTicketComment(commentId: string) {
+  const { error } = await supabase.from('ticket_comments').delete().eq('id', commentId);
+  return { error };
 }
