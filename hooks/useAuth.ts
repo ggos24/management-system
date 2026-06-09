@@ -52,10 +52,14 @@ export function useAuth() {
         return;
       }
 
-      // Measure device-vs-server clock skew from freshly-minted tokens. A clock
-      // running far enough ahead born-expires tokens and drives the repeated-logout
-      // refresh loop; surfacing the skew turns that into an actionable warning.
-      if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && next) {
+      // Measure device-vs-server clock skew, but ONLY from a provably just-minted
+      // token. TOKEN_REFRESHED always carries a brand-new token, so `now - iat` is
+      // pure clock skew. We deliberately do NOT measure on SIGNED_IN: auth-js
+      // re-emits it on tab refocus with the EXISTING (possibly 40+ min old) token,
+      // and an aged token's `now - iat` is indistinguishable from clock drift — that
+      // produced false "your clock is N min ahead" banners for healthy users. The
+      // genuine login path measures a fresh token in LoginPage instead.
+      if (event === 'TOKEN_REFRESHED' && next) {
         useUiStore.getState().setClockSkew(skewSecondsFromToken(next.access_token));
       }
 
