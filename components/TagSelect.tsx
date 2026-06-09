@@ -342,10 +342,10 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                 <button
                   key={c.hex}
                   onClick={() => {
-                    onUpdateTagColor(editingTagColor, c.hex);
+                    if (editingTagColor) onUpdateTagColor(editingTagColor, c.hex);
                     setEditingTagColor(null);
                   }}
-                  className={`w-8 h-8 md:w-5 md:h-5 rounded-full border-2 transition-transform hover:scale-110 ${tagColors[editingTagColor] === c.hex ? 'border-zinc-900 dark:border-white scale-110' : 'border-transparent'}`}
+                  className={`w-8 h-8 md:w-5 md:h-5 rounded-full border-2 transition-transform hover:scale-110 ${editingTagColor && tagColors[editingTagColor] === c.hex ? 'border-zinc-900 dark:border-white scale-110' : 'border-transparent'}`}
                   style={{ backgroundColor: c.hex }}
                   title={c.name}
                 />

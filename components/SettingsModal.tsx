@@ -465,6 +465,13 @@ export const SettingsModal: React.FC = () => {
           { category: 'deadlines', label: 'Deadlines', description: 'Reminders 3 days and 1 day before due' },
           { category: 'mentions', label: 'Mentions', description: '@mentions in task comments' },
           {
+            category: 'support',
+            label: 'Support',
+            description: showAdminCategories
+              ? 'New tickets, replies, and status changes'
+              : 'Replies and status changes on your tickets',
+          },
+          {
             category: 'schedule',
             label: 'Schedule',
             description: showAdminCategories

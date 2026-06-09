@@ -19,12 +19,17 @@ import {
   UserRole,
   PersonFieldKey,
   TeamPersonFieldConfig,
+  Ticket,
+  TicketComment,
+  TicketStatus,
+  TicketCategory,
+  TicketAttachment,
 } from '../types';
 import * as db from '../lib/database';
 import { formatDateEU, toDateOnly } from '../lib/utils';
 import { useAuthStore } from './authStore';
 import { supabase } from '../lib/supabase';
-import { PERSON_FIELD_DEFAULT_LABELS } from '../constants';
+import { PERSON_FIELD_DEFAULT_LABELS, isAdmin, TICKET_STATUS_META } from '../constants';
 import { getStatusName } from '../lib/statusUtils';
 
 export type PersonFieldConfigEntry = { label: string | null; hidden: boolean };
@@ -194,10 +199,17 @@ function sendTelegram(recipientIds: string[], message: string, entityData?: Reco
     text += `\nPriority: ${PRIORITY_EMOJI[entityData.priority] || ''} ${entityData.priority}`;
   }
 
+  const link = buildEntityLink(entityData);
+  supabase.functions.invoke('send-telegram', { body: { recipientIds, message: text, link } }).catch(console.error);
+}
+
+/** Build a deep link to the entity referenced by a notification's entityData. */
+function buildEntityLink(entityData?: Record<string, any>): string | undefined {
+  const origin = window.location.origin;
+  if (entityData?.ticketId) return `${origin}/support?ticket=${entityData.ticketId}`;
   const teamId = entityData?.teamId;
   const taskId = entityData?.taskId;
-  const link = teamId ? `${window.location.origin}/teams/${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
-  supabase.functions.invoke('send-telegram', { body: { recipientIds, message: text, link } }).catch(console.error);
+  return teamId ? `${origin}/teams/${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
 }
 
 const EMAIL_SUBJECTS: Record<NotificationType, string> = {
@@ -213,6 +225,10 @@ const EMAIL_SUBJECTS: Record<NotificationType, string> = {
   comment_mention: 'You were mentioned in a comment',
   schedule_updated: 'Schedule updated',
   member_invited: 'New member invited',
+  ticket_submitted: 'New support ticket',
+  ticket_status_changed: 'Support ticket status updated',
+  ticket_assigned: 'Support ticket assigned to you',
+  ticket_reply: 'New reply on your support ticket',
 };
 
 function sendEmail(recipientIds: string[], type: NotificationType, message: string, entityData?: Record<string, any>) {
@@ -233,9 +249,7 @@ function sendEmail(recipientIds: string[], type: NotificationType, message: stri
         }
       : undefined;
 
-  const teamId = entityData?.teamId;
-  const taskId = entityData?.taskId;
-  const link = teamId ? `${window.location.origin}/teams/${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
+  const link = buildEntityLink(entityData);
   supabase.functions
     .invoke('send-email', {
       body: { recipientIds, subject: fullSubject, message, link, taskDetails },
@@ -296,6 +310,7 @@ function notify(recipientId: string, type: NotificationType, message: string, en
 
 interface DataState {
   tasks: Task[];
+  tickets: Ticket[];
   teams: Team[];
   members: Member[];
   absences: Absence[];
@@ -320,6 +335,7 @@ interface DataState {
   // Setters
   setTaskTeamLinks: (links: TaskTeamLink[]) => void;
   setTasks: (tasks: Task[]) => void;
+  setTickets: (tickets: Ticket[]) => void;
   setTeams: (teams: Team[]) => void;
   setMembers: (members: Member[]) => void;
   setAbsences: (absences: Absence[]) => void;
@@ -369,6 +385,25 @@ interface DataState {
   addTask: (task: Task) => void;
   saveTask: (taskData: Partial<Task>, teams: Team[]) => void;
   reorderTaskInStatus: (taskId: string, targetTaskId: string, position: 'before' | 'after') => void;
+
+  // Support ticket actions
+  createTicket: (input: {
+    title: string;
+    description: string;
+    category: TicketCategory;
+    priority: Ticket['priority'];
+    attachments?: TicketAttachment[];
+  }) => Promise<Ticket | null>;
+  updateTicket: (
+    id: string,
+    patch: Partial<Pick<Ticket, 'title' | 'description' | 'category' | 'priority' | 'attachments'>>,
+  ) => void;
+  updateTicketStatus: (id: string, status: TicketStatus) => void;
+  assignTicket: (id: string, assigneeId: string | null) => void;
+  reopenTicket: (id: string) => void;
+  deleteTicket: (id: string) => void;
+  addTicketComment: (ticketId: string, content: string) => Promise<TicketComment | null>;
+  notifyTicketMention: (recipientIds: string[], actorName: string, ticketTitle: string, ticketId: string) => void;
 
   // Absence/Shift actions
   updateAbsence: (absence: Absence) => void;
@@ -449,6 +484,7 @@ interface DataState {
 
 export const useDataStore = create<DataState>((set, get) => ({
   tasks: [],
+  tickets: [],
   teams: [],
   members: [],
   absences: [],
@@ -473,6 +509,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   // Setters
   setTaskTeamLinks: (links) => set({ taskTeamLinks: links }),
   setTasks: (tasks) => set({ tasks }),
+  setTickets: (tickets) => set({ tickets }),
   setTeams: (teams) => {
     const orders = get().sidebarTeamOrders;
     if (Object.keys(orders).length > 0) {
@@ -1699,6 +1736,172 @@ export const useDataStore = create<DataState>((set, get) => ({
     notifyMany(recipientIds, 'comment_mention', msg, { taskId, teamId });
   },
 
+  // === Support ticket actions ===
+
+  createTicket: async (input) => {
+    const reporterId = getCurrentUserId();
+    if (!reporterId) {
+      toast.error('You must be signed in to submit a ticket');
+      return null;
+    }
+    try {
+      const ticket = await db.insertTicket({
+        title: input.title.trim(),
+        description: input.description.trim(),
+        category: input.category,
+        priority: input.priority,
+        reporterId,
+        attachments: input.attachments || [],
+      });
+      set({ tickets: [ticket, ...get().tickets] });
+      logAction('Ticket Created', `Reported a problem: "${ticket.title}"`, 'ticket');
+      const actorName = getCurrentUserName();
+      const adminIds = get()
+        .members.filter((m) => isAdmin(m.role))
+        .map((m) => m.id);
+      notifyMany(adminIds, 'ticket_submitted', `${actorName} reported a problem: "${ticket.title}"`, {
+        ticketId: ticket.id,
+        priority: ticket.priority,
+      });
+      return ticket;
+    } catch {
+      toast.error('Failed to submit ticket');
+      return null;
+    }
+  },
+
+  updateTicket: (id, patch) => {
+    const prev = get().tickets;
+    const ticket = prev.find((t) => t.id === id);
+    if (!ticket) return;
+    set({ tickets: prev.map((t) => (t.id === id ? { ...t, ...patch } : t)) });
+    db.updateTicket(id, patch).then(({ error }) => {
+      if (error) {
+        set({ tickets: prev });
+        toast.error('Failed to update ticket');
+      }
+    });
+  },
+
+  updateTicketStatus: (id, status) => {
+    const prev = get().tickets;
+    const ticket = prev.find((t) => t.id === id);
+    if (!ticket || ticket.status === status) return;
+    const actorId = getCurrentUserId();
+    const isReopening = !TICKET_STATUS_META[status].isDone && TICKET_STATUS_META[ticket.status].isDone;
+    const resolvedAt =
+      status === 'resolved' ? new Date().toISOString() : isReopening ? null : (ticket.resolvedAt ?? null);
+    const resolvedBy = status === 'resolved' ? actorId : isReopening ? null : (ticket.resolvedBy ?? null);
+    set({ tickets: prev.map((t) => (t.id === id ? { ...t, status, resolvedAt, resolvedBy } : t)) });
+    db.updateTicket(id, { status, resolvedAt, resolvedBy }).then(({ error }) => {
+      if (error) {
+        set({ tickets: prev });
+        toast.error('Failed to update ticket status');
+      }
+    });
+    const actorName = getCurrentUserName();
+    const label = TICKET_STATUS_META[status].label;
+    logAction('Ticket Status Changed', `Moved "${ticket.title}" to ${label}`, 'ticket');
+    const recipients = [ticket.reporterId, ticket.assigneeId].filter((x): x is string => !!x);
+    notifyMany(recipients, 'ticket_status_changed', `${actorName} changed "${ticket.title}" status to ${label}`, {
+      ticketId: id,
+      priority: ticket.priority,
+    });
+  },
+
+  assignTicket: (id, assigneeId) => {
+    const prev = get().tickets;
+    const ticket = prev.find((t) => t.id === id);
+    if (!ticket || ticket.assigneeId === assigneeId) return;
+    set({ tickets: prev.map((t) => (t.id === id ? { ...t, assigneeId } : t)) });
+    db.updateTicket(id, { assigneeId }).then(({ error }) => {
+      if (error) {
+        set({ tickets: prev });
+        toast.error('Failed to assign ticket');
+      }
+    });
+    const actorName = getCurrentUserName();
+    const member = assigneeId ? get().members.find((m) => m.id === assigneeId) : null;
+    logAction(
+      'Ticket Assigned',
+      member ? `Assigned "${ticket.title}" to ${member.name}` : `Unassigned "${ticket.title}"`,
+      'ticket',
+    );
+    if (assigneeId) {
+      notify(assigneeId, 'ticket_assigned', `${actorName} assigned you a support ticket: "${ticket.title}"`, {
+        ticketId: id,
+        priority: ticket.priority,
+      });
+    }
+  },
+
+  reopenTicket: (id) => {
+    const prev = get().tickets;
+    const ticket = prev.find((t) => t.id === id);
+    if (!ticket) return;
+    set({
+      tickets: prev.map((t) => (t.id === id ? { ...t, status: 'in_progress', resolvedAt: null, resolvedBy: null } : t)),
+    });
+    db.updateTicket(id, { status: 'in_progress', resolvedAt: null, resolvedBy: null }).then(({ error }) => {
+      if (error) {
+        set({ tickets: prev });
+        toast.error('Failed to reopen ticket');
+      }
+    });
+    const actorName = getCurrentUserName();
+    logAction('Ticket Reopened', `Reopened "${ticket.title}"`, 'ticket');
+    const adminIds = get()
+      .members.filter((m) => isAdmin(m.role))
+      .map((m) => m.id);
+    const recipients = [...new Set([...adminIds, ticket.assigneeId].filter((x): x is string => !!x))];
+    notifyMany(recipients, 'ticket_status_changed', `${actorName} reopened "${ticket.title}"`, {
+      ticketId: id,
+      priority: ticket.priority,
+    });
+  },
+
+  deleteTicket: (id) => {
+    const prev = get().tickets;
+    const ticket = prev.find((t) => t.id === id);
+    if (!ticket) return;
+    set({ tickets: prev.filter((t) => t.id !== id) });
+    db.deleteTicket(id).then(({ error }) => {
+      if (error) {
+        set({ tickets: prev });
+        toast.error('Failed to delete ticket');
+      }
+    });
+    logAction('Ticket Deleted', `Deleted ticket "${ticket.title}"`, 'ticket');
+  },
+
+  addTicketComment: async (ticketId, content) => {
+    const userId = getCurrentUserId();
+    const text = content.trim();
+    if (!userId || !text) return null;
+    let comment: TicketComment;
+    try {
+      comment = await db.insertTicketComment(ticketId, userId, text);
+    } catch {
+      toast.error('Failed to add reply');
+      return null;
+    }
+    const ticket = get().tickets.find((t) => t.id === ticketId);
+    if (ticket) {
+      const actorName = getCurrentUserName();
+      const recipients = [...new Set([ticket.reporterId, ticket.assigneeId].filter((x): x is string => !!x))];
+      notifyMany(recipients, 'ticket_reply', `${actorName} replied to "${ticket.title}"`, {
+        ticketId,
+        priority: ticket.priority,
+      });
+    }
+    return comment;
+  },
+
+  notifyTicketMention: (recipientIds, actorName, ticketTitle, ticketId) => {
+    const msg = `${actorName} mentioned you in a support ticket: "${ticketTitle}"`;
+    notifyMany(recipientIds, 'comment_mention', msg, { ticketId });
+  },
+
   setNotificationPreference: (userId, category, channel, enabled) => {
     const { notificationPreferences } = get();
     const previous = notificationPreferences;
@@ -1743,6 +1946,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchTeamHiddenColumns(), // 17
       db.fetchTeamPersonFieldConfig(), // 18
       db.fetchAllNotificationPreferences(), // 19
+      db.fetchTickets(), // 20
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
@@ -1792,6 +1996,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       teamHiddenColumns: hiddenColumnsMap,
       teamPersonFieldConfig: personFieldMap,
       notificationPreferences: getValue(results[19], [] as NotificationPreference[]),
+      tickets: getValue(results[20], [] as Ticket[]),
     });
 
     // Auto-purge tasks deleted more than 30 days ago (fire-and-forget)

@@ -1,4 +1,4 @@
-import type { PersonFieldKey, UserRole } from './types';
+import type { Priority, PersonFieldKey, TicketCategory, TicketStatus, UserRole } from './types';
 import { getDateDiffFromToday } from './lib/utils';
 
 export const isEditorOrAbove = (role: UserRole) => role === 'editor' || role === 'admin';
@@ -193,6 +193,41 @@ export const PRIORITY_DOT: Record<string, string> = {
   low: 'bg-zinc-400',
   medium: 'bg-yellow-500',
   high: 'bg-red-500',
+};
+
+// === Support tickets ===
+
+type TicketBadgeColor = 'zinc' | 'emerald' | 'red' | 'blue' | 'amber' | 'purple';
+
+export const TICKET_CATEGORY_META: Record<TicketCategory, { label: string }> = {
+  website: { label: 'Website' },
+  admin_panel: { label: 'Admin Panel' },
+  account_access: { label: 'Account & Access' },
+  other: { label: 'Other' },
+};
+
+export const TICKET_CATEGORIES: TicketCategory[] = ['website', 'admin_panel', 'account_access', 'other'];
+
+export const TICKET_PRIORITIES: Priority[] = ['low', 'medium', 'high'];
+
+export const TICKET_STATUS_META: Record<TicketStatus, { label: string; badge: TicketBadgeColor; isDone: boolean }> = {
+  open: { label: 'Open', badge: 'blue', isDone: false },
+  in_progress: { label: 'In Progress', badge: 'amber', isDone: false },
+  waiting_on_reporter: { label: 'Waiting on Reporter', badge: 'purple', isDone: false },
+  resolved: { label: 'Resolved', badge: 'emerald', isDone: true },
+  closed: { label: 'Closed', badge: 'zinc', isDone: true },
+};
+
+// Ordered list for filter tabs / status pickers.
+export const TICKET_STATUSES: TicketStatus[] = ['open', 'in_progress', 'waiting_on_reporter', 'resolved', 'closed'];
+
+// Valid next states from each status (admin-driven workflow). Reporters may reopen via reopenTicket.
+export const TICKET_STATUS_TRANSITIONS: Record<TicketStatus, TicketStatus[]> = {
+  open: ['in_progress', 'waiting_on_reporter', 'resolved', 'closed'],
+  in_progress: ['waiting_on_reporter', 'resolved', 'closed'],
+  waiting_on_reporter: ['in_progress', 'resolved', 'closed'],
+  resolved: ['in_progress', 'closed'],
+  closed: ['in_progress'],
 };
 
 /** Returns a dot color class and text color class based on how close a deadline is to today */

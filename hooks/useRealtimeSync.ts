@@ -26,6 +26,11 @@ export function useRealtimeSync() {
     db.fetchDeletedTaskCount().then(setDeletedTaskCount).catch(console.error);
   }, 300);
 
+  const debouncedFetchTickets = useDebouncedCallback(() => {
+    const { setTickets } = storeRef.current.getState();
+    db.fetchTickets().then(setTickets).catch(console.error);
+  }, 300);
+
   const debouncedFetchMembers = useDebouncedCallback(() => {
     const { setMembers } = storeRef.current.getState();
     db.fetchMembers().then(setMembers).catch(console.error);
@@ -92,6 +97,9 @@ export function useRealtimeSync() {
       .channel('realtime-sync')
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
         debouncedFetchTasks();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
+        debouncedFetchTickets();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, () => {
         debouncedFetchMembers();

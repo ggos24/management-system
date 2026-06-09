@@ -24,6 +24,7 @@ interface UiState {
   isLogoutModalOpen: boolean;
   isManageTeamsModalOpen: boolean;
   isInviteModalOpen: boolean;
+  isNewTicketModalOpen: boolean;
   isShareOpen: boolean;
   activeSettingsTab: string;
 
@@ -57,6 +58,7 @@ interface UiState {
   setIsLogoutModalOpen: (open: boolean) => void;
   setIsManageTeamsModalOpen: (open: boolean) => void;
   setIsInviteModalOpen: (open: boolean) => void;
+  setIsNewTicketModalOpen: (open: boolean) => void;
   setIsShareOpen: (open: boolean) => void;
   setActiveSettingsTab: (tab: string) => void;
 
@@ -99,6 +101,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   isLogoutModalOpen: false,
   isManageTeamsModalOpen: false,
   isInviteModalOpen: false,
+  isNewTicketModalOpen: false,
   isShareOpen: false,
   activeSettingsTab: 'My Profile',
 
@@ -161,6 +164,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   setIsLogoutModalOpen: (open) => set({ isLogoutModalOpen: open }),
   setIsManageTeamsModalOpen: (open) => set({ isManageTeamsModalOpen: open }),
   setIsInviteModalOpen: (open) => set({ isInviteModalOpen: open }),
+  setIsNewTicketModalOpen: (open) => set({ isNewTicketModalOpen: open }),
   setIsShareOpen: (open) => set({ isShareOpen: open }),
   setActiveSettingsTab: (tab) => set({ activeSettingsTab: tab }),
 

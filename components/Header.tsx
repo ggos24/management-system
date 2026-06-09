@@ -14,6 +14,7 @@ import {
   UserMinus,
   Trash2,
   AlarmClock,
+  LifeBuoy,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { IconButton, Divider } from './ui';
@@ -45,6 +46,11 @@ function getNotificationIcon(type: NotificationType) {
       return <Calendar size={14} className="shrink-0" />;
     case 'member_invited':
       return <UserPlus size={14} className="shrink-0" />;
+    case 'ticket_submitted':
+    case 'ticket_status_changed':
+    case 'ticket_assigned':
+    case 'ticket_reply':
+      return <LifeBuoy size={14} className="shrink-0" />;
     default:
       return <Bell size={14} className="shrink-0" />;
   }
@@ -86,6 +92,7 @@ export const Header: React.FC = () => {
   const setIsSettingsModalOpen = useUiStore((s) => s.setIsSettingsModalOpen);
   const setIsTaskModalOpen = useUiStore((s) => s.setIsTaskModalOpen);
   const setTaskModalData = useUiStore((s) => s.setTaskModalData);
+  const setIsNewTicketModalOpen = useUiStore((s) => s.setIsNewTicketModalOpen);
 
   // Debounced search: local state for instant input, store write delayed 300ms
   const [localSearch, setLocalSearch] = useState(searchQuery);
@@ -116,6 +123,14 @@ export const Header: React.FC = () => {
 
   const handleNotificationClick = (n: Notification) => {
     markNotificationRead(n.id);
+
+    // Support tickets (incl. ticket @mentions) deep-link straight to /support
+    const ticketId = n.entityData?.ticketId;
+    if (ticketId) {
+      navigate(`/support?ticket=${ticketId}`);
+      setIsNotificationsOpen(false);
+      return;
+    }
 
     // Navigate based on notification type
     if (
@@ -215,6 +230,14 @@ export const Header: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-2">
+        <button
+          onClick={() => setIsNewTicketModalOpen(true)}
+          title="Report a problem"
+          className="flex items-center gap-1.5 px-2.5 md:px-3 h-9 rounded-md text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+        >
+          <LifeBuoy size={16} />
+          <span className="hidden lg:inline">Report a problem</span>
+        </button>
         <IconButton onClick={toggleTheme}>{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</IconButton>
         <div className="relative">
           <IconButton onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} className="relative">

@@ -147,6 +147,44 @@ export interface TaskActivity {
   userAvatar?: string;
 }
 
+export type TicketStatus = 'open' | 'in_progress' | 'waiting_on_reporter' | 'resolved' | 'closed';
+export type TicketCategory = 'website' | 'admin_panel' | 'account_access' | 'other';
+
+export interface TicketAttachment {
+  name: string;
+  url: string;
+  size?: number;
+  type?: string;
+}
+
+export interface Ticket {
+  id: string;
+  title: string;
+  description: string;
+  category: TicketCategory;
+  priority: Priority;
+  status: TicketStatus;
+  reporterId: string;
+  assigneeId: string | null;
+  attachments: TicketAttachment[];
+  createdAt: string;
+  updatedAt?: string;
+  resolvedAt?: string | null;
+  resolvedBy?: string | null;
+}
+
+export interface TicketComment {
+  id: string;
+  ticketId: string;
+  userId: string;
+  content: string;
+  createdAt: string;
+  updatedAt?: string;
+  // Joined from profiles
+  userName?: string;
+  userAvatar?: string;
+}
+
 export type DocSection = 'help' | 'knowledge-base';
 
 export interface Doc {
@@ -204,7 +242,11 @@ export type NotificationType =
   | 'member_invited'
   | 'comment_mention'
   | 'absence_cancelled'
-  | 'schedule_updated';
+  | 'schedule_updated'
+  | 'ticket_submitted'
+  | 'ticket_status_changed'
+  | 'ticket_assigned'
+  | 'ticket_reply';
 
 export interface Notification {
   id: string;
@@ -217,7 +259,7 @@ export interface Notification {
   createdAt: string;
 }
 
-export type NotificationCategory = 'tasks' | 'deadlines' | 'mentions' | 'schedule' | 'members';
+export type NotificationCategory = 'tasks' | 'deadlines' | 'mentions' | 'schedule' | 'members' | 'support';
 export type NotificationChannel = 'in_app' | 'telegram' | 'email';
 
 export const NOTIFICATION_CATEGORY: Record<NotificationType, NotificationCategory> = {
@@ -233,6 +275,10 @@ export const NOTIFICATION_CATEGORY: Record<NotificationType, NotificationCategor
   absence_cancelled: 'schedule',
   schedule_updated: 'schedule',
   member_invited: 'members',
+  ticket_submitted: 'support',
+  ticket_status_changed: 'support',
+  ticket_assigned: 'support',
+  ticket_reply: 'support',
 };
 
 export interface NotificationPreference {
