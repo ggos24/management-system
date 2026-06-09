@@ -59,7 +59,15 @@
       "Bash(wait %1)",
       "Bash(npm ls:*)",
       "Bash(npm ci:*)",
-      "Bash(xargs ls *)"
+      "Bash(xargs ls *)",
+      "Bash(mkdir -p /Users/slobodskyi/.claude/plans)",
+      "Read(//Users/slobodskyi/.claude/plans/**)",
+      "Read(//private/tmp/**)",
+      "Bash(curl -s -o u24-index.js \"https://unities.pro/assets/index-CvK39Lrg.js\")",
+      "Bash(curl -s -o old.js \"https://unities.pro/assets/index-CvK39Lrg.js\")",
+      "Bash(cat)",
+      "Read(//tmp/**)",
+      "Bash(npx prettier *)"
     ]
   }
 }
