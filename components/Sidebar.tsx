@@ -192,27 +192,6 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </span>
               )}
             </button>
-            <button
-              onClick={() => onChangeView('support')}
-              className={`w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-                currentView === 'support' ? activeClass : inactiveClass
-              } ${isCollapsed ? 'justify-center px-0' : ''}`}
-              title="Support"
-            >
-              <LifeBuoy size={18} />
-              <span
-                className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
-              >
-                Support
-              </span>
-              {!isCollapsed && openTicketCount > 0 && (
-                <span
-                  className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'support' ? activeBadgeClass : inactiveBadgeClass}`}
-                >
-                  {openTicketCount}
-                </span>
-              )}
-            </button>
           </div>
 
           {/* Teams Section */}
@@ -304,14 +283,37 @@ const Sidebar: React.FC<SidebarProps> = ({
                 ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
                 : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
             } ${isCollapsed ? 'justify-center px-0' : ''}`}
-            title="Help"
+            title="FAQ"
           >
             <HelpCircle size={18} />
             <span
               className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
             >
-              Help
+              FAQ
             </span>
+          </button>
+          <button
+            onClick={() => onChangeView('support')}
+            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+              currentView === 'support'
+                ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+            } ${isCollapsed ? 'justify-center px-0' : ''}`}
+            title="Support"
+          >
+            <LifeBuoy size={18} />
+            <span
+              className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+            >
+              Support
+            </span>
+            {!isCollapsed && openTicketCount > 0 && (
+              <span
+                className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'support' ? activeBadgeClass : inactiveBadgeClass}`}
+              >
+                {openTicketCount}
+              </span>
+            )}
           </button>
           <div className="h-px bg-zinc-100 dark:bg-zinc-800/50 mx-2 my-1.5" />
           <button
