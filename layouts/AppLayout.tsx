@@ -75,6 +75,7 @@ const AppLayout: React.FC = () => {
     if (location.pathname === '/workspace') return 'my-workspace';
     if (location.pathname === '/schedule') return 'schedule';
     if (location.pathname === '/support') return 'support';
+    if (location.pathname.startsWith('/tools')) return 'tools';
     if (location.pathname === '/bin') return 'bin';
     if (location.pathname.startsWith('/docs/help')) return 'docs-help';
     if (location.pathname.startsWith('/docs/kb')) return 'docs-kb';
@@ -161,6 +162,7 @@ const AppLayout: React.FC = () => {
             else if (view === 'dashboard') viewTransitionNavigate('/dashboard');
             else if (view === 'schedule') viewTransitionNavigate('/schedule');
             else if (view === 'support') viewTransitionNavigate('/support');
+            else if (view === 'tools') viewTransitionNavigate('/tools');
             else if (view === 'bin') viewTransitionNavigate('/bin');
             else if (view === 'docs-help') viewTransitionNavigate('/docs/help');
             else if (view === 'docs-kb') viewTransitionNavigate('/docs/kb');

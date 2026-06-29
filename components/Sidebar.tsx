@@ -12,6 +12,7 @@ import {
   HelpCircle,
   BookOpen,
   LifeBuoy,
+  Wrench,
   X,
 } from 'lucide-react';
 import { Team, UserRole } from '../types';
@@ -292,6 +293,24 @@ const Sidebar: React.FC<SidebarProps> = ({
               FAQ
             </span>
           </button>
+          {isAdmin(userRole) && (
+            <button
+              onClick={() => onChangeView('tools')}
+              className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                currentView === 'tools'
+                  ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                  : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+              } ${isCollapsed ? 'justify-center px-0' : ''}`}
+              title="Tools"
+            >
+              <Wrench size={18} />
+              <span
+                className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+              >
+                Tools
+              </span>
+            </button>
+          )}
           <button
             onClick={() => onChangeView('support')}
             className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
