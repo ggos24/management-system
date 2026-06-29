@@ -20,6 +20,8 @@ const Schedule = React.lazy(() => import('./components/Schedule'));
 const Bin = React.lazy(() => import('./components/Bin'));
 const DocsView = React.lazy(() => import('./components/DocsView').then((m) => ({ default: m.DocsView })));
 const Support = React.lazy(() => import('./components/Support'));
+const ToolsView = React.lazy(() => import('./components/ToolsView'));
+const EmailTemplateGenerator = React.lazy(() => import('./components/EmailTemplateGenerator'));
 
 // Outlet context type used by route wrappers
 interface LayoutContext {
@@ -340,6 +342,15 @@ const DocsRoute: React.FC<{ section: DocSection }> = ({ section }) => {
   );
 };
 
+// Admin-only gate for the Tools section
+const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const currentUser = useAuthStore((s) => s.currentUser);
+  if (!currentUser || !isAdmin(currentUser.role)) {
+    return <Navigate to="/workspace" replace />;
+  }
+  return <>{children}</>;
+};
+
 const BinRoute: React.FC = () => {
   const loadDeletedTasks = useDataStore((s) => s.loadDeletedTasks);
   React.useEffect(() => {
@@ -387,6 +398,22 @@ export const router = createBrowserRouter([
           { path: 'workspace', element: <MyWorkspaceRoute /> },
           { path: 'schedule', element: <ScheduleRoute /> },
           { path: 'support', element: <Support /> },
+          {
+            path: 'tools',
+            element: (
+              <AdminGuard>
+                <ToolsView />
+              </AdminGuard>
+            ),
+          },
+          {
+            path: 'tools/email-template',
+            element: (
+              <AdminGuard>
+                <EmailTemplateGenerator />
+              </AdminGuard>
+            ),
+          },
           { path: 'bin', element: <BinRoute /> },
           {
             path: 'docs',
