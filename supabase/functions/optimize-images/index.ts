@@ -9,7 +9,7 @@
 // Admin-only. Mirrors the CORS + auth pattern of the send-email function.
 
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
-import { ImageMagick, initializeImageMagick, MagickFormat } from 'https://deno.land/x/imagemagick_deno@0.0.26/mod.ts';
+import { ImageMagick, initializeImageMagick, MagickFormat } from 'npm:@imagemagick/magick-wasm@0.0.35';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -27,9 +27,18 @@ const TARGETS: Record<string, { w: number; h: number; q: number }> = {
   author: { w: 160, h: 160, q: 82 },
 };
 
+// magick-wasm needs the wasm bytes passed explicitly. Load once per isolate from a CDN
+// (portable — the deno.land/x imagemagick_deno wrapper crashed with "require is not defined").
+const MAGICK_WASM_URL = 'https://cdn.jsdelivr.net/npm/@imagemagick/magick-wasm@0.0.35/dist/magick.wasm';
 let magickReady: Promise<void> | null = null;
 function ensureMagick(): Promise<void> {
-  if (!magickReady) magickReady = initializeImageMagick();
+  if (!magickReady) {
+    magickReady = (async () => {
+      const res = await fetch(MAGICK_WASM_URL);
+      if (!res.ok) throw new Error(`magick wasm load failed: ${res.status}`);
+      await initializeImageMagick(new Uint8Array(await res.arrayBuffer()));
+    })();
+  }
   return magickReady;
 }
 
@@ -137,8 +146,13 @@ Deno.serve(async (req) => {
     const errors: Record<string, string> = {};
     settled.forEach((r, i) => {
       const key = images[i].key;
-      if (r.status === 'fulfilled') results[r.value.key] = r.value.url;
-      else errors[key] = String((r as PromiseRejectedResult).reason?.message || 'Failed');
+      if (r.status === 'fulfilled') {
+        results[r.value.key] = r.value.url;
+      } else {
+        const msg = String((r as PromiseRejectedResult).reason?.message || 'Failed');
+        errors[key] = msg;
+        console.error('optimize-images: failed', key, images[i]?.url, msg);
+      }
     });
 
     return new Response(JSON.stringify({ results, errors }), {

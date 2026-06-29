@@ -193,8 +193,12 @@ export const EmailTemplateGenerator: React.FC = () => {
           authorPhoto: results[`a${i}`] || c.authorPhoto,
         }));
         setCards(finalCards);
-        const errCount = Object.keys(data?.errors || {}).length;
-        if (errCount) toast.warning(`${errCount} image(s) kept their original URL`);
+        const errs: Record<string, string> = data?.errors || {};
+        const errCount = Object.keys(errs).length;
+        if (errCount) {
+          const firstMsg = errs[Object.keys(errs)[0]];
+          toast.warning(`${errCount} image(s) kept their original URL${firstMsg ? `: ${firstMsg}` : ''}`);
+        }
       }
       const html = buildWeeklyDigestHtml({ intro, campaignTag: campaignTag.trim(), cards: finalCards });
       setGeneratedHtml(html);
