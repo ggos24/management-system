@@ -94,6 +94,18 @@ function imageUrlFromLd(image: any): string {
   return '';
 }
 
+function extractProseLead(html: string): string {
+  // The article's visible standfirst/lead paragraph (c-prose__lead). Used as a fallback
+  // when JSON-LD description is missing. Stops at the first </div> (lead has no nested divs).
+  const m = html.match(/class="c-prose__lead[^"]*"[^>]*>([\s\S]*?)<\/div>/i);
+  if (!m) return '';
+  const text = m[1]
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return decodeEntities(text);
+}
+
 function extractAuthorBlock(html: string): { role: string; photo: string } {
   const role = (html.match(/class="c-author__position"[^>]*>\s*([^<]+?)\s*</i)?.[1] || '').trim();
   // First author image inside the c-author block. Prefer a 2x (sharper) source from data-srcset.
@@ -142,7 +154,9 @@ async function scrape(url: string): Promise<Card> {
   const article = findNewsArticle(blocks);
 
   const title = metaContent(html, 'og:title') || decodeEntities(article?.headline || article?.name || '');
-  const lead = metaContent(html, 'og:description') || decodeEntities(article?.description || '');
+  // Prefer the article's real lead (JSON-LD description / visible standfirst) over the SEO og:description.
+  const lead =
+    decodeEntities(article?.description || '') || extractProseLead(html) || metaContent(html, 'og:description');
   const cover = imageUrlFromLd(article?.image) || metaContent(html, 'og:image');
 
   const author = article?.author;
