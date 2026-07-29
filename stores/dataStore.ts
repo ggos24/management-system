@@ -984,6 +984,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       links: taskData.links || [],
       contentInfo: taskData.contentInfo || { type: 'Editorial', editorIds: [], designerIds: [] },
       customFieldValues: taskData.customFieldValues || {},
+      // DB stamps created_at on insert; keep an optimistic value until the next refetch.
+      createdAt: existingTask?.createdAt ?? new Date().toISOString(),
     };
 
     if (isNew) {

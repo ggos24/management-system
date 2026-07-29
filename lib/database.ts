@@ -92,6 +92,7 @@ function mapTask(row: any, assigneeIds: string[], placements: string[]): Task {
     },
     customFieldValues: row.custom_field_values || {},
     sortOrder: row.sort_order ?? 0,
+    createdAt: row.created_at || undefined,
     deletedAt: row.deleted_at || null,
     deletedBy: row.deleted_by || null,
   };

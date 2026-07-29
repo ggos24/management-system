@@ -544,6 +544,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       { key: 'priority', label: 'Priority', className: 'w-24' },
       { key: 'deadline', label: 'Deadline', className: 'w-[8.25rem] min-w-[8.25rem]' },
       { key: 'done', label: 'Pub Date', className: 'w-24' },
+      { key: 'created', label: 'Created', className: 'w-24' },
     );
     const propCols = customProperties.map((p) => ({
       key: `prop:${p.id}`,
@@ -1035,6 +1036,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
             return dir * toDateOnly(a.dueDate).localeCompare(toDateOnly(b.dueDate));
           case 'done':
             return dir * toDateOnly(a.doneDate).localeCompare(toDateOnly(b.doneDate));
+          case 'created':
+            return dir * (a.createdAt || '').localeCompare(b.createdAt || '');
           case 'type':
             return dir * (a.contentInfo?.type || '').localeCompare(b.contentInfo?.type || '');
           case 'assignee': {
@@ -2543,6 +2546,25 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               />
                                             </td>
                                           );
+                                        case 'created': {
+                                          // Read-only — stamped by the DB on insert.
+                                          const created = task.createdAt ? new Date(task.createdAt) : null;
+                                          const createdValid = created && !isNaN(created.getTime());
+                                          return (
+                                            <td key={tc.key} className="p-3">
+                                              {createdValid ? (
+                                                <span
+                                                  className="text-xs text-zinc-500 dark:text-zinc-400"
+                                                  title={created.toLocaleString()}
+                                                >
+                                                  {formatDateEU(task.createdAt)}
+                                                </span>
+                                              ) : (
+                                                <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
+                                              )}
+                                            </td>
+                                          );
+                                        }
                                         case 'links':
                                           return (
                                             <td key={tc.key} className="p-3">

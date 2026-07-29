@@ -76,6 +76,7 @@ export interface Task {
   contentInfo?: ContentInfo;
   customFieldValues?: Record<string, any>;
   sortOrder?: number;
+  createdAt?: string;
   deletedAt?: string | null;
   deletedBy?: string | null;
 }
