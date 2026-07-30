@@ -292,3 +292,40 @@ body {
 .dark .docs-prose hr {
   border-color: #3f3f46;
 }
+
+/* Task description checklist.
+   State lives in data-checked so it survives save/reload, and the box is a
+   pseudo-element so it cannot be deleted or typed into inside contentEditable.
+   Absolute positioning also keeps the line-through off the checkmark. */
+.rte-content [data-checklist] {
+  position: relative;
+  padding: 2px 0 2px 1.5rem;
+}
+.rte-content [data-checklist]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 0.25em;
+  width: 0.875rem;
+  height: 0.875rem;
+  box-sizing: border-box;
+  border: 1.5px solid #a1a1aa;
+  border-radius: 0.25rem;
+  cursor: pointer;
+}
+.dark .rte-content [data-checklist]::before {
+  border-color: #52525b;
+}
+.rte-content [data-checklist][data-checked='true'] {
+  text-decoration: line-through;
+  color: #a1a1aa;
+}
+.rte-content [data-checklist][data-checked='true']::before {
+  content: '✓';
+  border-color: #10b981;
+  background: #10b981;
+  color: #fff;
+  font-size: 0.625rem;
+  line-height: 0.75rem;
+  text-align: center;
+}
