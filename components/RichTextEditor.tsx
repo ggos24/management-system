@@ -1,5 +1,5 @@
-import React, { useRef, useEffect, useCallback } from 'react';
-import { Bold, Italic, List, CheckSquare, Link as LinkIcon } from 'lucide-react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { Bold, Italic, List, CheckSquare, Link as LinkIcon, Strikethrough } from 'lucide-react';
 
 interface RichTextEditorProps {
   value: string;
@@ -120,6 +120,58 @@ function sanitizePastedHtml(html: string): string {
   return doc.body.innerHTML;
 }
 
+/** Formatting under the caret, mirrored onto the toolbar so toggles read as on/off. */
+interface ToolbarState {
+  bold: boolean;
+  italic: boolean;
+  strikeThrough: boolean;
+  insertUnorderedList: boolean;
+  block: string;
+  link: boolean;
+}
+
+const EMPTY_TOOLBAR_STATE: ToolbarState = {
+  bold: false,
+  italic: false,
+  strikeThrough: false,
+  insertUnorderedList: false,
+  block: '',
+  link: false,
+};
+
+// execCommand queries throw in some engines (and are absent under jsdom) — never let
+// a toolbar repaint break typing.
+function queryCommandStateSafe(command: string): boolean {
+  try {
+    return document.queryCommandState(command);
+  } catch {
+    return false;
+  }
+}
+
+function queryBlockTag(): string {
+  try {
+    return (document.queryCommandValue('formatBlock') || '').toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function sameToolbarState(a: ToolbarState, b: ToolbarState): boolean {
+  return (
+    a.bold === b.bold &&
+    a.italic === b.italic &&
+    a.strikeThrough === b.strikeThrough &&
+    a.insertUnorderedList === b.insertUnorderedList &&
+    a.block === b.block &&
+    a.link === b.link
+  );
+}
+
+const IS_APPLE = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
+const MOD = IS_APPLE ? '⌘' : 'Ctrl+';
+const SHIFT = IS_APPLE ? '⇧' : 'Shift+';
+
 const ToolbarButton: React.FC<{
   onClick: () => void;
   title: string;
@@ -131,8 +183,10 @@ const ToolbarButton: React.FC<{
       e.preventDefault();
       onClick();
     }}
-    className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-md text-zinc-600 dark:text-zinc-400 ${active ? 'bg-zinc-200 dark:bg-zinc-700' : ''}`}
+    className={`p-1.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded-md ${active ? 'bg-zinc-200 dark:bg-zinc-700 text-zinc-900 dark:text-white' : 'text-zinc-600 dark:text-zinc-400'}`}
     title={title}
+    aria-label={title}
+    aria-pressed={active}
     type="button"
   >
     {children}
@@ -147,6 +201,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const isInternalChange = useRef(false);
+  const [toolbarState, setToolbarState] = useState<ToolbarState>(EMPTY_TOOLBAR_STATE);
 
   useEffect(() => {
     if (!editorRef.current || isInternalChange.current) {
@@ -158,10 +213,48 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
   }, [value]);
 
-  const exec = useCallback((command: string, val?: string) => {
-    editorRef.current?.focus();
-    document.execCommand(command, false, val);
+  const readToolbarState = useCallback(() => {
+    const el = editorRef.current;
+    const anchor = window.getSelection()?.anchorNode;
+    // Caret outside this editor — drop every highlight rather than showing stale marks.
+    if (!el || !anchor || !el.contains(anchor)) {
+      setToolbarState((prev) => (prev === EMPTY_TOOLBAR_STATE ? prev : EMPTY_TOOLBAR_STATE));
+      return;
+    }
+    const anchorEl = anchor.nodeType === Node.ELEMENT_NODE ? (anchor as Element) : anchor.parentElement;
+    const next: ToolbarState = {
+      bold: queryCommandStateSafe('bold'),
+      italic: queryCommandStateSafe('italic'),
+      strikeThrough: queryCommandStateSafe('strikeThrough'),
+      insertUnorderedList: queryCommandStateSafe('insertUnorderedList'),
+      block: queryBlockTag(),
+      link: !!anchorEl?.closest('a'),
+    };
+    setToolbarState((prev) => (sameToolbarState(prev, next) ? prev : next));
   }, []);
+
+  // `selectionchange` only fires on document, and it covers caret moves by keyboard,
+  // mouse and programmatic commands alike.
+  useEffect(() => {
+    document.addEventListener('selectionchange', readToolbarState);
+    return () => document.removeEventListener('selectionchange', readToolbarState);
+  }, [readToolbarState]);
+
+  const exec = useCallback(
+    (command: string, val?: string) => {
+      editorRef.current?.focus();
+      document.execCommand(command, false, val);
+      // Collapsed-caret mark toggles don't move the selection, so no selectionchange fires.
+      readToolbarState();
+    },
+    [readToolbarState],
+  );
+
+  /** Re-clicking the active heading returns the block to a paragraph. */
+  const toggleBlock = useCallback(
+    (tag: 'h2' | 'h3') => exec('formatBlock', toolbarState.block === tag ? 'p' : tag),
+    [exec, toolbarState.block],
+  );
 
   const handleInput = () => {
     if (editorRef.current) {
@@ -189,6 +282,14 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const handleLink = () => {
     const url = prompt('Enter URL:');
     if (url) exec('createLink', url);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Bold/italic/underline get shortcuts from the browser; strikethrough does not.
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'x') {
+      e.preventDefault();
+      exec('strikeThrough');
+    }
   };
 
   const handleChecklist = () => {
@@ -231,25 +332,36 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   return (
     <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800/50 overflow-hidden focus-within:ring-1 focus-within:ring-zinc-400">
       <div className="flex items-center gap-1 border-b border-zinc-200 dark:border-zinc-700 p-2 bg-zinc-50 dark:bg-zinc-800/50 rounded-t-lg">
-        <ToolbarButton onClick={() => exec('formatBlock', 'h2')} title="Heading 2">
+        <ToolbarButton onClick={() => toggleBlock('h2')} active={toolbarState.block === 'h2'} title="Heading 2">
           <span className="text-xs font-bold">H2</span>
         </ToolbarButton>
-        <ToolbarButton onClick={() => exec('formatBlock', 'h3')} title="Heading 3">
+        <ToolbarButton onClick={() => toggleBlock('h3')} active={toolbarState.block === 'h3'} title="Heading 3">
           <span className="text-xs font-bold">H3</span>
         </ToolbarButton>
-        <ToolbarButton onClick={() => exec('bold')} title="Bold">
+        <ToolbarButton onClick={() => exec('bold')} active={toolbarState.bold} title={`Bold (${MOD}B)`}>
           <Bold size={14} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => exec('italic')} title="Italic">
+        <ToolbarButton onClick={() => exec('italic')} active={toolbarState.italic} title={`Italic (${MOD}I)`}>
           <Italic size={14} />
         </ToolbarButton>
-        <ToolbarButton onClick={() => exec('insertUnorderedList')} title="Bullet List">
+        <ToolbarButton
+          onClick={() => exec('strikeThrough')}
+          active={toolbarState.strikeThrough}
+          title={`Strikethrough (${MOD}${SHIFT}X)`}
+        >
+          <Strikethrough size={14} />
+        </ToolbarButton>
+        <ToolbarButton
+          onClick={() => exec('insertUnorderedList')}
+          active={toolbarState.insertUnorderedList}
+          title="Bullet List"
+        >
           <List size={14} />
         </ToolbarButton>
         <ToolbarButton onClick={handleChecklist} title="To-do List">
           <CheckSquare size={14} />
         </ToolbarButton>
-        <ToolbarButton onClick={handleLink} title="Link">
+        <ToolbarButton onClick={handleLink} active={toolbarState.link} title="Link">
           <LinkIcon size={14} />
         </ToolbarButton>
       </div>
@@ -262,6 +374,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           contentEditable
           onInput={handleInput}
           onPaste={handlePaste}
+          onKeyDown={handleKeyDown}
+          onMouseUp={readToolbarState}
+          onFocus={readToolbarState}
           className="w-full p-3 bg-transparent outline-none text-sm text-zinc-900 dark:text-white [&_*]:!text-inherit resize-y [&_h2]:text-xl [&_h2]:font-bold [&_h2]:my-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:my-1 [&_a]:!text-blue-500 [&_a]:underline [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4"
           style={{ minHeight }}
         />
