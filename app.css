@@ -299,8 +299,18 @@ body {
    Absolute positioning also keeps the line-through off the checkmark. */
 .rte-content [data-checklist] {
   position: relative;
-  padding: 2px 0 2px 1.5rem;
+  /* display:block keeps the row geometry right even if the attributes land on an inline
+     host (a stale client, or odd pasted markup). */
+  display: block;
+  list-style: none;
+  padding: 2px 0 2px 1.5em;
+  /* The box is absolutely positioned, so a row emptied of text would otherwise collapse to
+     its padding and let the box overflow onto the line below. */
+  min-height: 1.5em;
 }
+/* Box dimensions stay in rem. In em they would compound against the ::before's own
+   font-size, which the checked state shrinks for the glyph — that rendered the completed
+   box at half the size of an open one. */
 .rte-content [data-checklist]::before {
   content: '';
   position: absolute;
@@ -313,19 +323,38 @@ body {
   border-radius: 0.25rem;
   cursor: pointer;
 }
-.dark .rte-content [data-checklist]::before {
+/* :not() rather than source order — this and the checked rule below would otherwise have
+   identical specificity, so reordering the block would silently flip which one wins. */
+.dark .rte-content [data-checklist]:not([data-checked='true'])::before {
   border-color: #52525b;
 }
 .rte-content [data-checklist][data-checked='true'] {
   text-decoration: line-through;
   color: #a1a1aa;
 }
+/* A link in a completed row follows the row, not the blue link colour. */
+.rte-content [data-checklist][data-checked='true'] a {
+  color: inherit;
+}
 .rte-content [data-checklist][data-checked='true']::before {
   content: '✓';
   border-color: #10b981;
   background: #10b981;
   color: #fff;
+  /* Flex centring instead of a hand-tuned line-height, which drifted with the font size. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 0.625rem;
-  line-height: 0.75rem;
-  text-align: center;
+  line-height: 1;
+}
+/* Defensive: rows are flattened on load, but a row still nested inside another one must not
+   draw a second box or stack a second indent before that save happens. The [data-checked]
+   qualifier outranks the rules above regardless of where this block sits in the file. */
+.rte-content [data-checklist] [data-checklist][data-checked] {
+  padding-left: 0;
+  position: static;
+}
+.rte-content [data-checklist] [data-checklist][data-checked]::before {
+  content: none;
 }
