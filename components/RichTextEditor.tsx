@@ -12,8 +12,6 @@ interface RichTextEditorProps {
 /** Marks a checklist row. State lives in `data-checked` so it survives serialization. */
 const CHECKLIST_ATTR = 'data-checklist';
 const CHECKED_ATTR = 'data-checked';
-/** Horizontal band, from the row's left edge, where the ::before box is drawn. */
-const CHECKBOX_HIT_WIDTH = 22;
 
 const ALLOWED_TAGS = [
   'a',
@@ -45,7 +43,13 @@ const ALLOWED_TAGS = [
 
 const ALLOWED_ATTR = ['href', 'target', 'rel', 'style'];
 
-const STRIP_STYLE_PROPS = /(?:^|;)\s*(?:color|background-color|background|font-family|font-size)\s*:[^;]*/gi;
+/** Block types that own their own line and must never be turned into a checklist row. */
+const NON_ROW_HOSTS = /^(?:UL|OL|LI|H1|H2|H3|H4|H5|H6)$/;
+
+// text-decoration is included because `data-checked` is the only representation of "done": a
+// pasted line-through would otherwise strike a row permanently, with no way to clear it.
+const STRIP_STYLE_PROPS =
+  /(?:^|;)\s*(?:color|background-color|background|font-family|font-size|text-decoration|text-decoration-line)\s*:[^;]*/gi;
 
 /**
  * The original checklist embedded a live `<input type="checkbox">`, whose ticked state
@@ -56,17 +60,40 @@ const STRIP_STYLE_PROPS = /(?:^|;)\s*(?:color|background-color|background|font-f
 function upgradeLegacyChecklists(html: string): string {
   if (!/<input/i.test(html)) return html;
   const doc = new DOMParser().parseFromString(html, 'text/html');
+  // Grouped by host: with two boxes in one row, clearing `style` on the first pass destroyed
+  // the line-through evidence and the second pass recomputed a completed item as unchecked.
+  const hosts = new Map<Element, boolean>();
   for (const box of Array.from(doc.querySelectorAll('input[type="checkbox"]'))) {
     const row = box.parentElement;
-    const wasChecked = box.hasAttribute('checked');
+    const done = box.hasAttribute('checked') || /line-through/i.test(row?.getAttribute('style') || '');
     box.remove();
     if (!row || row === doc.body) continue;
-    const done = wasChecked || /line-through/i.test(row.getAttribute('style') || '');
+    hosts.set(row, (hosts.get(row) ?? false) || done);
+  }
+  for (const [row, done] of hosts) {
     row.removeAttribute('style');
     row.setAttribute(CHECKLIST_ATTR, '');
     row.setAttribute(CHECKED_ATTR, done ? 'true' : 'false');
   }
   return doc.body.innerHTML;
+}
+
+/**
+ * Rows are flat by construction, but descriptions saved by an earlier build can hold rows nested
+ * inside rows — drawing one box per level and stacking an indent per level. Lift each nested row
+ * out to a sibling; removing it from between its neighbours also rejoins the text it had split.
+ */
+function flattenChecklists(body: HTMLElement): void {
+  const nestedSelector = `[${CHECKLIST_ATTR}] [${CHECKLIST_ATTR}]`;
+  // Each lift removes one level, so this converges; the bound is only a runaway guard.
+  for (let guard = 0; guard < 500; guard++) {
+    const nested = body.querySelector<HTMLElement>(nestedSelector);
+    if (!nested) return;
+    const outer = nested.parentElement?.closest<HTMLElement>(`[${CHECKLIST_ATTR}]`);
+    if (!outer) return;
+    outer.after(nested);
+    outer.normalize();
+  }
 }
 
 /**
@@ -93,6 +120,14 @@ function sanitizeHtml(html: string): string {
     anchor.setAttribute('rel', 'noopener noreferrer');
   }
 
+  flattenChecklists(doc.body);
+
+  // Anything that is not exactly "true" reads as unchecked, so a hand-edited or
+  // foreign value can never render as a half-state.
+  for (const row of Array.from(doc.body.querySelectorAll<HTMLElement>(`[${CHECKLIST_ATTR}]`))) {
+    row.setAttribute(CHECKED_ATTR, row.getAttribute(CHECKED_ATTR) === 'true' ? 'true' : 'false');
+  }
+
   return doc.body.innerHTML;
 }
 
@@ -103,6 +138,7 @@ interface ToolbarState {
   strikeThrough: boolean;
   insertUnorderedList: boolean;
   insertOrderedList: boolean;
+  checklist: boolean;
   block: string;
   link: boolean;
 }
@@ -113,6 +149,7 @@ const EMPTY_TOOLBAR_STATE: ToolbarState = {
   strikeThrough: false,
   insertUnorderedList: false,
   insertOrderedList: false,
+  checklist: false,
   block: '',
   link: false,
 };
@@ -142,6 +179,7 @@ function sameToolbarState(a: ToolbarState, b: ToolbarState): boolean {
     a.strikeThrough === b.strikeThrough &&
     a.insertUnorderedList === b.insertUnorderedList &&
     a.insertOrderedList === b.insertOrderedList &&
+    a.checklist === b.checklist &&
     a.block === b.block &&
     a.link === b.link
   );
@@ -208,6 +246,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       strikeThrough: queryCommandStateSafe('strikeThrough'),
       insertUnorderedList: queryCommandStateSafe('insertUnorderedList'),
       insertOrderedList: queryCommandStateSafe('insertOrderedList'),
+      checklist: !!anchorEl?.closest(`[${CHECKLIST_ATTR}]`),
       block: queryBlockTag(),
       link: !!anchorEl?.closest('a'),
     };
@@ -272,9 +311,36 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
     if (hasTextContent) {
       document.execCommand('insertHTML', false, sanitized);
-    } else if (text) {
-      document.execCommand('insertText', false, text);
+      return;
     }
+    if (!text) return;
+
+    const row = currentChecklistRow();
+    const lines = text.split(/\r?\n/);
+    if (row && lines.length > 1) {
+      // insertText turns a newline into a <br>, leaving one checkbox for two visual lines —
+      // and a strike across both when the row is done. Give each line its own row instead,
+      // which is also how most people build a checklist: paste a list, get a list.
+      document.execCommand('insertText', false, lines[0]);
+      let previous = currentChecklistRow() ?? row;
+      for (const line of lines.slice(1)) {
+        if (!line.trim()) continue;
+        const next = document.createElement('div');
+        setChecklistRow(next, true);
+        next.appendChild(document.createTextNode(line));
+        previous.after(next);
+        previous = next;
+      }
+      const caret = document.createRange();
+      caret.selectNodeContents(previous);
+      caret.collapse(false);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(caret);
+      handleInput();
+      return;
+    }
+    document.execCommand('insertText', false, text);
   };
 
   const handleLink = () => {
@@ -299,49 +365,202 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     handleInput();
   };
 
+  /** True when the collapsed caret sits before any content in the row. */
+  const atRowStart = (row: HTMLElement): boolean => {
+    const sel = window.getSelection();
+    if (!sel?.isCollapsed || !sel.rangeCount) return false;
+    const caret = sel.getRangeAt(0);
+    const probe = document.createRange();
+    probe.setStart(row, 0);
+    probe.setEnd(caret.startContainer, caret.startOffset);
+    return probe.toString() === '';
+  };
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     // Bold/italic/underline get shortcuts from the browser; strikethrough does not.
-    if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 'x') {
+    // Match the physical key: e.key is 'х' on a Cyrillic layout, which never equals 'x'.
+    if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.code === 'KeyX' || e.key.toLowerCase() === 'x')) {
       e.preventDefault();
-      exec('strikeThrough');
+      // On a row, "done" is owned by data-checked; a real <s> here would be invisible.
+      if (!currentChecklistRow()) exec('strikeThrough');
+      return;
+    }
+    // Shift+Enter too: a second visual line inside one row would share its single checkbox.
+    if (e.key === 'Enter' && handleChecklistEnter()) {
+      e.preventDefault();
+      return;
+    }
+    // Backspace at the very start of a row leaves the checklist, keeping the text — the
+    // discoverable way out for anyone who does not think to press the toolbar button.
+    if (e.key === 'Backspace') {
+      const row = currentChecklistRow();
+      if (row && atRowStart(row)) {
+        e.preventDefault();
+        setChecklistRow(row, false);
+        handleInput();
+      }
     }
   };
 
-  const handleChecklist = () => {
+  /** Direct children of the editor that the selection touches — the "lines" to convert. */
+  const selectedBlocks = (): HTMLElement[] => {
+    const el = editorRef.current;
     const sel = window.getSelection();
-    if (!sel || !sel.rangeCount) return;
-
+    if (!el || !sel?.rangeCount) return [];
     const range = sel.getRangeAt(0);
-    const selectedText = range.toString();
+    return Array.from(el.children).filter((child): child is HTMLElement => range.intersectsNode(child));
+  };
 
-    const row = document.createElement('div');
-    row.setAttribute(CHECKLIST_ATTR, '');
-    row.setAttribute(CHECKED_ATTR, 'false');
-    row.appendChild(document.createTextNode(selectedText || 'To-do item'));
+  const rowFromNode = (node: Node | null | undefined): HTMLElement | null => {
+    const el = editorRef.current;
+    if (!el || !node || !el.contains(node)) return null;
+    const from = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+    return from?.closest<HTMLElement>(`[${CHECKLIST_ATTR}]`) ?? null;
+  };
 
-    range.deleteContents();
-    range.insertNode(row);
+  const currentChecklistRow = (): HTMLElement | null => rowFromNode(window.getSelection()?.anchorNode);
 
-    // With no selection to convert we inserted placeholder text — highlight it so the
-    // next keystroke replaces it. Otherwise leave the caret at the end of the row.
-    const caret = document.createRange();
-    if (selectedText) {
-      caret.setStart(row, row.childNodes.length);
-      caret.collapse(true);
+  const currentListType = (): 'ul' | 'ol' | null => {
+    const el = editorRef.current;
+    const node = window.getSelection()?.anchorNode;
+    if (!el || !node || !el.contains(node)) return null;
+    const from = node.nodeType === Node.ELEMENT_NODE ? (node as Element) : node.parentElement;
+    const list = from?.closest('ul, ol');
+    return list ? (list.tagName.toLowerCase() as 'ul' | 'ol') : null;
+  };
+
+  const setChecklistRow = (block: HTMLElement, on: boolean) => {
+    if (on) {
+      block.setAttribute(CHECKLIST_ATTR, '');
+      if (!block.hasAttribute(CHECKED_ATTR)) block.setAttribute(CHECKED_ATTR, 'false');
     } else {
-      caret.selectNodeContents(row);
+      block.removeAttribute(CHECKLIST_ATTR);
+      block.removeAttribute(CHECKED_ATTR);
     }
-    sel.removeAllRanges();
-    sel.addRange(caret);
+  };
+
+  /**
+   * Converts whole lines. The first version inserted a row at the caret instead, which split
+   * the line's text and nested a row inside a row — one box drawn per level and the indentation
+   * running away with it.
+   */
+  const handleChecklist = () => {
+    const el = editorRef.current;
+    if (!el) return;
+    el.focus();
+
+    // A line is a bullet, a number, or a checkbox — never two at once, so leave the list first.
+    const list = currentListType();
+    if (list) exec(list === 'ul' ? 'insertUnorderedList' : 'insertOrderedList');
+
+    // Bare inline content (or an empty field) has no block to convert — give it one.
+    if (!el.children.length) {
+      const row = document.createElement('div');
+      while (el.firstChild) row.appendChild(el.firstChild);
+      if (!row.textContent) row.appendChild(document.createTextNode('To-do item'));
+      el.appendChild(row);
+      setChecklistRow(row, true);
+      selectNode(row);
+      handleInput();
+      return;
+    }
+
+    // Lists and headings are line types of their own. Stamping a row onto a <ul> would draw a
+    // single box for the whole list, which a multi-block selection could otherwise reach.
+    const blocks = selectedBlocks().filter((b) => !NON_ROW_HOSTS.test(b.tagName));
+    if (!blocks.length) return;
+    // Every touched line already a row → the button turns them back into plain lines.
+    const turnOff = blocks.every((b) => b.hasAttribute(CHECKLIST_ATTR));
+    for (const block of blocks) setChecklistRow(block, !turnOff);
     handleInput();
+  };
+
+  /** Pressing a list button on a checklist row drops the checkbox rather than stacking both. */
+  const applyList = (command: 'insertUnorderedList' | 'insertOrderedList') => {
+    for (const block of selectedBlocks()) setChecklistRow(block, false);
+    exec(command);
+    handleInput();
+  };
+
+  /**
+   * Enter inside a row splits it into a fresh *unchecked* row, and an empty row leaves the
+   * checklist. Left to the browser, the new block inherited data-checked, so pressing Enter
+   * after a completed item produced a new item that was already ticked.
+   */
+  const handleChecklistEnter = (): boolean => {
+    const sel = window.getSelection();
+    if (!sel?.rangeCount) return false;
+    // Derive the row from the range START, not from anchorNode: on a backwards selection
+    // anchorNode is the drag origin, and splitting from there rebuilt the nested rows.
+    if (!rowFromNode(sel.getRangeAt(0).startContainer)) return false;
+
+    // A selection spanning rows has to go first. extractContents on a range whose ends sit in
+    // different blocks clones both of them into the fragment — re-creating nested rows.
+    if (!sel.isCollapsed) exec('delete');
+
+    const live = window.getSelection();
+    if (!live?.rangeCount) return false;
+    const range = live.getRangeAt(0);
+    const row = rowFromNode(range.startContainer);
+    if (!row) return false;
+
+    // The empty-row branch must come before any lastChild guard, or a childless row falls
+    // through to the browser's container clone — the original nesting bug.
+    if (!row.textContent?.trim()) {
+      setChecklistRow(row, false);
+      if (!row.firstChild) row.appendChild(document.createElement('br'));
+      handleInput();
+      return true;
+    }
+    if (!row.lastChild) return false;
+
+    const tail = range.cloneRange();
+    tail.setEndAfter(row.lastChild);
+    const moved = tail.extractContents();
+
+    // Belt and braces: the split is one of the few places allowed to create a row, so it must
+    // never be the thing that produces a block inside a block.
+    if (moved.querySelector(`[${CHECKLIST_ATTR}], div, p, ul, ol, li, h1, h2, h3, h4, h5, h6, blockquote`)) {
+      row.appendChild(moved);
+      return false;
+    }
+
+    const next = document.createElement('div');
+    setChecklistRow(next, true);
+    next.appendChild(moved);
+    // extractContents can hand back an empty text node, so testing firstChild is not enough:
+    // without a <br> the row collapses to its padding and the box overflows the line below.
+    if (!next.textContent) next.appendChild(document.createElement('br'));
+    row.after(next);
+
+    // Splitting at offset 0 empties the source row — it must not stay ticked, and it needs a
+    // line box of its own so the caret can come back to it.
+    if (!row.textContent?.trim()) {
+      row.setAttribute(CHECKED_ATTR, 'false');
+      if (!row.firstChild) row.appendChild(document.createElement('br'));
+    }
+
+    const caret = document.createRange();
+    caret.setStart(next, 0);
+    caret.collapse(true);
+    live.removeAllRanges();
+    live.addRange(caret);
+    handleInput();
+    return true;
   };
 
   const handleEditorClick = (e: React.MouseEvent) => {
     const row = (e.target as HTMLElement | null)?.closest<HTMLElement>(`[${CHECKLIST_ATTR}]`);
     if (!row || !editorRef.current?.contains(row)) return;
-    // The box is a pseudo-element and gets no events of its own, so hit-test the band
-    // it occupies. Clicks on the label fall through and just place the caret.
-    if (e.clientX > row.getBoundingClientRect().left + CHECKBOX_HIT_WIDTH) return;
+    // The box is a pseudo-element and gets no events of its own, so hit-test the gutter it
+    // occupies, measured rather than hard-coded so it tracks the CSS. Clicks on the label
+    // fall through and just place the caret.
+    const rect = row.getBoundingClientRect();
+    const gutter = parseFloat(getComputedStyle(row).paddingLeft) || 0;
+    if (e.clientX > rect.left + gutter) return;
+    // Only the first line box: a wrapped row's later lines have no checkbox beside them.
+    const firstLine = row.getClientRects()[0];
+    if (firstLine && (e.clientY < firstLine.top || e.clientY > firstLine.bottom)) return;
     row.setAttribute(CHECKED_ATTR, row.getAttribute(CHECKED_ATTR) === 'true' ? 'false' : 'true');
     handleInput();
   };
@@ -369,33 +588,39 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           <Italic size={14} />
         </ToolbarButton>
         <ToolbarButton
-          onClick={() => exec('strikeThrough')}
+          onClick={() => {
+            // On a row, "done" is owned by data-checked; a real <s> here would be invisible.
+            if (!currentChecklistRow()) exec('strikeThrough');
+          }}
           active={toolbarState.strikeThrough}
           title={`Strikethrough (${MOD}${SHIFT}X)`}
         >
           <Strikethrough size={14} />
         </ToolbarButton>
         <ToolbarButton
-          onClick={() => exec('insertUnorderedList')}
+          onClick={() => applyList('insertUnorderedList')}
           active={toolbarState.insertUnorderedList}
           title="Bullet List"
         >
           <List size={14} />
         </ToolbarButton>
         <ToolbarButton
-          onClick={() => exec('insertOrderedList')}
+          onClick={() => applyList('insertOrderedList')}
           active={toolbarState.insertOrderedList}
           title="Numbered List"
         >
           <ListOrdered size={14} />
         </ToolbarButton>
-        <ToolbarButton onClick={handleChecklist} title="To-do List">
+        <ToolbarButton onClick={handleChecklist} active={toolbarState.checklist} title="To-do List">
           <CheckSquare size={14} />
         </ToolbarButton>
         <ToolbarButton onClick={handleLink} active={toolbarState.link} title="Link">
           <LinkIcon size={14} />
         </ToolbarButton>
       </div>
+      {/* No blanket `[&_*]:!text-inherit` on the editor below: it compiled to
+          `.rte-content * { color: inherit !important }`, which silently beat the muted colour of a
+          completed row. sanitizeHtml already strips colour/font declarations from pasted markup. */}
       <div className="relative">
         {isEmpty && (
           <div className="absolute top-3 left-3 text-zinc-400 text-sm pointer-events-none">{placeholder}</div>
@@ -409,7 +634,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           onMouseUp={readToolbarState}
           onFocus={readToolbarState}
           onClick={handleEditorClick}
-          className="rte-content w-full p-3 bg-transparent outline-none text-sm text-zinc-900 dark:text-white [&_*]:!text-inherit resize-y [&_h2]:text-xl [&_h2]:font-bold [&_h2]:my-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:my-1 [&_a]:!text-blue-500 [&_a]:underline [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4"
+          className="rte-content w-full p-3 bg-transparent outline-none text-sm text-zinc-900 dark:text-white resize-y [&_h2]:text-xl [&_h2]:font-bold [&_h2]:my-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:my-1 [&_a]:text-blue-500 [&_a]:underline [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4"
           style={{ minHeight }}
         />
       </div>
