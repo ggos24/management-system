@@ -327,7 +327,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     handleInput();
   };
 
-  const isEmpty = !value || value === '<br>' || value === '<div><br></div>';
+  // Clearing the field leaves scaffolding behind (<p><br></p>, <div><br></div>, …),
+  // so test for real content instead of matching known-empty strings.
+  const isEmpty = !value || (!value.replace(/<[^>]*>/g, '').trim() && !/<input\b/i.test(value));
 
   return (
     <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800/50 overflow-hidden focus-within:ring-1 focus-within:ring-zinc-400">
