@@ -1,7 +1,7 @@
 import React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Outlet, Route, Routes, useLocation, useOutletContext } from 'react-router-dom';
 import type { Member, Notification, Team } from '../types';
 
 Object.defineProperty(window, 'matchMedia', {
@@ -160,6 +160,35 @@ describe('related-only access UI', () => {
     expect(screen.getByRole('button', { name: 'Editorial' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Support' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Bin' })).toBeInTheDocument();
+    cleanup();
+    useAuthStore.setState({ currentUser: null });
+  });
+
+  it('preserves the AppLayout outlet context through the full-access guard', async () => {
+    const [{ FullAccessGuard }, { useAuthStore }] = await Promise.all([
+      import('../routes'),
+      import('../stores/authStore'),
+    ]);
+    useAuthStore.setState({ currentUser: member('full') });
+    const openTaskModal = () => undefined;
+    const ContextProbe = () => {
+      const context = useOutletContext<{ openTaskModal: () => void }>();
+      return <p>{context.openTaskModal === openTaskModal ? 'Context preserved' : 'Context missing'}</p>;
+    };
+
+    render(
+      <MemoryRouter initialEntries={['/teams/team-1']}>
+        <Routes>
+          <Route element={<Outlet context={{ openTaskModal }} />}>
+            <Route element={<FullAccessGuard />}>
+              <Route path="/teams/:teamId" element={<ContextProbe />} />
+            </Route>
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText('Context preserved')).toBeInTheDocument();
     cleanup();
     useAuthStore.setState({ currentUser: null });
   });

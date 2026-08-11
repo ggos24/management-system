@@ -366,8 +366,9 @@ const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 export const FullAccessGuard: React.FC = () => {
   const accessScope = useAuthStore((s) => s.currentUser?.accessScope);
   const location = useLocation();
+  const layoutContext = useOutletContext<LayoutContext>();
   const teams = useDataStore((s) => s.teams);
-  if (accessScope !== 'related_only') return <Outlet />;
+  if (accessScope !== 'related_only') return <Outlet context={layoutContext} />;
 
   const incoming = new URLSearchParams(location.search);
   const taskId = incoming.get('task');
