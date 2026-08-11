@@ -9,6 +9,7 @@ import {
   Member,
   Priority,
   CustomProperty,
+  TaskAccessContext,
   TaskTeamLink,
   UserRole,
   PersonFieldKey,
@@ -63,6 +64,7 @@ import { TagSelect } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
 import { Button, Divider } from './ui';
+import { useAuthStore } from '../stores/authStore';
 
 // Known service favicon URLs (Google's favicon API returns generic icons for subdomains)
 const KNOWN_FAVICONS: { match: (hostname: string, pathname: string) => boolean; icon: string }[] = [
@@ -110,6 +112,7 @@ const getFaviconUrl = (url: string, hostname: string): string => {
 };
 
 const DEADLINE_WINDOW_DAYS = 14;
+const NO_STATUS_COLUMN_ID = '__no_status__';
 
 type DeadlineStatusCategory = 'active' | 'completed' | 'backlog' | 'ignored';
 
@@ -431,6 +434,7 @@ interface WorkspaceProps {
   onLinkTaskToTeam?: (taskId: string, teamId: string) => void;
   onDeleteTask?: (taskId: string) => void;
   allTeamProperties?: Record<string, CustomProperty[]>;
+  taskAccessContexts?: TaskAccessContext[];
   hiddenColumns?: string[];
   onHideColumn?: (columnKey: string) => void;
   onShowColumn?: (columnKey: string) => void;
@@ -438,6 +442,7 @@ interface WorkspaceProps {
 }
 
 type ViewMode = 'board' | 'table' | 'calendar';
+type ContextualTask = Task & { viewingTeamId?: string };
 
 const Workspace: React.FC<WorkspaceProps> = ({
   tasks,
@@ -471,12 +476,50 @@ const Workspace: React.FC<WorkspaceProps> = ({
   onLinkTaskToTeam: _onLinkTaskToTeam,
   onDeleteTask,
   allTeamProperties = {},
+  taskAccessContexts = [],
   hiddenColumns = [],
   onHideColumn,
   onShowColumn,
   personFieldConfig = {},
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
+  const isRelatedOnly = useAuthStore((state) => state.currentUser?.accessScope === 'related_only');
+  const isMyWorkspace = teamFilter === 'my-work';
+  const usesAclContexts = isRelatedOnly && isMyWorkspace;
+
+  const contextualTasks = useMemo<ContextualTask[]>(() => {
+    if (!usesAclContexts) return tasks;
+    const taskById = new Map(tasks.map((task) => [task.id, task]));
+    const seen = new Set<string>();
+    return taskAccessContexts.flatMap((context) => {
+      const key = `${context.taskId}::${context.contextTeamId}`;
+      const task = taskById.get(context.taskId);
+      if (!task || seen.has(key)) return [];
+      seen.add(key);
+      return [{ ...task, viewingTeamId: context.contextTeamId }];
+    });
+  }, [taskAccessContexts, tasks, usesAclContexts]);
+
+  const getTaskContextTeamId = useCallback(
+    (task: ContextualTask): string => (usesAclContexts ? task.viewingTeamId || task.teamId : task.teamId),
+    [usesAclContexts],
+  );
+
+  const getTaskRenderKey = useCallback(
+    (task: ContextualTask): string => (usesAclContexts ? `${task.id}::${getTaskContextTeamId(task)}` : task.id),
+    [getTaskContextTeamId, usesAclContexts],
+  );
+
+  const openTask = useCallback(
+    (task: ContextualTask) => {
+      if (usesAclContexts) {
+        onTaskClick({ ...task, viewingTeamId: getTaskContextTeamId(task) } as Task);
+        return;
+      }
+      onTaskClick(task);
+    },
+    [getTaskContextTeamId, onTaskClick, usesAclContexts],
+  );
 
   const personFieldLabels = useMemo<Record<PersonFieldKey, string>>(
     () => ({
@@ -593,6 +636,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   }, [allTableColumns, columnOrder]);
 
   const reorderColumns = (newOrder: string[]) => {
+    if (isRelatedOnly) return;
     setColumnOrder(newOrder);
     localStorage.setItem(columnOrderKey, JSON.stringify(newOrder));
   };
@@ -600,7 +644,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
   // Visibility: hide anything except title. Non-team views (my-work) ignore hiding.
   const hiddenColumnSet = useMemo(() => new Set(hiddenColumns), [hiddenColumns]);
   const canManageColumnVisibility =
-    teamFilter !== 'my-work' && !!userRole && isEditorOrAbove(userRole) && !!onHideColumn && !!onShowColumn;
+    !isRelatedOnly &&
+    teamFilter !== 'my-work' &&
+    !!userRole &&
+    isEditorOrAbove(userRole) &&
+    !!onHideColumn &&
+    !!onShowColumn;
   const visibleTableColumns = useMemo(
     () => orderedTableColumns.filter((c) => c.key === 'title' || !hiddenColumnSet.has(c.key)),
     [orderedTableColumns, hiddenColumnSet],
@@ -637,24 +686,43 @@ const Workspace: React.FC<WorkspaceProps> = ({
     });
   };
 
-  // IDs of all Person-type custom properties
-  const personPropIds = useMemo(
-    () => customProperties.filter((p) => p.type === 'person').map((p) => p.id),
-    [customProperties],
-  );
-
   // Check if a userId appears in any Person custom property of a task
   const taskHasPersonInCustomFields = useCallback(
     (task: Task, userId: string): boolean => {
-      const vals = task.customFieldValues;
-      if (!vals || personPropIds.length === 0) return false;
-      return personPropIds.some((propId) => {
-        const v = vals[propId];
-        if (!v) return false;
-        return Array.isArray(v) ? v.includes(userId) : v === userId;
-      });
+      const hasPerson = (values: Record<string, unknown> | undefined, properties: CustomProperty[]) => {
+        if (!values) return false;
+        return properties.some((property) => {
+          if (property.type !== 'person') return false;
+          const value = values[property.id];
+          return Array.isArray(value) ? value.includes(userId) : value === userId;
+        });
+      };
+
+      const homeProperties = allTeamProperties[task.teamId] || customProperties;
+      if (hasPerson(task.customFieldValues, homeProperties)) return true;
+      return taskTeamLinks.some(
+        (link) => link.taskId === task.id && hasPerson(link.customFieldValues, allTeamProperties[link.teamId] || []),
+      );
     },
-    [personPropIds],
+    [allTeamProperties, customProperties, taskTeamLinks],
+  );
+
+  const taskTeamLinkMap = useMemo(() => {
+    const map = new Map<string, TaskTeamLink>();
+    for (const link of taskTeamLinks) {
+      map.set(`${link.taskId}::${link.teamId}`, link);
+    }
+    return map;
+  }, [taskTeamLinks]);
+
+  const getContextualStatusId = useCallback(
+    (task: ContextualTask): string | null => {
+      const contextTeamId = getTaskContextTeamId(task);
+      if (contextTeamId === task.teamId) return task.statusId;
+      const link = taskTeamLinkMap.get(`${task.id}::${contextTeamId}`);
+      return link ? link.statusId : null;
+    },
+    [getTaskContextTeamId, taskTeamLinkMap],
   );
 
   type WorkspaceColumn = { id: string; label: string; category: StatusCategory };
@@ -674,31 +742,53 @@ const Workspace: React.FC<WorkspaceProps> = ({
   //   display name across teams are merged into a single column (a representative
   //   statusId is used as col.id for keying; matching is by name).
   const currentColumns = useMemo<WorkspaceColumn[]>(() => {
-    if (teamFilter === 'my-work') {
-      const myTasks = tasks.filter((t) => {
+    if (isMyWorkspace) {
+      const myTasks = contextualTasks.filter((t) => {
         const isInvolved =
+          usesAclContexts ||
           t.assigneeIds.includes(currentUserId) ||
           t.contentInfo?.editorIds?.includes(currentUserId) ||
           t.contentInfo?.designerIds?.includes(currentUserId) ||
           taskHasPersonInCustomFields(t, currentUserId);
-        const status = t.statusId ? statusByIdAcrossTeams.get(t.statusId) : undefined;
+        const statusId = usesAclContexts ? getContextualStatusId(t) : t.statusId;
+        const status = statusId ? statusByIdAcrossTeams.get(statusId) : undefined;
         const cat = status?.category ?? 'active';
         return isInvolved && (cat === 'active' || cat === 'backlog');
       });
       const seen = new Map<string, WorkspaceColumn>();
       for (const t of myTasks) {
-        if (!t.statusId) continue;
-        const status = statusByIdAcrossTeams.get(t.statusId);
-        if (!status) continue;
-        if (!seen.has(status.name)) {
-          seen.set(status.name, { id: status.id, label: status.name, category: status.category });
+        const statusId = usesAclContexts ? getContextualStatusId(t) : t.statusId;
+        const status = statusId ? statusByIdAcrossTeams.get(statusId) : undefined;
+        if (!status) {
+          if (!seen.has(NO_STATUS_COLUMN_ID)) {
+            seen.set(NO_STATUS_COLUMN_ID, {
+              id: NO_STATUS_COLUMN_ID,
+              label: 'No status',
+              category: 'active',
+            });
+          }
+          continue;
+        }
+        const statusKey = `status::${status.name}`;
+        if (!seen.has(statusKey)) {
+          seen.set(statusKey, { id: status.id, label: status.name, category: status.category });
         }
       }
       return Array.from(seen.values());
     }
     const list = teamStatuses[teamFilter] || [];
     return list.map((s) => ({ id: s.id, label: s.name, category: s.category }));
-  }, [teamStatuses, teamFilter, tasks, currentUserId, taskHasPersonInCustomFields, statusByIdAcrossTeams]);
+  }, [
+    teamStatuses,
+    teamFilter,
+    isMyWorkspace,
+    contextualTasks,
+    getContextualStatusId,
+    statusByIdAcrossTeams,
+    usesAclContexts,
+    currentUserId,
+    taskHasPersonInCustomFields,
+  ]);
 
   const columns = currentColumns;
 
@@ -721,61 +811,69 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Pre-build lookup of linked task IDs for the current team filter
   const linkedTaskIdsForTeam = useMemo(() => {
-    if (teamFilter === 'my-work' || teamFilter === 'all') return new Set<string>();
+    if (isMyWorkspace || teamFilter === 'all') return new Set<string>();
     return new Set(taskTeamLinks.filter((l) => l.teamId === teamFilter).map((l) => l.taskId));
-  }, [taskTeamLinks, teamFilter]);
-
-  const taskTeamLinkMap = useMemo(() => {
-    const map = new Map<string, TaskTeamLink>();
-    for (const link of taskTeamLinks) {
-      map.set(`${link.taskId}::${link.teamId}`, link);
-    }
-    return map;
-  }, [taskTeamLinks]);
+  }, [isMyWorkspace, taskTeamLinks, teamFilter]);
 
   // Resolve a task's statusId within the current team context.
   // For the task's home team / cross-team views, returns task.statusId.
   // For a foreign team view of a linked task, returns the link's statusId.
   const getTaskStatusInTeam = useCallback(
     (task: Task): string | null => {
-      if (teamFilter === 'my-work' || teamFilter === 'all' || task.teamId === teamFilter) return task.statusId;
+      if (isMyWorkspace) return getContextualStatusId(task as ContextualTask);
+      if (isMyWorkspace || teamFilter === 'all' || task.teamId === teamFilter) return task.statusId;
       const link = taskTeamLinkMap.get(`${task.id}::${teamFilter}`);
       return link ? link.statusId : task.statusId;
     },
-    [teamFilter, taskTeamLinkMap],
+    [getContextualStatusId, isMyWorkspace, teamFilter, taskTeamLinkMap],
   );
 
   // Match a task to a column. In team views, comparison is by statusId.
   // In my-work, columns are deduped by name, so we compare by resolved name.
   const taskInColumn = useCallback(
     (task: Task, col: WorkspaceColumn): boolean => {
-      if (teamFilter === 'my-work') {
-        if (!task.statusId) return false;
-        return statusByIdAcrossTeams.get(task.statusId)?.name === col.label;
+      if (isMyWorkspace) {
+        const statusId = getTaskStatusInTeam(task);
+        const status = statusId ? statusByIdAcrossTeams.get(statusId) : undefined;
+        if (!status) return col.id === NO_STATUS_COLUMN_ID;
+        return col.id !== NO_STATUS_COLUMN_ID && status.name === col.label;
       }
       return getTaskStatusInTeam(task) === col.id;
     },
-    [teamFilter, statusByIdAcrossTeams, getTaskStatusInTeam],
+    [getTaskStatusInTeam, isMyWorkspace, statusByIdAcrossTeams],
+  );
+
+  const getTaskStatusColumnId = useCallback(
+    (task: Task): string => {
+      const statusId = getTaskStatusInTeam(task);
+      return statusId && statusByIdAcrossTeams.has(statusId) ? statusId : NO_STATUS_COLUMN_ID;
+    },
+    [getTaskStatusInTeam, statusByIdAcrossTeams],
   );
 
   // Resolve custom field values for the current team context
   const getTaskFieldsInTeam = useCallback(
     (task: Task): Record<string, any> => {
-      if (teamFilter === 'my-work' || teamFilter === 'all' || task.teamId === teamFilter)
-        return task.customFieldValues || {};
+      if (isMyWorkspace) {
+        const contextTeamId = getTaskContextTeamId(task as ContextualTask);
+        if (contextTeamId !== task.teamId) {
+          return taskTeamLinkMap.get(`${task.id}::${contextTeamId}`)?.customFieldValues || {};
+        }
+      }
+      if (isMyWorkspace || teamFilter === 'all' || task.teamId === teamFilter) return task.customFieldValues || {};
       const link = taskTeamLinkMap.get(`${task.id}::${teamFilter}`);
       return link ? link.customFieldValues : task.customFieldValues || {};
     },
-    [teamFilter, taskTeamLinkMap],
+    [getTaskContextTeamId, isMyWorkspace, teamFilter, taskTeamLinkMap],
   );
 
   // Check if a task is a linked copy (not home) in the current team
   const isLinkedCopy = useCallback(
     (task: Task): boolean => {
-      if (teamFilter === 'my-work' || teamFilter === 'all') return false;
+      if (isMyWorkspace || teamFilter === 'all') return false;
       return task.teamId !== teamFilter && linkedTaskIdsForTeam.has(task.id);
     },
-    [teamFilter, linkedTaskIdsForTeam],
+    [isMyWorkspace, teamFilter, linkedTaskIdsForTeam],
   );
 
   // Filtering Logic
@@ -785,17 +883,18 @@ const Workspace: React.FC<WorkspaceProps> = ({
     // schema it predates — degrades to "no match" instead of white-screening on
     // `undefined.toLowerCase()`.
     const lowerQuery = searchQuery.toLowerCase();
-    return tasks.filter((t) => {
+    return contextualTasks.filter((t) => {
       let matchTeam = false;
-      if (teamFilter === 'my-work') {
-        // Check if user is involved
+      if (isMyWorkspace) {
         const isInvolved =
+          usesAclContexts ||
           t.assigneeIds.includes(currentUserId) ||
           (t.contentInfo?.editorIds?.includes(currentUserId) ?? false) ||
           (t.contentInfo?.designerIds?.includes(currentUserId) ?? false) ||
           taskHasPersonInCustomFields(t, currentUserId);
         // Exclude tasks whose status is marked as Done or Archive in their home team
-        const taskCategory = t.statusId ? (statusByIdAcrossTeams.get(t.statusId)?.category ?? 'active') : 'active';
+        const statusId = getTaskStatusInTeam(t);
+        const taskCategory = statusId ? (statusByIdAcrossTeams.get(statusId)?.category ?? 'active') : 'active';
         matchTeam = isInvolved && (taskCategory === 'active' || taskCategory === 'backlog');
       } else {
         matchTeam = teamFilter === 'all' || t.teamId === teamFilter || linkedTaskIdsForTeam.has(t.id);
@@ -803,7 +902,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
       // Apply Person filter only if NOT in 'my-work'
       const matchPerson =
-        teamFilter === 'my-work' ||
+        isMyWorkspace ||
         filterPerson === 'all' ||
         t.assigneeIds.includes(filterPerson) ||
         taskHasPersonInCustomFields(t, filterPerson);
@@ -819,16 +918,19 @@ const Workspace: React.FC<WorkspaceProps> = ({
       return matchTeam && matchPerson && matchPriority && matchPlacement && matchSearch;
     });
   }, [
-    tasks,
+    contextualTasks,
     teamFilter,
+    isMyWorkspace,
     filterPerson,
     filterPriority,
     filterPlacements,
     searchQuery,
-    currentUserId,
+    getTaskStatusInTeam,
     linkedTaskIdsForTeam,
     taskHasPersonInCustomFields,
     statusByIdAcrossTeams,
+    currentUserId,
+    usesAclContexts,
   ]);
 
   // Derived columns to display: If searching, only show columns with tasks; then apply status sort
@@ -836,7 +938,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
     const hasActiveFilter =
       searchQuery || filterPerson !== 'all' || filterPriority !== 'all' || filterPlacements.length > 0;
     let cols = hasActiveFilter
-      ? columns.filter((col) => filteredTasks.some((t) => getTaskStatusInTeam(t) === col.id))
+      ? columns.filter((col) => filteredTasks.some((t) => taskInColumn(t, col)))
       : [...columns];
 
     if (statusSort) {
@@ -846,8 +948,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
           case 'name':
             return dir * a.label.localeCompare(b.label);
           case 'count': {
-            const countA = filteredTasks.filter((t) => getTaskStatusInTeam(t) === a.id).length;
-            const countB = filteredTasks.filter((t) => getTaskStatusInTeam(t) === b.id).length;
+            const countA = filteredTasks.filter((t) => taskInColumn(t, a)).length;
+            const countB = filteredTasks.filter((t) => taskInColumn(t, b)).length;
             return dir * (countA - countB);
           }
           default:
@@ -860,7 +962,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   }, [
     columns,
     filteredTasks,
-    getTaskStatusInTeam,
+    taskInColumn,
     searchQuery,
     filterPerson,
     filterPriority,
@@ -877,20 +979,24 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Team-grouped data for my-work view
   const myWorkTeamGroups = useMemo(() => {
-    if (teamFilter !== 'my-work') return [];
+    if (!isMyWorkspace) return [];
     const grouped: Record<string, Task[]> = {};
     for (const t of filteredTasks) {
-      if (!grouped[t.teamId]) grouped[t.teamId] = [];
-      grouped[t.teamId].push(t);
+      const contextTeamId = getTaskContextTeamId(t as ContextualTask);
+      if (!grouped[contextTeamId]) grouped[contextTeamId] = [];
+      grouped[contextTeamId].push(t);
     }
     return Object.entries(grouped)
       .map(([teamId, teamTasks]) => {
         const team = allTeams.find((te) => te.id === teamId);
-        const presentStatusIds = new Set(teamTasks.map((t) => t.statusId).filter((id): id is string => !!id));
+        const presentStatusIds = new Set(teamTasks.map(getTaskStatusColumnId));
         const teamStatusList = teamStatuses[teamId] || [];
         const statuses: WorkspaceColumn[] = teamStatusList
           .filter((s) => presentStatusIds.has(s.id))
           .map((s) => ({ id: s.id, label: s.name, category: s.category }));
+        if (presentStatusIds.has(NO_STATUS_COLUMN_ID)) {
+          statuses.push({ id: NO_STATUS_COLUMN_ID, label: 'No status', category: 'active' });
+        }
         return {
           teamId,
           teamName: team?.name || 'Unknown Team',
@@ -899,13 +1005,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
         };
       })
       .sort((a, b) => a.teamName.localeCompare(b.teamName));
-  }, [teamFilter, filteredTasks, allTeams, teamStatuses]);
+  }, [allTeams, filteredTasks, getTaskContextTeamId, getTaskStatusColumnId, isMyWorkspace, teamStatuses]);
 
   // Column Management — status mutations are scoped to a real team only.
   // (My-work view derives columns from task data; mutating its columns has no DB target.)
-  const isStatusEditable = teamFilter !== 'my-work' && teamFilter !== 'all';
+  const isStatusEditable = !isRelatedOnly && teamFilter !== 'my-work' && teamFilter !== 'all';
 
   const handleAddColumn = () => {
+    if (isRelatedOnly) return;
     if (!isStatusEditable) return;
     if (!userRole || !isEditorOrAbove(userRole)) return;
     const existingNames = (teamStatuses[teamFilter] || []).map((s) => s.name);
@@ -927,6 +1034,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleStartRename = (id: string, currentLabel: string) => {
+    if (isRelatedOnly) return;
     if (!userRole || !isEditorOrAbove(userRole)) return;
     // In my-work, only custom properties are renameable (status columns are virtual).
     if (teamFilter === 'my-work' && !customProperties.find((p) => p.id === id)) return;
@@ -937,6 +1045,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleSaveRename = () => {
+    if (isRelatedOnly) return;
     if (!editingColumnId || !tempColumnName.trim()) {
       setEditingColumnId(null);
       return;
@@ -960,6 +1069,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleDeleteColumn = (id: string) => {
+    if (isRelatedOnly) return;
     if (!isStatusEditable) return;
     if (!userRole || !isEditorOrAbove(userRole)) {
       toast.error('Only editors can delete statuses.');
@@ -974,6 +1084,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleDeleteProperty = (id: string) => {
+    if (isRelatedOnly) return;
     if (!userRole || !isEditorOrAbove(userRole)) return;
     if (confirm('Delete this property? Data will be lost.') && onDeleteProperty) {
       onDeleteProperty(id);
@@ -983,6 +1094,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // Move a status group up or down
   const handleMoveStatus = (statusId: string, direction: 'up' | 'down') => {
+    if (isRelatedOnly) return;
     if (!isStatusEditable) return;
     if (!userRole || !isEditorOrAbove(userRole)) return;
     const list = teamStatuses[teamFilter] || [];
@@ -1080,6 +1192,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const selectedCount = selectedTaskIds.size;
 
   const toggleTaskSelection = (taskId: string, shiftKey: boolean) => {
+    if (isRelatedOnly) return;
     setSelectedTaskIds((prev) => {
       const next = new Set(prev);
       if (shiftKey && lastClickedTaskRef.current) {
@@ -1112,6 +1225,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const toggleGroupSelection = (statusId: string) => {
+    if (isRelatedOnly) return;
     const groupIds = filteredTasks.filter((t) => getTaskStatusInTeam(t) === statusId).map((t) => t.id);
     setSelectedTaskIds((prev) => {
       const allSelected = groupIds.length > 0 && groupIds.every((id) => prev.has(id));
@@ -1133,6 +1247,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleBulkMove = (targetStatusId: string, targetLabel: string) => {
+    if (isRelatedOnly) return;
     const tasksToMove = filteredTasks.filter(
       (t) => selectedTaskIds.has(t.id) && getTaskStatusInTeam(t) !== targetStatusId,
     );
@@ -1170,6 +1285,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
   // HTML5 Drag and Drop Handlers for TASKS
   const handleDragStart = (e: React.DragEvent, taskId: string, sourceStatus: string) => {
+    if (isRelatedOnly) {
+      e.preventDefault();
+      return;
+    }
     e.stopPropagation();
     e.dataTransfer.setData('taskId', taskId);
     e.dataTransfer.setData('sourceStatus', sourceStatus);
@@ -1177,11 +1296,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleDragOver = (e: React.DragEvent) => {
+    if (isRelatedOnly) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
   };
 
   const handleTaskDragOver = (e: React.DragEvent, targetTaskId: string) => {
+    if (isRelatedOnly) return;
     e.preventDefault();
     e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
@@ -1196,6 +1317,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleDropOnTask = (e: React.DragEvent, targetTaskId: string, targetStatus: string) => {
+    if (isRelatedOnly) return;
     e.preventDefault();
     e.stopPropagation();
     setDragOverTaskId(null);
@@ -1214,6 +1336,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleDropStatus = (e: React.DragEvent, newStatus: string) => {
+    if (isRelatedOnly) return;
     e.preventDefault();
     e.stopPropagation();
     setDragOverTaskId(null);
@@ -1225,6 +1348,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleDropDate = (e: React.DragEvent, dateStr: string) => {
+    if (isRelatedOnly) return;
     e.preventDefault();
     const taskId = e.dataTransfer.getData('taskId');
     if (taskId) {
@@ -1236,6 +1360,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   };
 
   const handleCreateProperty = () => {
+    if (isRelatedOnly) return;
     if (!newPropName || !onAddProperty) return;
     const newProp: CustomProperty = {
       id: crypto.randomUUID(),
@@ -1341,7 +1466,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
           </div>
 
           {/* Desktop New button (mobile uses a floating action button) */}
-          {teamFilter !== 'my-work' && (
+          {!isRelatedOnly && teamFilter !== 'my-work' && (
             <div className="hidden md:flex gap-2 items-center">
               <Button size="sm" onClick={() => onAddTask()} className="flex items-center gap-1.5">
                 <Plus size={14} />
@@ -1353,10 +1478,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
         {/* Filters Bar — grid on mobile so all filters fit on one row */}
         <div
-          className={`grid gap-2 md:flex md:flex-wrap md:gap-3 md:items-center border-b border-zinc-100 dark:border-zinc-800 pb-3 ${teamFilter === 'my-work' ? 'grid-cols-2' : 'grid-cols-3'}`}
+          className={`grid gap-2 md:flex md:flex-wrap md:gap-3 md:items-center border-b border-zinc-100 dark:border-zinc-800 pb-3 ${isMyWorkspace ? 'grid-cols-2' : 'grid-cols-3'}`}
         >
           {/* Person Filter - Hidden for My Work */}
-          {teamFilter !== 'my-work' && (
+          {!isRelatedOnly && teamFilter !== 'my-work' && (
             <CustomSelect
               icon={User}
               options={[
@@ -1418,7 +1543,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         {viewMode === 'board' &&
           filteredTasks.length > 0 &&
           displayColumns.length > 0 &&
-          (teamFilter === 'my-work' ? (
+          (isMyWorkspace ? (
             <div className="flex flex-col gap-6 overflow-auto pb-4 h-full">
               {myWorkTeamGroups.map((group) => {
                 const isTeamCollapsed = collapsedSections[`team::${group.teamId}`];
@@ -1447,7 +1572,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           const isDoneStatus = statusCategory === 'completed';
                           const isBacklogStatus = statusCategory === 'backlog';
                           const isIgnoredStatus = statusCategory === 'ignored';
-                          const colTasks = group.tasks.filter((t) => t.statusId === col.id);
+                          const colTasks = group.tasks.filter((task) => getTaskStatusColumnId(task) === col.id);
                           return (
                             <div
                               key={statusCollapseKey}
@@ -1514,11 +1639,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       const assignees = getMembersByIds(task.assigneeIds);
                                       return (
                                         <div
-                                          key={task.id}
-                                          onClick={() => onTaskClick(task)}
-                                          draggable
-                                          onDragStart={(e) => handleDragStart(e, task.id, col.id)}
-                                          className="bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group cursor-grab active:cursor-grabbing relative"
+                                          key={getTaskRenderKey(task)}
+                                          onClick={() => openTask(task)}
+                                          draggable={!isRelatedOnly}
+                                          onDragStart={
+                                            isRelatedOnly ? undefined : (e) => handleDragStart(e, task.id, col.id)
+                                          }
+                                          className={`bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group relative ${isRelatedOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`}
                                         >
                                           <div className="flex justify-between items-start mb-2">
                                             <div className="flex gap-1 flex-wrap">
@@ -1536,9 +1663,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                 {task.priority}
                                               </span>
                                             </div>
-                                            <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
-                                              <GripVertical size={14} />
-                                            </div>
+                                            {!isRelatedOnly && (
+                                              <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
+                                                <GripVertical size={14} />
+                                              </div>
+                                            )}
                                           </div>
                                           <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden flex items-center gap-1.5">
                                             {isLinkedCopy(task) && (
@@ -1629,8 +1758,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 return (
                   <div
                     key={col.id}
-                    onDrop={(e) => handleDropStatus(e, col.id)}
-                    onDragOver={handleDragOver}
+                    onDrop={isRelatedOnly ? undefined : (e) => handleDropStatus(e, col.id)}
+                    onDragOver={isRelatedOnly ? undefined : handleDragOver}
                     className={`flex flex-col h-full transition-all snap-start ${isCollapsed ? 'w-12' : 'min-w-[85vw] max-w-[85vw] sm:min-w-[300px] sm:max-w-[300px]'}`}
                   >
                     <div className="flex items-center justify-between px-1 mb-3 pb-2 group/header">
@@ -1666,7 +1795,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               />
                             ) : (
                               <div className="flex items-center gap-2">
-                                {teamFilter !== 'my-work' && (
+                                {!isRelatedOnly && teamFilter !== 'my-work' && (
                                   <>
                                     <button
                                       onClick={(e) => {
@@ -1730,7 +1859,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             )}
                           </div>
 
-                          {teamFilter !== 'my-work' && (
+                          {!isRelatedOnly && teamFilter !== 'my-work' && (
                             <div className="relative">
                               <div className="opacity-100 md:opacity-0 md:group-hover/header:opacity-100 flex items-center transition-opacity">
                                 <button
@@ -1745,7 +1874,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 >
                                   <MoreHorizontal size={14} />
                                 </button>
-                                {teamFilter !== 'my-work' && (
+                                {!isRelatedOnly && teamFilter !== 'my-work' && (
                                   <button
                                     onClick={() => onAddTask({ statusId: col.id })}
                                     className="text-zinc-400 hover:text-black dark:hover:text-white transition-colors p-1"
@@ -1789,7 +1918,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   setActiveColumnMenu(null);
                                 }}
                                 isArchiveCategory={col.category === 'ignored'}
-                                canEditCategories={!!userRole && isEditorOrAbove(userRole)}
+                                canEditCategories={!isRelatedOnly && !!userRole && isEditorOrAbove(userRole)}
                                 onToggleArchiveCategory={() => {
                                   onSetStatusCategory(
                                     teamFilter,
@@ -1814,11 +1943,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             const assignees = getMembersByIds(task.assigneeIds);
                             return (
                               <div
-                                key={task.id}
-                                onClick={() => onTaskClick(task)}
-                                draggable
-                                onDragStart={(e) => handleDragStart(e, task.id, col.id)}
-                                className="bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group cursor-grab active:cursor-grabbing relative"
+                                key={getTaskRenderKey(task)}
+                                onClick={() => openTask(task)}
+                                draggable={!isRelatedOnly}
+                                onDragStart={isRelatedOnly ? undefined : (e) => handleDragStart(e, task.id, col.id)}
+                                className={`bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group relative ${isRelatedOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`}
                               >
                                 <div className="flex justify-between items-start mb-2">
                                   <div className="flex gap-1 flex-wrap">
@@ -1836,9 +1965,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       {task.priority}
                                     </span>
                                   </div>
-                                  <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
-                                    <GripVertical size={14} />
-                                  </div>
+                                  {!isRelatedOnly && (
+                                    <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
+                                      <GripVertical size={14} />
+                                    </div>
+                                  )}
                                 </div>
                                 <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden flex items-center gap-1.5">
                                   {isLinkedCopy(task) && <Link2 size={12} className="text-blue-500 flex-shrink-0" />}
@@ -1911,7 +2042,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 );
               })}
               {/* Only show "Add Status" if not searching and not My Work */}
-              {!searchQuery && teamFilter !== 'my-work' && (
+              {!isRelatedOnly && !searchQuery && teamFilter !== 'my-work' && (
                 <div className="min-w-[300px]">
                   <button
                     onClick={handleAddColumn}
@@ -1936,7 +2067,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               </div>
             )}
             {/* Table status sections — renders for all teamFilters */}
-            {(teamFilter === 'my-work'
+            {(isMyWorkspace
               ? myWorkTeamGroups.flatMap((group) => {
                   const isTeamCollapsed = collapsedSections[`team::${group.teamId}`];
                   const header = {
@@ -1952,7 +2083,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       type: 'status' as const,
                       key: `${s.id}::${group.teamId}`,
                       col: s,
-                      colTasks: group.tasks.filter((t) => t.statusId === s.id),
+                      colTasks: group.tasks.filter((task) => getTaskStatusColumnId(task) === s.id),
                       teamId: group.teamId,
                       indent: true,
                       resolvedProps: allTeamProperties[group.teamId] || [],
@@ -1995,13 +2126,29 @@ const Workspace: React.FC<WorkspaceProps> = ({
               const isDoneTable = col.category === 'completed';
               const isBacklogTable = col.category === 'backlog';
               const isIgnoredTable = col.category === 'ignored';
+              const sectionTableColumns = (() => {
+                if (!isMyWorkspace) return visibleTableColumns;
+                const standardColumns = orderedTableColumns.filter((column) => !column.key.startsWith('prop:'));
+                const propertyColumns = resolvedProps.map((property) => ({
+                  key: `prop:${property.id}`,
+                  label: property.name,
+                  className: 'w-32',
+                }));
+                const trailingIndex = standardColumns.findIndex((column) => column.key === 'links');
+                if (trailingIndex === -1) return [...standardColumns, ...propertyColumns];
+                return [
+                  ...standardColumns.slice(0, trailingIndex),
+                  ...propertyColumns,
+                  ...standardColumns.slice(trailingIndex),
+                ];
+              })();
 
               return (
                 <div
                   key={colKey}
                   className={`space-y-2 group/section relative ${indent ? 'ml-4' : ''}`}
-                  onDrop={indent ? undefined : (e) => handleDropStatus(e, col.id)}
-                  onDragOver={indent ? undefined : handleDragOver}
+                  onDrop={isRelatedOnly || indent ? undefined : (e) => handleDropStatus(e, col.id)}
+                  onDragOver={isRelatedOnly || indent ? undefined : handleDragOver}
                 >
                   <div className="flex items-center gap-2 sticky top-0 bg-white dark:bg-black z-10 py-2 group/header">
                     {!statusSort &&
@@ -2077,7 +2224,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       {isCollapsed ? <EyeOff size={14} /> : <Eye size={14} />}
                     </button>
 
-                    {teamFilter !== 'my-work' && (
+                    {!isRelatedOnly && teamFilter !== 'my-work' && (
                       <div className="relative ml-2">
                         <button
                           ref={(el) => {
@@ -2118,7 +2265,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             setActiveColumnMenu(null);
                           }}
                           isArchiveCategory={col.category === 'ignored'}
-                          canEditCategories={!!userRole && isEditorOrAbove(userRole)}
+                          canEditCategories={!isRelatedOnly && !!userRole && isEditorOrAbove(userRole)}
                           onToggleArchiveCategory={() => {
                             onSetStatusCategory(teamId, col.id, col.category === 'ignored' ? 'active' : 'ignored');
                             setActiveColumnMenu(null);
@@ -2138,8 +2285,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             const urgency = task.dueDate ? getDeadlineUrgency(task.dueDate) : null;
                             return (
                               <div
-                                key={task.id}
-                                onClick={() => onTaskClick(task)}
+                                key={getTaskRenderKey(task)}
+                                onClick={() => openTask(task)}
                                 className={`border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 bg-white dark:bg-zinc-900/40 active:bg-zinc-50 dark:active:bg-zinc-800/50 transition-colors cursor-pointer ${selectedTaskIds.has(task.id) ? 'ring-1 ring-blue-500 bg-blue-50/50 dark:bg-blue-950/30' : ''}`}
                               >
                                 <div className="flex items-center gap-2 min-w-0">
@@ -2185,7 +2332,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         ) : (
                           <p className="p-3 text-center text-xs text-zinc-400 italic">No tasks in this step</p>
                         )}
-                        {!searchQuery && teamFilter !== 'my-work' && (
+                        {!isRelatedOnly && !searchQuery && teamFilter !== 'my-work' && (
                           <button
                             onClick={() => onAddTask({ statusId: col.id })}
                             className="w-full p-2 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium flex items-center gap-2"
@@ -2204,7 +2351,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             className={`border-b ${isIgnoredTable ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800/40' : isDoneTable ? 'bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-800/40' : isBacklogTable ? 'bg-blue-50/50 dark:bg-blue-950/20 border-blue-200 dark:border-blue-800/40' : 'bg-zinc-50 dark:bg-zinc-900 border-zinc-200 dark:border-zinc-800'}`}
                           >
                             <tr>
-                              {!indent && (
+                              {!isRelatedOnly && !indent && (
                                 <th className="p-3 w-10">
                                   <input
                                     type="checkbox"
@@ -2223,7 +2370,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   />
                                 </th>
                               )}
-                              {visibleTableColumns.map((tc) => {
+                              {sectionTableColumns.map((tc) => {
                                 const isProp = tc.key.startsWith('prop:');
                                 const prop = isProp ? resolvedProps.find((p) => p.id === tc.key.slice(5)) : undefined;
                                 return (
@@ -2232,7 +2379,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     className={`p-3 font-medium text-xs ${tc.className} cursor-pointer select-none transition-colors ${isProp ? 'group/prop relative' : ''} ${isIgnoredTable ? 'text-amber-500 dark:text-amber-500 hover:text-amber-700 dark:hover:text-amber-300' : isDoneTable ? 'text-emerald-500 dark:text-emerald-500 hover:text-emerald-700 dark:hover:text-emerald-300' : isBacklogTable ? 'text-blue-500 dark:text-blue-500 hover:text-blue-700 dark:hover:text-blue-300' : 'text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300'}`}
                                     onClick={() => handleHeaderSort(tc.key)}
                                   >
-                                    {isProp && editingColumnId === prop?.id ? (
+                                    {!isRelatedOnly && isProp && editingColumnId === prop?.id ? (
                                       <input
                                         autoFocus
                                         className="bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1 py-0.5 text-xs font-semibold w-full outline-none"
@@ -2257,7 +2404,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               <ChevronDown size={12} className="text-zinc-900 dark:text-white" />
                                             ))}
                                         </span>
-                                        {isProp && prop && (
+                                        {!isRelatedOnly && isProp && prop && (
                                           <button
                                             onClick={(e) => {
                                               e.stopPropagation();
@@ -2275,45 +2422,47 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 );
                               })}
                               <th className="p-2 w-20 text-center">
-                                <div className="flex items-center justify-center gap-0.5">
-                                  {canManageColumnVisibility && (
+                                {!isRelatedOnly && (
+                                  <div className="flex items-center justify-center gap-0.5">
+                                    {canManageColumnVisibility && (
+                                      <button
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setIsColumnVisibilityOpen(isColumnVisibilityOpen === col.id ? null : col.id);
+                                          setIsReorderColumnsOpen(null);
+                                          setIsAddPropertyOpen(null);
+                                        }}
+                                        className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                        title="Show/hide columns"
+                                      >
+                                        <Eye size={14} />
+                                      </button>
+                                    )}
                                     <button
                                       onClick={(e) => {
                                         e.stopPropagation();
-                                        setIsColumnVisibilityOpen(isColumnVisibilityOpen === col.id ? null : col.id);
-                                        setIsReorderColumnsOpen(null);
+                                        setIsReorderColumnsOpen(isReorderColumnsOpen === col.id ? null : col.id);
                                         setIsAddPropertyOpen(null);
+                                        setIsColumnVisibilityOpen(null);
                                       }}
                                       className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                      title="Show/hide columns"
+                                      title="Reorder columns"
                                     >
-                                      <Eye size={14} />
+                                      <ArrowLeftRight size={14} />
                                     </button>
-                                  )}
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setIsReorderColumnsOpen(isReorderColumnsOpen === col.id ? null : col.id);
-                                      setIsAddPropertyOpen(null);
-                                      setIsColumnVisibilityOpen(null);
-                                    }}
-                                    className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
-                                    title="Reorder columns"
-                                  >
-                                    <ArrowLeftRight size={14} />
-                                  </button>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setIsAddPropertyOpen(isAddPropertyOpen === col.id ? null : col.id);
-                                      setIsReorderColumnsOpen(null);
-                                      setIsColumnVisibilityOpen(null);
-                                    }}
-                                    className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400"
-                                  >
-                                    <Plus size={14} />
-                                  </button>
-                                </div>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setIsAddPropertyOpen(isAddPropertyOpen === col.id ? null : col.id);
+                                        setIsReorderColumnsOpen(null);
+                                        setIsColumnVisibilityOpen(null);
+                                      }}
+                                      className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 rounded text-zinc-400"
+                                    >
+                                      <Plus size={14} />
+                                    </button>
+                                  </div>
+                                )}
                               </th>
                             </tr>
                           </thead>
@@ -2323,15 +2472,21 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 const isDragOver = dragOverTaskId === task.id;
                                 return (
                                   <tr
-                                    key={task.id}
-                                    draggable={!indent && !sortColumn}
-                                    onDragStart={indent ? undefined : (e) => handleDragStart(e, task.id, col.id)}
-                                    onDragOver={
-                                      indent ? undefined : (e) => !sortColumn && handleTaskDragOver(e, task.id)
+                                    key={getTaskRenderKey(task)}
+                                    draggable={!isRelatedOnly && !indent && !sortColumn}
+                                    onDragStart={
+                                      isRelatedOnly || indent ? undefined : (e) => handleDragStart(e, task.id, col.id)
                                     }
-                                    onDragLeave={indent ? undefined : handleTaskDragLeave}
-                                    onDrop={indent ? undefined : (e) => handleDropOnTask(e, task.id, col.id)}
-                                    className={`hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group ${!indent && !sortColumn ? 'cursor-grab active:cursor-grabbing' : ''} relative ${selectedTaskIds.has(task.id) ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
+                                    onDragOver={
+                                      isRelatedOnly || indent
+                                        ? undefined
+                                        : (e) => !sortColumn && handleTaskDragOver(e, task.id)
+                                    }
+                                    onDragLeave={isRelatedOnly || indent ? undefined : handleTaskDragLeave}
+                                    onDrop={
+                                      isRelatedOnly || indent ? undefined : (e) => handleDropOnTask(e, task.id, col.id)
+                                    }
+                                    className={`hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group ${!isRelatedOnly && !indent && !sortColumn ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} relative ${selectedTaskIds.has(task.id) ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
                                     style={
                                       isDragOver && !sortColumn
                                         ? {
@@ -2342,9 +2497,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                           }
                                         : undefined
                                     }
-                                    onClick={() => onTaskClick(task)}
+                                    onClick={() => openTask(task)}
                                   >
-                                    {!indent && (
+                                    {!isRelatedOnly && !indent && (
                                       <td className="p-3 w-10" onClick={(e) => e.stopPropagation()}>
                                         <input
                                           type="checkbox"
@@ -2360,7 +2515,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       </td>
                                     )}
                                     {/* Data-driven cells */}
-                                    {visibleTableColumns.map((tc) => {
+                                    {sectionTableColumns.map((tc) => {
                                       switch (tc.key) {
                                         case 'title':
                                           return (
@@ -2369,7 +2524,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 max-w-[280px]"
                                             >
                                               <div className="flex items-center gap-2 overflow-hidden">
-                                                {!indent && !sortColumn && (
+                                                {!isRelatedOnly && !indent && !sortColumn && (
                                                   <GripVertical
                                                     size={12}
                                                     className="text-zinc-300 opacity-100 md:opacity-0 md:group-hover:opacity-100 flex-shrink-0"
@@ -2421,6 +2576,34 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                           };
                                           const personIcon =
                                             personKey === 'editor' ? Eye : personKey === 'designer' ? Paintbrush : User;
+                                          const selectedPeople = members.filter((member) =>
+                                            selectedIds.includes(member.id),
+                                          );
+                                          if (isRelatedOnly) {
+                                            return (
+                                              <td key={tc.key} className="p-3">
+                                                {selectedPeople.length > 0 ? (
+                                                  <div className="flex flex-col gap-1">
+                                                    {selectedPeople.map((person) => (
+                                                      <div key={person.id} className="flex items-center gap-1.5">
+                                                        <Avatar
+                                                          src={person.avatar}
+                                                          alt={person.name}
+                                                          size="sm"
+                                                          className="flex-shrink-0"
+                                                        />
+                                                        <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
+                                                          {person.name}
+                                                        </span>
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                ) : (
+                                                  <span className="text-xs text-zinc-400">—</span>
+                                                )}
+                                              </td>
+                                            );
+                                          }
                                           return (
                                             <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
                                               <MultiSelect
@@ -2468,26 +2651,39 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                         case 'priority':
                                           return (
                                             <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                              <CustomSelect
-                                                compact
-                                                options={[
-                                                  { value: 'low', label: 'Low' },
-                                                  { value: 'medium', label: 'Medium' },
-                                                  { value: 'high', label: 'High' },
-                                                ]}
-                                                value={task.priority}
-                                                onChange={(val) => onUpdateTask({ ...task, priority: val as Priority })}
-                                                renderValue={(val) => (
+                                              {isRelatedOnly ? (
+                                                <span
+                                                  className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[task.priority] || ''}`}
+                                                >
                                                   <span
-                                                    className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[val] || ''}`}
-                                                  >
+                                                    className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority] || ''}`}
+                                                  />
+                                                  {task.priority}
+                                                </span>
+                                              ) : (
+                                                <CustomSelect
+                                                  compact
+                                                  options={[
+                                                    { value: 'low', label: 'Low' },
+                                                    { value: 'medium', label: 'Medium' },
+                                                    { value: 'high', label: 'High' },
+                                                  ]}
+                                                  value={task.priority}
+                                                  onChange={(val) =>
+                                                    onUpdateTask({ ...task, priority: val as Priority })
+                                                  }
+                                                  renderValue={(val) => (
                                                     <span
-                                                      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[val] || ''}`}
-                                                    />
-                                                    {val}
-                                                  </span>
-                                                )}
-                                              />
+                                                      className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[val] || ''}`}
+                                                    >
+                                                      <span
+                                                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[val] || ''}`}
+                                                      />
+                                                      {val}
+                                                    </span>
+                                                  )}
+                                                />
+                                              )}
                                             </td>
                                           );
                                         case 'deadline': {
@@ -2500,50 +2696,62 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                 : 'active';
                                           return (
                                             <td key={tc.key} className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-                                              <SimpleDatePicker
-                                                value={toDateOnly(task.dueDate)}
-                                                onChange={(date) =>
-                                                  onUpdateTask({
-                                                    ...task,
-                                                    dueDate: toDateOnly(date),
-                                                  })
-                                                }
-                                                placeholder="Set date"
-                                                renderTrigger={(onClick, value, placeholder) => (
-                                                  <DeadlineDateTrigger
-                                                    value={value}
-                                                    placeholder={placeholder}
-                                                    onClick={onClick}
-                                                    statusCategory={deadlineCategory}
-                                                    doneDate={task.doneDate ?? null}
-                                                  />
-                                                )}
-                                              />
+                                              {isRelatedOnly ? (
+                                                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                                  {task.dueDate ? formatDateEU(toDateOnly(task.dueDate)) : '—'}
+                                                </span>
+                                              ) : (
+                                                <SimpleDatePicker
+                                                  value={toDateOnly(task.dueDate)}
+                                                  onChange={(date) =>
+                                                    onUpdateTask({
+                                                      ...task,
+                                                      dueDate: toDateOnly(date),
+                                                    })
+                                                  }
+                                                  placeholder="Set date"
+                                                  renderTrigger={(onClick, value, placeholder) => (
+                                                    <DeadlineDateTrigger
+                                                      value={value}
+                                                      placeholder={placeholder}
+                                                      onClick={onClick}
+                                                      statusCategory={deadlineCategory}
+                                                      doneDate={task.doneDate ?? null}
+                                                    />
+                                                  )}
+                                                />
+                                              )}
                                             </td>
                                           );
                                         }
                                         case 'done':
                                           return (
                                             <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                              <SimpleDatePicker
-                                                value={toDateOnly(task.doneDate)}
-                                                onChange={(date) =>
-                                                  onUpdateTask({
-                                                    ...task,
-                                                    doneDate: date ? toDateOnly(date) : null,
-                                                  })
-                                                }
-                                                placeholder="Set date"
-                                                renderTrigger={(onClick, value) => (
-                                                  <button
-                                                    type="button"
-                                                    onClick={onClick}
-                                                    className="rounded px-1.5 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                                                  >
-                                                    {value ? formatDateEU(value) : 'Set date'}
-                                                  </button>
-                                                )}
-                                              />
+                                              {isRelatedOnly ? (
+                                                <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                                  {task.doneDate ? formatDateEU(toDateOnly(task.doneDate)) : '—'}
+                                                </span>
+                                              ) : (
+                                                <SimpleDatePicker
+                                                  value={toDateOnly(task.doneDate)}
+                                                  onChange={(date) =>
+                                                    onUpdateTask({
+                                                      ...task,
+                                                      doneDate: date ? toDateOnly(date) : null,
+                                                    })
+                                                  }
+                                                  placeholder="Set date"
+                                                  renderTrigger={(onClick, value) => (
+                                                    <button
+                                                      type="button"
+                                                      onClick={onClick}
+                                                      className="rounded px-1.5 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                                                    >
+                                                      {value ? formatDateEU(value) : 'Set date'}
+                                                    </button>
+                                                  )}
+                                                />
+                                              )}
                                             </td>
                                           );
                                         case 'created': {
@@ -2672,6 +2880,26 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                             }
                                             if (prop?.type === 'tags') {
                                               const tagVals: string[] = Array.isArray(val) ? val : val ? [val] : [];
+                                              if (isRelatedOnly) {
+                                                return (
+                                                  <td key={tc.key} className="p-3">
+                                                    {tagVals.length > 0 ? (
+                                                      <div className="flex flex-wrap gap-1">
+                                                        {tagVals.slice(0, 3).map((tag) => (
+                                                          <span
+                                                            key={tag}
+                                                            className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
+                                                          >
+                                                            {tag}
+                                                          </span>
+                                                        ))}
+                                                      </div>
+                                                    ) : (
+                                                      <span className="text-xs text-zinc-400">—</span>
+                                                    )}
+                                                  </td>
+                                                );
+                                              }
                                               return (
                                                 <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
                                                   <TagSelect
@@ -2713,7 +2941,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             ) : (
                               <tr>
                                 <td
-                                  colSpan={visibleTableColumns.length + (indent ? 1 : 2)}
+                                  colSpan={sectionTableColumns.length + (indent ? 1 : 2)}
                                   className="p-4 text-center text-xs text-zinc-400 italic"
                                 >
                                   No tasks in this step
@@ -2721,13 +2949,13 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               </tr>
                             )}
                             {/* Add Task Row */}
-                            {!searchQuery && teamFilter !== 'my-work' && (
+                            {!isRelatedOnly && !searchQuery && teamFilter !== 'my-work' && (
                               <tr
                                 className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors cursor-pointer"
                                 onClick={() => onAddTask({ statusId: col.id })}
                               >
                                 <td
-                                  colSpan={visibleTableColumns.length + (indent ? 1 : 2)}
+                                  colSpan={sectionTableColumns.length + (indent ? 1 : 2)}
                                   className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium"
                                 >
                                   <span className="flex items-center gap-2">
@@ -2739,7 +2967,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           </tbody>
                         </table>
                       </div>
-                      {activePropertyMenu?.startsWith(`${col.id}:`) &&
+                      {!isRelatedOnly &&
+                        activePropertyMenu?.startsWith(`${col.id}:`) &&
                         (() => {
                           const propId = activePropertyMenu.split(':')[1];
                           const prop = resolvedProps.find((p) => p.id === propId);
@@ -2790,7 +3019,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             </div>
                           );
                         })()}
-                      {isAddPropertyOpen === col.id && (
+                      {!isRelatedOnly && isAddPropertyOpen === col.id && (
                         <div
                           className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left"
                           onClick={(e) => e.stopPropagation()}
@@ -2840,7 +3069,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           </Button>
                         </div>
                       )}
-                      {isReorderColumnsOpen === col.id && (
+                      {!isRelatedOnly && isReorderColumnsOpen === col.id && (
                         <div
                           className="absolute right-0 top-10 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 p-3 w-56 text-left max-h-[400px] overflow-y-auto custom-scrollbar"
                           onClick={(e) => e.stopPropagation()}
@@ -2948,7 +3177,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               );
             })}
 
-            {!searchQuery && teamFilter !== 'my-work' && (
+            {!isRelatedOnly && !searchQuery && teamFilter !== 'my-work' && (
               <button
                 onClick={handleAddColumn}
                 className="flex items-center gap-2 text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white text-sm font-medium transition-colors py-2"
@@ -2961,7 +3190,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
         )}
 
         {/* Floating Bulk Action Bar */}
-        {viewMode === 'table' && selectedCount > 0 && teamFilter !== 'my-work' && (
+        {!isRelatedOnly && viewMode === 'table' && selectedCount > 0 && teamFilter !== 'my-work' && (
           <div
             className="fixed left-1/2 -translate-x-1/2 z-50 animate-fade-in"
             style={{ bottom: 'calc(1.5rem + env(safe-area-inset-bottom))' }}
@@ -3109,9 +3338,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       <div className="space-y-2">
                         {tasks.map((t) => (
                           <div
-                            key={t.id}
-                            onClick={() => onTaskClick(t)}
-                            className={`cursor-pointer rounded-lg border border-zinc-200 dark:border-zinc-700 border-l-[3px] bg-white dark:bg-zinc-900 px-3 py-2 flex items-center gap-2 ${getStatusAccent(getStatusName(teamStatuses, t.teamId, getTaskStatusInTeam(t)))}`}
+                            key={getTaskRenderKey(t)}
+                            onClick={() => openTask(t)}
+                            className={`cursor-pointer rounded-lg border border-zinc-200 dark:border-zinc-700 border-l-[3px] bg-white dark:bg-zinc-900 px-3 py-2 flex items-center gap-2 ${getStatusAccent(getStatusName(teamStatuses, getTaskContextTeamId(t), getTaskStatusInTeam(t)))}`}
                           >
                             <span
                               className={`w-2 h-2 rounded-full flex-shrink-0 ${PRIORITY_DOT[t.priority] || 'bg-zinc-400'}`}
@@ -3152,7 +3381,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         {overflowTasks.length > 0 && (
                           <div className="flex-1 p-1 space-y-1 overflow-y-auto max-h-[130px] custom-scrollbar">
                             {overflowTasks.map((t) => (
-                              <div key={t.id} onClick={() => onTaskClick(t)} className="cursor-pointer">
+                              <div key={getTaskRenderKey(t)} onClick={() => openTask(t)} className="cursor-pointer">
                                 <div className="text-[10px] px-1.5 py-1 rounded border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-900/50 text-zinc-400 dark:text-zinc-500 truncate leading-tight">
                                   {t.title}
                                 </div>
@@ -3170,9 +3399,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                     <div
                       key={i}
                       className={`flex flex-col min-h-[100px] relative transition-colors border-b border-r border-zinc-200 dark:border-zinc-800 group/cell last:border-r-0 ${isToday ? 'bg-blue-50/50 dark:bg-blue-900/20' : 'bg-white dark:bg-black hover:bg-zinc-50 dark:hover:bg-zinc-900/20'}`}
-                      onClick={() => teamFilter !== 'my-work' && onAddTask({ dueDate: dateStr })}
-                      onDragOver={handleDragOver}
-                      onDrop={(e) => handleDropDate(e, dateStr)}
+                      onClick={() => !isRelatedOnly && teamFilter !== 'my-work' && onAddTask({ dueDate: dateStr })}
+                      onDragOver={isRelatedOnly ? undefined : handleDragOver}
+                      onDrop={isRelatedOnly ? undefined : (e) => handleDropDate(e, dateStr)}
                     >
                       <div
                         className={`p-1 text-[10px] font-medium text-right ${isToday ? 'text-blue-600 dark:text-blue-400 font-bold' : 'text-zinc-400'} group-hover/cell:text-zinc-900 dark:group-hover/cell:text-zinc-100`}
@@ -3182,17 +3411,21 @@ const Workspace: React.FC<WorkspaceProps> = ({
                       <div className="flex-1 p-1 space-y-1 overflow-y-auto max-h-[130px] custom-scrollbar">
                         {dayTasks.map((t) => (
                           <div
-                            key={t.id}
+                            key={getTaskRenderKey(t)}
                             onClick={(e) => {
                               e.stopPropagation();
-                              onTaskClick(t);
+                              openTask(t);
                             }}
-                            draggable
-                            onDragStart={(e) => handleDragStart(e, t.id, getTaskStatusInTeam(t) ?? '')}
-                            className="group cursor-grab active:cursor-grabbing"
+                            draggable={!isRelatedOnly}
+                            onDragStart={
+                              isRelatedOnly ? undefined : (e) => handleDragStart(e, t.id, getTaskStatusInTeam(t) ?? '')
+                            }
+                            className={
+                              isRelatedOnly ? 'group cursor-pointer' : 'group cursor-grab active:cursor-grabbing'
+                            }
                           >
                             <div
-                              className={`text-[10px] px-1.5 py-1 rounded border border-zinc-200 dark:border-zinc-700 border-l-[3px] shadow-sm bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 flex items-center gap-1 ${getStatusAccent(getStatusName(teamStatuses, t.teamId, getTaskStatusInTeam(t)))}`}
+                              className={`text-[10px] px-1.5 py-1 rounded border border-zinc-200 dark:border-zinc-700 border-l-[3px] shadow-sm bg-white dark:bg-zinc-900 text-zinc-800 dark:text-zinc-200 flex items-center gap-1 ${getStatusAccent(getStatusName(teamStatuses, getTaskContextTeamId(t), getTaskStatusInTeam(t)))}`}
                             >
                               <span
                                 className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[t.priority] || 'bg-zinc-400'}`}
@@ -3204,7 +3437,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                         ))}
                       </div>
                       {/* Add Button on Hover */}
-                      {teamFilter !== 'my-work' && (
+                      {!isRelatedOnly && teamFilter !== 'my-work' && (
                         <div className="absolute top-1 left-1 opacity-100 md:opacity-0 md:group-hover/cell:opacity-100 transition-opacity">
                           <button className="p-0.5 hover:bg-zinc-200 dark:hover:bg-zinc-700 rounded text-zinc-400 hover:text-black dark:hover:text-white">
                             <Plus size={12} />
@@ -3221,7 +3454,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       </div>
       {/* Bulk Delete Confirmation Modal */}
       <Modal
-        isOpen={bulkDeleteConfirmOpen}
+        isOpen={!isRelatedOnly && bulkDeleteConfirmOpen}
         onClose={() => setBulkDeleteConfirmOpen(false)}
         title="Move to Bin"
         size="sm"
@@ -3233,6 +3466,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
             <Button
               variant="danger"
               onClick={() => {
+                if (isRelatedOnly) return;
                 if (onDeleteTask) selectedTaskIds.forEach((id) => onDeleteTask(id));
                 setBulkDeleteConfirmOpen(false);
                 clearSelection();
@@ -3251,7 +3485,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       </Modal>
 
       {/* Mobile floating action button for New Task */}
-      {teamFilter !== 'my-work' && (
+      {!isRelatedOnly && teamFilter !== 'my-work' && (
         <button
           onClick={() => onAddTask()}
           aria-label="New task"

@@ -18,16 +18,19 @@ export function useAuth() {
 
     const applySession = (next: Session | null) => {
       const state = useAuthStore.getState();
-      state.setSession(next);
       if (next) {
         if (initialisedUserId !== next.user.id) {
+          if (initialisedUserId !== null) state.clearSessionState();
           initialisedUserId = next.user.id;
+          state.setSession(next);
+          state.setIsLoading(true);
           state.initData(next.user.id);
+        } else {
+          state.setSession(next);
         }
       } else {
         initialisedUserId = null;
-        state.setCurrentUser(null);
-        state.setIsLoading(false);
+        state.clearSessionState();
       }
     };
 
@@ -36,9 +39,7 @@ export function useAuth() {
         // Corrupted or invalid stored session — clear local state, force fresh login.
         const state = useAuthStore.getState();
         supabase.auth.signOut().catch(() => {});
-        state.setSession(null);
-        state.setCurrentUser(null);
-        state.setIsLoading(false);
+        state.clearSessionState();
         return;
       }
       applySession(current);

@@ -108,21 +108,24 @@ export const DocsEditor: React.FC<DocsEditorProps> = ({ content, onChange }) => 
         e.target.value = '';
         return;
       }
-      let url: string | null = null;
+      let image: { path: string; signedUrl: string } | null = null;
       try {
-        url = await uploadDocImage(file);
+        image = await uploadDocImage(file);
       } catch {
         // Storage upload failed — use base64 fallback
       }
-      if (!url) {
+      let fallbackUrl: string | null = null;
+      if (!image) {
         try {
-          url = await toBase64(file);
+          fallbackUrl = await toBase64(file);
         } catch {
           // base64 also failed — give up
         }
       }
-      if (url) {
-        (editor.chain().focus() as any).setImage({ src: url }).run();
+      if (image) {
+        (editor.chain().focus() as any).setImage({ src: image.signedUrl, storagePath: image.path }).run();
+      } else if (fallbackUrl) {
+        (editor.chain().focus() as any).setImage({ src: fallbackUrl }).run();
       }
       e.target.value = '';
     },

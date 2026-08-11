@@ -6,8 +6,18 @@ import * as db from '../lib/database';
 import { useDataStore } from './dataStore';
 import { useUiStore } from './uiStore';
 
-// Concurrency guard — prevents parallel initData calls
+// Serialise bootstraps so an old account's slower response cannot overwrite a
+// newly selected account in the shared Zustand stores.
 let initPromise: Promise<void> | null = null;
+let initUserId: string | null = null;
+let authEpoch = 0;
+
+export interface AuthSessionSnapshot {
+  epoch: number;
+  authUserId: string | null;
+  profileId: string | null;
+  accessScope: Member['accessScope'] | null;
+}
 
 interface AuthState {
   session: Session | null;
@@ -22,10 +32,12 @@ interface AuthState {
   setProfileError: (error: string | null) => void;
   setNeedsPasswordSetup: (needs: boolean) => void;
   initData: (authUserId: string) => Promise<void>;
+  reloadData: () => Promise<void>;
+  clearSessionState: () => void;
   logout: () => Promise<void>;
 }
 
-export const useAuthStore = create<AuthState>((set, _get) => ({
+export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   currentUser: null,
   isLoading: true,
@@ -44,35 +56,99 @@ export const useAuthStore = create<AuthState>((set, _get) => ({
   setNeedsPasswordSetup: (needs) => set({ needsPasswordSetup: needs }),
 
   initData: (authUserId: string) => {
-    // If already running, return existing promise (dedup)
-    if (initPromise) return initPromise;
+    if (initPromise && initUserId === authUserId) return initPromise;
 
-    initPromise = (async () => {
+    const previousInit = initPromise;
+    const generation = ++authEpoch;
+    initUserId = authUserId;
+    const shouldCommit = () => isAuthLoadCurrent(generation, authUserId);
+    const nextInit = (async () => {
+      if (previousInit) await previousInit.catch(() => undefined);
+      if (!shouldCommit()) return;
       try {
         set({ profileError: null });
-        const profile = await useDataStore.getState().loadAllData(authUserId);
+        const profile = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
+        if (!shouldCommit()) return;
         if (!profile) {
           set({ profileError: 'No profile found for this account. Please contact an administrator.' });
           return;
         }
-        set({ currentUser: profile });
-        useUiStore.getState().loadNotifications();
+        // Notifications are non-critical. Publish the authenticated profile and
+        // release the loading screen before awaiting them, so a realtime reload
+        // cannot supersede this epoch and leave the app stuck loading.
+        set({ currentUser: profile, isLoading: false });
+        await useUiStore.getState().loadNotifications(shouldCommit);
       } catch {
-        set({ profileError: 'Failed to load application data. Please try refreshing.' });
+        if (shouldCommit()) {
+          set({ profileError: 'Failed to load application data. Please try refreshing.' });
+        }
       } finally {
-        set({ isLoading: false });
-        initPromise = null;
+        if (shouldCommit()) {
+          set({ isLoading: false });
+          initPromise = null;
+          initUserId = null;
+        }
       }
     })();
+    initPromise = nextInit;
+    return nextInit;
+  },
 
-    return initPromise;
+  reloadData: async () => {
+    const authUserId = get().session?.user.id;
+    if (!authUserId) return;
+    const generation = ++authEpoch;
+    const shouldCommit = () => isAuthLoadCurrent(generation, authUserId);
+    const previousScope = get().currentUser?.accessScope;
+    const profile = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
+    if (!profile || !shouldCommit()) return;
+    if (previousScope && previousScope !== profile.accessScope) {
+      useUiStore.getState().resetSessionUi();
+    }
+    set({ currentUser: profile, profileError: null });
+    await useUiStore.getState().loadNotifications(shouldCommit);
+  },
+
+  clearSessionState: () => {
+    authEpoch++;
+    initUserId = null;
+    useDataStore.getState().resetData();
+    useUiStore.getState().resetSessionUi();
+    set({ session: null, currentUser: null, profileError: null, isLoading: false });
   },
 
   logout: async () => {
-    await supabase.auth.signOut();
-    set({ session: null, currentUser: null, profileError: null });
+    try {
+      await supabase.auth.signOut();
+    } finally {
+      get().clearSessionState();
+    }
   },
 }));
+
+function isAuthLoadCurrent(epoch: number, authUserId: string): boolean {
+  return authEpoch === epoch && useAuthStore.getState().session?.user.id === authUserId;
+}
+
+export function captureAuthSession(): AuthSessionSnapshot {
+  const state = useAuthStore.getState();
+  return {
+    epoch: authEpoch,
+    authUserId: state.session?.user.id ?? null,
+    profileId: state.currentUser?.id ?? null,
+    accessScope: state.currentUser?.accessScope ?? null,
+  };
+}
+
+export function isAuthSessionCurrent(snapshot: AuthSessionSnapshot): boolean {
+  const current = captureAuthSession();
+  return (
+    current.epoch === snapshot.epoch &&
+    current.authUserId === snapshot.authUserId &&
+    current.profileId === snapshot.profileId &&
+    current.accessScope === snapshot.accessScope
+  );
+}
 
 export async function loadProfile(authUserId: string): Promise<Member | null> {
   return db.findProfileByAuthId(authUserId);

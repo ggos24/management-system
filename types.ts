@@ -2,12 +2,14 @@ export type TeamType = 'editorial' | 'video' | 'social' | 'management' | string;
 export type StatusCategory = 'active' | 'completed' | 'backlog' | 'ignored';
 export type Priority = 'low' | 'medium' | 'high';
 export type UserRole = 'admin' | 'editor' | 'user';
+export type AccessScope = 'full' | 'related_only';
 export type AbsenceStatus = 'pending' | 'approved' | 'declined';
 
 export interface User {
   id: string;
   name: string;
   role: UserRole; // App access level
+  accessScope: AccessScope; // Data visibility: full workspace or related tasks only
   jobTitle: string; // Job title e.g. "Senior Editor"
   avatar: string;
   teamId: string; // Primary / home team (= teamIds[0]); kept as a denormalized cache
@@ -130,9 +132,16 @@ export interface TaskComment {
   content: string;
   createdAt: string;
   updatedAt?: string;
+  mentionedIds: string[];
+  contextTeamId: string;
   // Joined from profiles
   userName?: string;
   userAvatar?: string;
+}
+
+export interface TaskAccessContext {
+  taskId: string;
+  contextTeamId: string;
 }
 
 export interface TaskActivity {
@@ -154,6 +163,7 @@ export type TicketCategory = 'website' | 'admin_panel' | 'account_access' | 'oth
 export interface TicketAttachment {
   name: string;
   url: string;
+  path?: string;
   size?: number;
   type?: string;
 }
@@ -247,6 +257,7 @@ export type NotificationType =
   | 'ticket_submitted'
   | 'ticket_status_changed'
   | 'ticket_assigned'
+  | 'ticket_mention'
   | 'ticket_reply';
 
 export interface Notification {
@@ -279,6 +290,7 @@ export const NOTIFICATION_CATEGORY: Record<NotificationType, NotificationCategor
   ticket_submitted: 'support',
   ticket_status_changed: 'support',
   ticket_assigned: 'support',
+  ticket_mention: 'support',
   ticket_reply: 'support',
 };
 

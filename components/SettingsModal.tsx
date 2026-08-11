@@ -30,14 +30,64 @@ import {
   deleteTelegramLink,
   TelegramLink,
 } from '../lib/database';
-import { Label, Badge, Input } from './ui';
+import { Label, Badge } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { isEditorOrAbove, isAdmin } from '../constants';
-import type { LogEntry, Member, NotificationCategory, NotificationChannel } from '../types';
+import type { AccessScope, LogEntry, Member, NotificationCategory, NotificationChannel, UserRole } from '../types';
 
 type BadgeColor = 'zinc' | 'emerald' | 'red' | 'blue' | 'amber' | 'purple';
+
+type NotificationCategoryRow = {
+  category: NotificationCategory;
+  label: string;
+  description: string;
+};
+
+export function getSettingsTabs(accessScope: AccessScope | undefined, role: UserRole | undefined): string[] {
+  if (accessScope === 'related_only') return ['My Profile', 'Notifications'];
+  return [
+    'My Profile',
+    'Notifications',
+    'Team Members',
+    ...(role && isEditorOrAbove(role) ? ['Content'] : []),
+    'Logs History',
+  ];
+}
+
+export function getNotificationCategoryRows(
+  accessScope: AccessScope | undefined,
+  showAdminCategories: boolean,
+): NotificationCategoryRow[] {
+  const relatedRows: NotificationCategoryRow[] = [
+    { category: 'tasks', label: 'Tasks', description: 'Assigned, status, updates, deletions' },
+    { category: 'deadlines', label: 'Deadlines', description: 'Reminders 3 days and 1 day before due' },
+    { category: 'mentions', label: 'Mentions', description: '@mentions in task comments' },
+  ];
+  if (accessScope === 'related_only') return relatedRows;
+
+  return [
+    ...relatedRows,
+    {
+      category: 'support',
+      label: 'Support',
+      description: showAdminCategories
+        ? 'New tickets, replies, and status changes'
+        : 'Replies and status changes on your tickets',
+    },
+    {
+      category: 'schedule',
+      label: 'Schedule',
+      description: showAdminCategories
+        ? 'Absence requests, decisions, and schedule edits'
+        : 'Decisions on your absence requests',
+    },
+    ...(showAdminCategories
+      ? ([{ category: 'members', label: 'Members', description: 'New member invitations' }] as const)
+      : []),
+  ];
+}
 
 function getActionColor(action: string): BadgeColor {
   if (/created|added|invited|approved|restored/i.test(action)) return 'emerald';
@@ -179,10 +229,9 @@ export const SettingsModal: React.FC = () => {
     updateMemberJobTitle,
     updateMemberTeams,
     updateMemberRole,
+    updateMemberAccess,
     allPlacements,
     addPlacement,
-    renamePlacement,
-    deletePlacement,
     teamTypes,
     addType,
     deleteType,
@@ -208,6 +257,8 @@ export const SettingsModal: React.FC = () => {
   const [editingTypeId, setEditingTypeId] = useState<string | null>(null);
   const [typeDraft, setTypeDraft] = useState('');
   const [newTypeName, setNewTypeName] = useState('');
+  const [pendingConversionTeamIds, setPendingConversionTeamIds] = useState<Record<string, string[]>>({});
+  const isRelatedOnly = currentUser?.accessScope === 'related_only';
 
   // Telegram linking state
   const [telegramLink, setTelegramLink] = useState<TelegramLink | null>(null);
@@ -312,7 +363,9 @@ export const SettingsModal: React.FC = () => {
 
   const renderSettingsContent = () => {
     if (!currentUser) return null;
-    switch (activeSettingsTab) {
+    const effectiveTab =
+      isRelatedOnly && !['My Profile', 'Notifications'].includes(activeSettingsTab) ? 'My Profile' : activeSettingsTab;
+    switch (effectiveTab) {
       case 'My Profile': {
         const myAbsenceStats = calculateAbsenceStats(currentUser.id, absences);
         return (
@@ -450,38 +503,19 @@ export const SettingsModal: React.FC = () => {
                 )}
               </div>
             </div>
-            <div className="space-y-2">
-              <Label variant="section">My Absences</Label>
-              <AbsenceStatsCard stats={myAbsenceStats} />
-            </div>
+            {!isRelatedOnly && (
+              <div className="space-y-2">
+                <Label variant="section">My Absences</Label>
+                <AbsenceStatsCard stats={myAbsenceStats} />
+              </div>
+            )}
           </div>
         );
       }
       case 'Notifications': {
         const isLinked = telegramLink?.chatId != null;
         const showAdminCategories = isAdmin(currentUser.role);
-        const categoryRows: { category: NotificationCategory; label: string; description: string }[] = [
-          { category: 'tasks', label: 'Tasks', description: 'Assigned, status, updates, deletions' },
-          { category: 'deadlines', label: 'Deadlines', description: 'Reminders 3 days and 1 day before due' },
-          { category: 'mentions', label: 'Mentions', description: '@mentions in task comments' },
-          {
-            category: 'support',
-            label: 'Support',
-            description: showAdminCategories
-              ? 'New tickets, replies, and status changes'
-              : 'Replies and status changes on your tickets',
-          },
-          {
-            category: 'schedule',
-            label: 'Schedule',
-            description: showAdminCategories
-              ? 'Absence requests, decisions, and schedule edits'
-              : 'Decisions on your absence requests',
-          },
-          ...(showAdminCategories
-            ? ([{ category: 'members', label: 'Members', description: 'New member invitations' }] as const)
-            : []),
-        ];
+        const categoryRows = getNotificationCategoryRows(currentUser.accessScope, showAdminCategories);
         const channels: { channel: NotificationChannel; label: string }[] = [
           { channel: 'in_app', label: 'In-app' },
           { channel: 'telegram', label: 'Telegram' },
@@ -555,8 +589,9 @@ export const SettingsModal: React.FC = () => {
             <div className="space-y-2">
               <Label variant="section">Your Notifications</Label>
               <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                Choose which channels deliver each category. Schedule edits (admin shift/absence changes) are always
-                in-app only.
+                {isRelatedOnly
+                  ? 'Choose which channels deliver each category.'
+                  : 'Choose which channels deliver each category. Schedule edits (admin shift/absence changes) are always in-app only.'}
               </p>
               <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg overflow-hidden">
                 <table className="w-full text-xs">
@@ -625,6 +660,8 @@ export const SettingsModal: React.FC = () => {
                 // management or the schedule. Archived teams are excluded.
                 const teamOptions = teams.filter((t) => !t.archived).map((t) => ({ value: t.id, label: t.name }));
                 const roleLabel = m.role === 'admin' ? 'Admin' : m.role === 'editor' ? 'Editor' : 'User';
+                const selectedTeamIds =
+                  m.accessScope === 'related_only' ? pendingConversionTeamIds[m.id] || [] : m.teamIds;
                 return (
                   <div
                     key={m.id}
@@ -640,7 +677,7 @@ export const SettingsModal: React.FC = () => {
                         {m.jobTitle && <p className="text-xs text-zinc-500 truncate">{m.jobTitle}</p>}
                       </div>
                     </div>
-                    <div className="flex items-center gap-2 flex-shrink-0">
+                    <div className="flex flex-wrap items-center justify-end gap-2 flex-shrink-0">
                       {canManage ? (
                         <>
                           <div className="min-w-[180px] max-w-[260px]">
@@ -649,8 +686,12 @@ export const SettingsModal: React.FC = () => {
                               icon={Users}
                               label=""
                               options={teamOptions}
-                              selected={m.teamIds}
+                              selected={selectedTeamIds}
                               onChange={(next) => {
+                                if (m.accessScope === 'related_only') {
+                                  setPendingConversionTeamIds((current) => ({ ...current, [m.id]: next }));
+                                  return;
+                                }
                                 const prev = m.teamIds;
                                 updateMemberTeams(m.id, next);
                                 if (isMe) {
@@ -671,7 +712,9 @@ export const SettingsModal: React.FC = () => {
                                   toast.success(`${m.name} removed from ${names}`);
                                 }
                               }}
-                              placeholder="No teams"
+                              placeholder={
+                                m.accessScope === 'related_only' ? 'Select team to make internal' : 'No teams'
+                              }
                               searchable
                             />
                           </div>
@@ -682,23 +725,64 @@ export const SettingsModal: React.FC = () => {
                             <>
                               <CustomSelect
                                 compact
-                                value={m.role}
-                                onChange={(newRole) => {
-                                  updateMemberRole(m.id, newRole as any);
-                                  toast.success(
-                                    `${m.name} is now ${newRole === 'admin' ? 'Admin' : newRole === 'editor' ? 'Editor' : 'User'}`,
-                                  );
+                                value={m.accessScope || 'full'}
+                                onChange={(newAccessScope) => {
+                                  if (newAccessScope === 'related_only') {
+                                    void updateMemberAccess(m.id, 'related_only', [], 'user')
+                                      .then(() => {
+                                        setPendingConversionTeamIds((current) => ({ ...current, [m.id]: [] }));
+                                        toast.success(`${m.name} is now an external collaborator`);
+                                      })
+                                      .catch(() => undefined);
+                                    return;
+                                  }
+                                  if (selectedTeamIds.length === 0) {
+                                    toast.error('Select at least one team before making this member internal');
+                                    return;
+                                  }
+                                  void updateMemberAccess(m.id, 'full', selectedTeamIds, m.role)
+                                    .then(() => {
+                                      setPendingConversionTeamIds((current) => ({ ...current, [m.id]: [] }));
+                                      toast.success(`${m.name} is now an internal member`);
+                                    })
+                                    .catch(() => undefined);
                                 }}
-                                options={roleOptions}
+                                options={[
+                                  { value: 'full', label: 'Internal member' },
+                                  { value: 'related_only', label: 'External collaborator' },
+                                ]}
                                 renderValue={(v) => (
                                   <span className="flex items-center gap-1 text-xs">
-                                    {v === 'admin' ? 'Admin' : v === 'editor' ? 'Editor' : 'User'}
+                                    {v === 'related_only' ? 'External' : 'Internal'}
                                     <ChevronDown size={12} className="text-zinc-400" />
                                   </span>
                                 )}
-                                dropdownMinWidth={110}
+                                dropdownMinWidth={170}
                                 className="w-auto"
                               />
+                              {m.accessScope === 'related_only' ? (
+                                <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">User</span>
+                              ) : (
+                                <CustomSelect
+                                  compact
+                                  value={m.role}
+                                  onChange={(newRole) => {
+                                    updateMemberRole(m.id, newRole as UserRole);
+                                    toast.success(
+                                      `${m.name} is now ${newRole === 'admin' ? 'Admin' : newRole === 'editor' ? 'Editor' : 'User'}`,
+                                    );
+                                  }}
+                                  options={roleOptions}
+                                  renderValue={(v) => (
+                                    <span className="flex items-center gap-1 text-xs">
+                                      {v === 'admin' ? 'Admin' : v === 'editor' ? 'Editor' : 'User'}
+                                      <ChevronDown size={12} className="text-zinc-400" />
+                                    </span>
+                                  )}
+                                  dropdownMinWidth={110}
+                                  className="w-auto"
+                                />
+                              )}
                               <button
                                 onClick={() => {
                                   if (confirm(`Remove ${m.name} from the team?`)) {
@@ -1006,13 +1090,8 @@ export const SettingsModal: React.FC = () => {
     }
   };
 
-  const tabs = [
-    'My Profile',
-    'Notifications',
-    'Team Members',
-    ...(currentUser && isEditorOrAbove(currentUser.role) ? ['Content'] : []),
-    'Logs History',
-  ];
+  const tabs = getSettingsTabs(currentUser?.accessScope, currentUser?.role);
+  const displayedActiveTab = tabs.includes(activeSettingsTab) ? activeSettingsTab : 'My Profile';
 
   return (
     <Modal isOpen={isSettingsModalOpen} onClose={() => setIsSettingsModalOpen(false)} title="Settings">
@@ -1024,7 +1103,7 @@ export const SettingsModal: React.FC = () => {
               <button
                 key={tab}
                 onClick={() => setActiveSettingsTab(tab)}
-                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex-shrink-0 ${activeSettingsTab === tab ? 'bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white' : 'text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                className={`px-3 py-2 rounded-md text-sm font-medium transition-colors flex-shrink-0 ${displayedActiveTab === tab ? 'bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white' : 'text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
               >
                 {tab}
               </button>
@@ -1037,7 +1116,7 @@ export const SettingsModal: React.FC = () => {
             <button
               key={tab}
               onClick={() => setActiveSettingsTab(tab)}
-              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${activeSettingsTab === tab ? 'bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white' : 'text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+              className={`w-full text-left px-3 py-2 rounded-md text-sm font-medium transition-colors ${displayedActiveTab === tab ? 'bg-zinc-100 dark:bg-zinc-800 text-black dark:text-white' : 'text-zinc-500 hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
             >
               {tab}
             </button>

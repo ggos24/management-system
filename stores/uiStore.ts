@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { Task, Notification } from '../types';
+import { Task, Notification, AccessScope } from '../types';
 
 export type TaskModalData = Partial<Task> & { viewingTeamId?: string };
 import * as db from '../lib/database';
@@ -37,7 +37,14 @@ interface UiState {
   isIconPickerOpen: boolean;
 
   // Invite form
-  inviteForm: { email: string; name: string; role: string; jobTitle: string; teamId: string };
+  inviteForm: {
+    email: string;
+    name: string;
+    role: string;
+    accessScope: AccessScope;
+    jobTitle: string;
+    teamId: string;
+  };
   inviteLoading: boolean;
   inviteError: string | null;
 
@@ -47,7 +54,7 @@ interface UiState {
   setMobileSidebarOpen: (open: boolean) => void;
   setSearchQuery: (query: string) => void;
   setIsNotificationsOpen: (open: boolean) => void;
-  loadNotifications: () => Promise<void>;
+  loadNotifications: (shouldCommit?: () => boolean) => Promise<void>;
   markNotificationRead: (id: string) => void;
   markAllNotificationsRead: () => void;
   setClockSkew: (seconds: number | null) => void;
@@ -69,9 +76,17 @@ interface UiState {
   setDeleteConfirmationInput: (input: string) => void;
   setIsIconPickerOpen: (open: boolean) => void;
 
-  setInviteForm: (form: { email: string; name: string; role: string; jobTitle: string; teamId: string }) => void;
+  setInviteForm: (form: {
+    email: string;
+    name: string;
+    role: string;
+    accessScope: AccessScope;
+    jobTitle: string;
+    teamId: string;
+  }) => void;
   setInviteLoading: (loading: boolean) => void;
   setInviteError: (error: string | null) => void;
+  resetSessionUi: () => void;
 }
 
 const getInitialDarkMode = () => {
@@ -112,7 +127,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   deleteConfirmationInput: '',
   isIconPickerOpen: false,
 
-  inviteForm: { email: '', name: '', role: 'user', jobTitle: '', teamId: '' },
+  inviteForm: { email: '', name: '', role: 'user', accessScope: 'full', jobTitle: '', teamId: '' },
   inviteLoading: false,
   inviteError: null,
 
@@ -128,9 +143,10 @@ export const useUiStore = create<UiState>((set, get) => ({
   setSearchQuery: (query) => set({ searchQuery: query }),
   setIsNotificationsOpen: (open) => set({ isNotificationsOpen: open }),
 
-  loadNotifications: async () => {
+  loadNotifications: async (shouldCommit = () => true) => {
     try {
       const notifications = await db.fetchNotifications();
+      if (!shouldCommit()) return;
       const unreadCount = notifications.filter((n) => !n.read).length;
       set({ notifications, unreadCount });
     } catch (e) {
@@ -178,4 +194,24 @@ export const useUiStore = create<UiState>((set, get) => ({
   setInviteForm: (form) => set({ inviteForm: form }),
   setInviteLoading: (loading) => set({ inviteLoading: loading }),
   setInviteError: (error) => set({ inviteError: error }),
+  resetSessionUi: () =>
+    set({
+      searchQuery: '',
+      mobileSidebarOpen: false,
+      isNotificationsOpen: false,
+      notifications: [],
+      unreadCount: 0,
+      isTaskModalOpen: false,
+      taskModalData: {},
+      isSettingsModalOpen: false,
+      isLogoutModalOpen: false,
+      isManageTeamsModalOpen: false,
+      isInviteModalOpen: false,
+      isNewTicketModalOpen: false,
+      isShareOpen: false,
+      activeSettingsTab: 'My Profile',
+      inviteForm: { email: '', name: '', role: 'user', accessScope: 'full', jobTitle: '', teamId: '' },
+      inviteLoading: false,
+      inviteError: null,
+    }),
 }));

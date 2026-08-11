@@ -17,7 +17,7 @@ interface DocViewerProps {
 export const DocViewer: React.FC<DocViewerProps> = ({ doc, breadcrumbs, onEdit, onDelete, onNavigate, isAdmin }) => {
   const clean = DOMPurify.sanitize(doc.contentHtml, {
     ADD_TAGS: ['figure'],
-    ADD_ATTR: ['style', 'data-width', 'data-align'],
+    ADD_ATTR: ['style', 'data-width', 'data-align', 'data-storage-path'],
   });
 
   return (

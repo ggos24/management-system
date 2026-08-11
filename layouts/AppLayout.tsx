@@ -41,14 +41,27 @@ const AppLayout: React.FC = () => {
 
   const currentUser = useAuthStore((s) => s.currentUser)!;
 
-  const { tasks, tickets, teams, teamStatuses, teamTypes, absences } = useDataStore(
+  const {
+    tasks,
+    tickets,
+    teams,
+    teamStatuses,
+    teamTypes,
+    teamProperties,
+    absences,
+    taskAccessContexts,
+    taskTeamLinks,
+  } = useDataStore(
     useShallow((s) => ({
       tasks: s.tasks,
       tickets: s.tickets,
       teams: s.teams,
       teamStatuses: s.teamStatuses,
       teamTypes: s.teamTypes,
+      teamProperties: s.teamProperties,
       absences: s.absences,
+      taskAccessContexts: s.taskAccessContexts,
+      taskTeamLinks: s.taskTeamLinks,
     })),
   );
 
@@ -90,19 +103,56 @@ const AppLayout: React.FC = () => {
     };
 
     const counts: Record<string, number> = {};
-    let myCount = 0;
+    const tasksById = new Map(tasks.map((task) => [task.id, task]));
+    const linksByTaskAndTeam = new Map(taskTeamLinks.map((link) => [`${link.taskId}:${link.teamId}`, link]));
 
     for (const task of tasks) {
       const cat = getCategory(task.statusId, task.teamId);
       if (cat === 'completed') continue;
       counts[task.teamId] = (counts[task.teamId] || 0) + 1;
-      if (currentUser && task.assigneeIds.includes(currentUser.id)) {
-        myCount++;
-      }
     }
-    counts['my-workspace'] = myCount;
+    if (currentUser.accessScope === 'related_only') {
+      const seenContexts = new Set<string>();
+      for (const context of taskAccessContexts) {
+        const task = tasksById.get(context.taskId);
+        if (!task) continue;
+        const contextStatusId =
+          context.contextTeamId === task.teamId
+            ? task.statusId
+            : (linksByTaskAndTeam.get(`${task.id}:${context.contextTeamId}`)?.statusId ?? null);
+        const category = getCategory(contextStatusId, context.contextTeamId);
+        if (category !== 'active' && category !== 'backlog') continue;
+        seenContexts.add(`${context.taskId}:${context.contextTeamId}`);
+      }
+      counts['my-workspace'] = seenContexts.size;
+    } else {
+      const personValueIncludes = (value: unknown): boolean =>
+        value === currentUser.id || (Array.isArray(value) && value.includes(currentUser.id));
+      counts['my-workspace'] = tasks.filter((task) => {
+        const category = getCategory(task.statusId, task.teamId);
+        if (category !== 'active' && category !== 'backlog') return false;
+        if (
+          task.assigneeIds.includes(currentUser.id) ||
+          task.contentInfo?.editorIds?.includes(currentUser.id) ||
+          task.contentInfo?.designerIds?.includes(currentUser.id)
+        ) {
+          return true;
+        }
+        const homePersonMatch = (teamProperties[task.teamId] || []).some(
+          (property) => property.type === 'person' && personValueIncludes(task.customFieldValues?.[property.id]),
+        );
+        if (homePersonMatch) return true;
+        return taskTeamLinks.some(
+          (link) =>
+            link.taskId === task.id &&
+            (teamProperties[link.teamId] || []).some(
+              (property) => property.type === 'person' && personValueIncludes(link.customFieldValues[property.id]),
+            ),
+        );
+      }).length;
+    }
     return counts;
-  }, [tasks, teamStatuses, currentUser]);
+  }, [currentUser, taskAccessContexts, taskTeamLinks, tasks, teamProperties, teamStatuses]);
 
   const pendingAbsenceCount = useMemo(() => absences.filter((a) => a.status === 'pending').length, [absences]);
 
@@ -113,6 +163,7 @@ const AppLayout: React.FC = () => {
   }, [tickets, currentUser]);
 
   const openTaskModal = (taskOrPreset?: Partial<Task>) => {
+    if (currentUser.accessScope === 'related_only' && !taskOrPreset?.id) return;
     const defaultTeamId =
       currentView !== 'dashboard' && currentView !== 'schedule' && currentView !== 'my-workspace'
         ? currentView
@@ -208,9 +259,13 @@ const AppLayout: React.FC = () => {
         <React.Suspense fallback={null}>
           <TaskModal />
           <SettingsModal />
-          <ManageTeamsModal />
-          <InviteModal />
-          <NewTicketModal />
+          {currentUser.accessScope === 'full' && (
+            <>
+              <ManageTeamsModal />
+              <InviteModal />
+              <NewTicketModal />
+            </>
+          )}
         </React.Suspense>
 
         {/* Logout Confirmation Modal */}

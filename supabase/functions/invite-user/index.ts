@@ -44,11 +44,11 @@ Deno.serve(async (req) => {
     // Check caller's profile role
     const { data: callerProfile } = await adminClient
       .from('profiles')
-      .select('role')
+      .select('role, access_scope')
       .eq('auth_user_id', callerUser.id)
       .single();
 
-    if (!callerProfile || callerProfile.role !== 'admin') {
+    if (!callerProfile || callerProfile.role !== 'admin' || callerProfile.access_scope !== 'full') {
       return new Response(JSON.stringify({ error: 'Only admins can invite users' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -56,7 +56,9 @@ Deno.serve(async (req) => {
     }
 
     // Parse request body
-    const { email, name, role, jobTitle, teamId } = await req.json();
+    const { email, name, role, jobTitle, teamId, accessScope } = await req.json();
+    const requestedAccessScope = accessScope || 'full';
+    const requestedRole = role || 'user';
 
     if (!email || !name) {
       return new Response(JSON.stringify({ error: 'Email and name are required' }), {
@@ -87,8 +89,33 @@ Deno.serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    if (role && !['admin', 'editor', 'user'].includes(role)) {
+    if (!['admin', 'editor', 'user'].includes(requestedRole)) {
       return new Response(JSON.stringify({ error: "Role must be 'admin', 'editor', or 'user'" }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (!['full', 'related_only'].includes(requestedAccessScope)) {
+      return new Response(JSON.stringify({ error: "Access scope must be 'full' or 'related_only'" }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    if (requestedAccessScope === 'related_only' && (requestedRole !== 'user' || teamId)) {
+      return new Response(
+        JSON.stringify({ error: 'External collaborators must use the User role and cannot belong to a team' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+      );
+    }
+    if (requestedAccessScope === 'full' && !teamId) {
+      return new Response(JSON.stringify({ error: 'A team is required for internal members' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+    if (teamId && !uuidRegex.test(teamId)) {
+      return new Response(JSON.stringify({ error: 'Invalid team ID' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -100,6 +127,7 @@ Deno.serve(async (req) => {
     // Create auth user via invite (returns error if email already exists)
     const { data: inviteData, error: inviteError } = await adminClient.auth.admin.inviteUserByEmail(email, {
       redirectTo: origin,
+      data: { name },
     });
 
     if (inviteError) {
@@ -114,34 +142,38 @@ Deno.serve(async (req) => {
     }
 
     const newAuthUser = inviteData.user;
-    const profileId = crypto.randomUUID();
+    const avatar = `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`;
 
-    // Create profile linked to new auth user
-    const { error: profileError } = await adminClient.from('profiles').insert({
-      id: profileId,
-      auth_user_id: newAuthUser.id,
-      name,
-      role: role || 'user',
-      job_title: jobTitle || 'Team Member',
-      avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-      team_id: teamId || null,
-      status: 'active',
+    // The auth.users trigger creates a profile synchronously. Finalize it through
+    // one service-role-only transaction so we update/upsert instead of inserting a
+    // duplicate, and team membership + default permissions cannot drift apart.
+    const { data: finalizedRows, error: profileError } = await adminClient.rpc('finalize_invited_profile', {
+      p_auth_user_id: newAuthUser.id,
+      p_name: name,
+      p_role: requestedRole,
+      p_job_title: jobTitle || 'Team Member',
+      p_avatar: avatar,
+      p_team_id: requestedAccessScope === 'full' ? teamId : null,
+      p_access_scope: requestedAccessScope,
     });
 
     if (profileError) {
+      // Avoid leaving an unusable auth user that blocks a retry with the same email.
+      await adminClient.auth.admin.deleteUser(newAuthUser.id).catch(() => undefined);
       return new Response(JSON.stringify({ error: profileError.message }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    // Insert default permissions
-    await adminClient.from('permissions').insert({
-      member_id: profileId,
-      can_create: true,
-      can_edit: false,
-      can_delete: false,
-    });
+    const finalizedProfile = Array.isArray(finalizedRows) ? finalizedRows[0] : finalizedRows;
+    if (!finalizedProfile?.id) {
+      await adminClient.auth.admin.deleteUser(newAuthUser.id).catch(() => undefined);
+      return new Response(JSON.stringify({ error: 'Profile finalization returned no profile' }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const profileId = finalizedProfile.id as string;
 
     // Get caller profile for activity log
     const { data: callerFullProfile } = await adminClient
@@ -211,17 +243,20 @@ Deno.serve(async (req) => {
         profile: {
           id: profileId,
           name,
-          role: role || 'user',
+          role: requestedRole,
+          accessScope: requestedAccessScope,
           jobTitle: jobTitle || 'Team Member',
-          avatar: `https://ui-avatars.com/api/?name=${encodeURIComponent(name)}&background=random`,
-          teamId: teamId || '',
+          avatar,
+          teamId: requestedAccessScope === 'full' ? teamId : '',
+          teamIds: requestedAccessScope === 'full' ? [teamId] : [],
           status: 'active',
         },
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
     );
-  } catch (err) {
-    return new Response(JSON.stringify({ error: err.message || 'Internal server error' }), {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Internal server error';
+    return new Response(JSON.stringify({ error: message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

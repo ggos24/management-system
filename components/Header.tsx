@@ -38,6 +38,7 @@ function getNotificationIcon(type: NotificationType) {
     case 'task_deadline_reminder':
       return <AlarmClock size={14} className="shrink-0" />;
     case 'comment_mention':
+    case 'ticket_mention':
       return <MessageCircle size={14} className="shrink-0" />;
     case 'absence_submitted':
     case 'absence_decided':
@@ -70,6 +71,29 @@ function formatRelativeTime(dateStr: string): string {
   return formatDateEU(dateStr);
 }
 
+const TASK_DEEP_LINK_NOTIFICATION_TYPES = new Set<NotificationType>([
+  'task_assigned',
+  'task_status_changed',
+  'task_updated',
+  'task_deadline_reminder',
+  'comment_mention',
+]);
+
+const RELATED_ONLY_NOTIFICATION_TYPES = new Set<NotificationType>([
+  ...TASK_DEEP_LINK_NOTIFICATION_TYPES,
+  'task_unassigned',
+  'task_deleted',
+]);
+
+export function getTaskNotificationPath(notification: Notification): string | null {
+  if (!TASK_DEEP_LINK_NOTIFICATION_TYPES.has(notification.type)) return null;
+  const taskId = notification.entityData?.taskId;
+  if (!taskId) return '/workspace';
+  const context = notification.entityData?.contextTeamId || notification.entityData?.teamId;
+  const contextQuery = context ? `&context=${encodeURIComponent(context)}` : '';
+  return `/workspace?task=${encodeURIComponent(taskId)}${contextQuery}`;
+}
+
 export const Header: React.FC = () => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -85,13 +109,10 @@ export const Header: React.FC = () => {
   );
   const setIsNotificationsOpen = useUiStore((s) => s.setIsNotificationsOpen);
   const notifications = useUiStore((s) => s.notifications);
-  const unreadCount = useUiStore((s) => s.unreadCount);
   const markNotificationRead = useUiStore((s) => s.markNotificationRead);
   const markAllNotificationsRead = useUiStore((s) => s.markAllNotificationsRead);
   const setMobileSidebarOpen = useUiStore((s) => s.setMobileSidebarOpen);
   const setIsSettingsModalOpen = useUiStore((s) => s.setIsSettingsModalOpen);
-  const setIsTaskModalOpen = useUiStore((s) => s.setIsTaskModalOpen);
-  const setTaskModalData = useUiStore((s) => s.setTaskModalData);
   const setIsNewTicketModalOpen = useUiStore((s) => s.setIsNewTicketModalOpen);
 
   // Debounced search: local state for instant input, store write delayed 300ms
@@ -116,7 +137,13 @@ export const Header: React.FC = () => {
 
   const currentUser = useAuthStore((s) => s.currentUser);
   const teams = useDataStore((s) => s.teams);
-  const tasks = useDataStore((s) => s.tasks);
+  const isRelatedOnly = currentUser?.accessScope === 'related_only';
+  const visibleNotifications = isRelatedOnly
+    ? notifications.filter(
+        (notification) => RELATED_ONLY_NOTIFICATION_TYPES.has(notification.type) && !notification.entityData?.ticketId,
+      )
+    : notifications;
+  const visibleUnreadCount = visibleNotifications.filter((notification) => !notification.read).length;
 
   const isTeamView = location.pathname.startsWith('/teams/') || location.pathname === '/workspace';
   const [mobileSearchOpen, setMobileSearchOpen] = useState(false);
@@ -127,37 +154,21 @@ export const Header: React.FC = () => {
     // Support tickets (incl. ticket @mentions) deep-link straight to /support
     const ticketId = n.entityData?.ticketId;
     if (ticketId) {
-      navigate(`/support?ticket=${ticketId}`);
+      navigate(isRelatedOnly ? '/workspace' : `/support?ticket=${ticketId}`);
       setIsNotificationsOpen(false);
       return;
     }
 
-    // Navigate based on notification type
-    if (
-      n.type === 'task_assigned' ||
-      n.type === 'task_status_changed' ||
-      n.type === 'task_updated' ||
-      n.type === 'task_deadline_reminder' ||
-      n.type === 'comment_mention'
-    ) {
-      const taskId = n.entityData?.taskId;
-      const teamId = n.entityData?.teamId;
-      if (teamId) {
-        const team = teams.find((t) => t.id === teamId);
-        navigate(`/teams/${team ? teamSlug(team) : teamId}`);
-      }
-      if (taskId) {
-        const task = tasks.find((t) => t.id === taskId);
-        if (task) {
-          setTaskModalData(task);
-          setIsTaskModalOpen(true);
-        }
-      }
+    const taskPath = getTaskNotificationPath(n);
+    if (taskPath) {
+      navigate(taskPath);
     } else if (n.type === 'task_unassigned' || n.type === 'task_deleted') {
       const teamId = n.entityData?.teamId;
-      if (teamId) {
+      if (teamId && !isRelatedOnly) {
         const team = teams.find((t) => t.id === teamId);
         navigate(`/teams/${team ? teamSlug(team) : teamId}`);
+      } else if (isRelatedOnly) {
+        navigate('/workspace');
       }
     } else if (
       n.type === 'absence_submitted' ||
@@ -230,21 +241,23 @@ export const Header: React.FC = () => {
       </div>
 
       <div className="flex items-center gap-2">
-        <button
-          onClick={() => setIsNewTicketModalOpen(true)}
-          title="Report a problem"
-          className="flex items-center gap-1.5 px-2.5 md:px-3 h-9 rounded-md text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
-        >
-          <LifeBuoy size={16} />
-          <span className="hidden lg:inline">Report a problem</span>
-        </button>
+        {!isRelatedOnly && (
+          <button
+            onClick={() => setIsNewTicketModalOpen(true)}
+            title="Report a problem"
+            className="flex items-center gap-1.5 px-2.5 md:px-3 h-9 rounded-md text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+          >
+            <LifeBuoy size={16} />
+            <span className="hidden lg:inline">Report a problem</span>
+          </button>
+        )}
         <IconButton onClick={toggleTheme}>{isDarkMode ? <Sun size={18} /> : <Moon size={18} />}</IconButton>
         <div className="relative">
           <IconButton onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} className="relative">
             <Bell size={18} />
-            {unreadCount > 0 && (
+            {visibleUnreadCount > 0 && (
               <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-semibold rounded-full px-1">
-                {unreadCount > 99 ? '99+' : unreadCount}
+                {visibleUnreadCount > 99 ? '99+' : visibleUnreadCount}
               </span>
             )}
           </IconButton>
@@ -256,7 +269,9 @@ export const Header: React.FC = () => {
               <div className="p-3 border-b border-zinc-100 dark:border-zinc-800 flex justify-between items-center">
                 <h3 className="text-sm font-semibold">
                   Notifications
-                  {unreadCount > 0 && <span className="ml-1 text-zinc-400 font-normal">({unreadCount})</span>}
+                  {visibleUnreadCount > 0 && (
+                    <span className="ml-1 text-zinc-400 font-normal">({visibleUnreadCount})</span>
+                  )}
                 </h3>
                 <button
                   onClick={() => setIsNotificationsOpen(false)}
@@ -266,7 +281,7 @@ export const Header: React.FC = () => {
                 </button>
               </div>
               <div className="max-h-80 overflow-y-auto">
-                {notifications.map((n) => (
+                {visibleNotifications.map((n) => (
                   <button
                     key={n.id}
                     onClick={() => handleNotificationClick(n)}
@@ -286,11 +301,11 @@ export const Header: React.FC = () => {
                     </div>
                   </button>
                 ))}
-                {notifications.length === 0 && (
+                {visibleNotifications.length === 0 && (
                   <p className="p-4 text-xs text-zinc-400 text-center">No notifications</p>
                 )}
               </div>
-              {notifications.length > 0 && (
+              {visibleNotifications.length > 0 && (
                 <div className="p-2 text-center border-t border-zinc-100 dark:border-zinc-800">
                   <button
                     onClick={markAllNotificationsRead}

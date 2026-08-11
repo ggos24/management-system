@@ -24,6 +24,8 @@ import {
   TicketStatus,
   TicketCategory,
   TicketAttachment,
+  TaskAccessContext,
+  AccessScope,
 } from '../types';
 import * as db from '../lib/database';
 import { formatDateEU, toDateOnly } from '../lib/utils';
@@ -76,6 +78,10 @@ function getCurrentUserId(): string | null {
 
 function getCurrentUserName(): string {
   return useAuthStore.getState().currentUser?.name ?? 'Someone';
+}
+
+function hasFullAccess(): boolean {
+  return useAuthStore.getState().currentUser?.accessScope !== 'related_only';
 }
 
 function logAction(action: string, details: string, entityType: string) {
@@ -148,23 +154,120 @@ function diffTaskFields(
   return entries;
 }
 
-/** Collect all person IDs on a task (assignees + editors + designers + custom person fields), deduplicated. */
-function getAllTaskPeople(task: Task): string[] {
-  const ids = new Set<string>(task.assigneeIds);
-  task.contentInfo?.editorIds?.forEach((id) => ids.add(id));
-  task.contentInfo?.designerIds?.forEach((id) => ids.add(id));
-  // Include custom person-type property values
+interface TaskPersonContext {
+  profileId: string;
+  contextTeamId: string;
+}
+
+/** Collect task participants without losing the workspace context that grants access. */
+function getTaskPeopleByContext(task: Task, links = useDataStore.getState().taskTeamLinks): TaskPersonContext[] {
+  const contexts = new Map<string, TaskPersonContext>();
+  const addId = (profileId: string, contextTeamId: string) => {
+    if (!profileId || !contextTeamId) return;
+    contexts.set(`${profileId}::${contextTeamId}`, { profileId, contextTeamId });
+  };
+  const addValue = (value: unknown, contextTeamId: string) => {
+    if (typeof value === 'string') addId(value, contextTeamId);
+    if (Array.isArray(value)) {
+      value.forEach((entry) => typeof entry === 'string' && addId(entry, contextTeamId));
+    }
+  };
+  task.assigneeIds.forEach((id) => addId(id, task.teamId));
+  task.contentInfo?.editorIds?.forEach((id) => addId(id, task.teamId));
+  task.contentInfo?.designerIds?.forEach((id) => addId(id, task.teamId));
+  const state = useDataStore.getState();
+  // Include home-workspace custom Person values.
   if (task.customFieldValues) {
-    const allProps = useDataStore.getState().teamProperties;
-    const props = allProps[task.teamId] || [];
+    const props = state.teamProperties[task.teamId] || [];
     for (const prop of props) {
-      if (prop.type === 'person') {
-        const val = task.customFieldValues[prop.id];
-        if (val && typeof val === 'string') ids.add(val);
-      }
+      if (prop.type === 'person') addValue(task.customFieldValues[prop.id], task.teamId);
     }
   }
-  return [...ids];
+  // Include Person values stored on linked workspace copies.
+  for (const link of links) {
+    if (link.taskId !== task.id) continue;
+    const props = state.teamProperties[link.teamId] || [];
+    for (const prop of props) {
+      if (prop.type === 'person') addValue(link.customFieldValues[prop.id], link.teamId);
+    }
+  }
+  return [...contexts.values()];
+}
+
+function notifyPeopleByContext(
+  people: TaskPersonContext[],
+  type: NotificationType,
+  message: string,
+  entityData: Record<string, any>,
+) {
+  const recipientsByContext = new Map<string, string[]>();
+  for (const person of people) {
+    const recipients = recipientsByContext.get(person.contextTeamId) || [];
+    recipients.push(person.profileId);
+    recipientsByContext.set(person.contextTeamId, recipients);
+  }
+  for (const [contextTeamId, recipientIds] of recipientsByContext) {
+    notifyMany([...new Set(recipientIds)], type, message, {
+      ...entityData,
+      teamId: contextTeamId,
+      contextTeamId,
+    });
+  }
+}
+
+function notifyTaskSaved(oldTask: Task | null, task: Task) {
+  const actorName = getCurrentUserName();
+  const currentPeople = getTaskPeopleByContext(task);
+  if (!oldTask) {
+    if (currentPeople.length > 0) {
+      notifyPeopleByContext(currentPeople, 'task_assigned', `${actorName} assigned you to "${task.title}"`, {
+        taskId: task.id,
+        priority: task.priority,
+      });
+    }
+    return;
+  }
+
+  const previousPeople = getTaskPeopleByContext(oldTask);
+  const currentKeys = new Set(currentPeople.map((person) => `${person.profileId}::${person.contextTeamId}`));
+  const previousKeys = new Set(previousPeople.map((person) => `${person.profileId}::${person.contextTeamId}`));
+  const added = currentPeople.filter((person) => !previousKeys.has(`${person.profileId}::${person.contextTeamId}`));
+  const removed = previousPeople.filter((person) => !currentKeys.has(`${person.profileId}::${person.contextTeamId}`));
+  if (added.length > 0) {
+    notifyPeopleByContext(added, 'task_assigned', `${actorName} assigned you to "${task.title}"`, {
+      taskId: task.id,
+      priority: task.priority,
+    });
+  }
+  if (removed.length > 0) {
+    notifyPeopleByContext(removed, 'task_unassigned', `${actorName} removed you from "${task.title}"`, {
+      taskId: task.id,
+      priority: task.priority,
+    });
+  }
+
+  const changes: string[] = [];
+  if (oldTask.title !== task.title) changes.push('title');
+  if (oldTask.priority !== task.priority) changes.push('priority');
+  if (oldTask.dueDate !== task.dueDate) changes.push('due date');
+  if (oldTask.description !== task.description) changes.push('description');
+  if (JSON.stringify(oldTask.placements) !== JSON.stringify(task.placements)) changes.push('placements');
+  if (JSON.stringify(oldTask.customFieldValues) !== JSON.stringify(task.customFieldValues)) changes.push('fields');
+  const addedKeys = new Set(added.map((person) => `${person.profileId}::${person.contextTeamId}`));
+  const updateRecipients = currentPeople.filter(
+    (person) => !addedKeys.has(`${person.profileId}::${person.contextTeamId}`),
+  );
+  if (changes.length > 0 && updateRecipients.length > 0) {
+    notifyPeopleByContext(
+      updateRecipients,
+      'task_updated',
+      `${actorName} updated ${changes.join(', ')} on "${task.title}"`,
+      {
+        taskId: task.id,
+        priority: task.priority,
+      },
+    );
+  }
 }
 
 const PRIORITY_EMOJI: Record<string, string> = { high: '🔴', medium: '🟡', low: '🟢' };
@@ -178,12 +281,18 @@ function getTaskContext(entityData?: Record<string, any>) {
   if (!entityData) return null;
   const { teams, tasks, teamStatuses } = useDataStore.getState();
   const task = entityData.taskId ? tasks.find((t) => t.id === entityData.taskId) : null;
-  const teamName = entityData.teamId ? teams.find((t) => t.id === entityData.teamId)?.name : undefined;
+  const contextTeamId = entityData.contextTeamId || entityData.teamId;
+  const teamName = contextTeamId ? teams.find((t) => t.id === contextTeamId)?.name : undefined;
   const statusName = task ? getStatusName(teamStatuses, task.teamId, task.statusId) : undefined;
   return { task, teamName, statusName };
 }
 
-function sendTelegram(recipientIds: string[], message: string, entityData?: Record<string, any>) {
+function sendTelegram(
+  recipientIds: string[],
+  type: NotificationType,
+  message: string,
+  entityData?: Record<string, any>,
+) {
   let text = message;
   const ctx = getTaskContext(entityData);
 
@@ -200,16 +309,31 @@ function sendTelegram(recipientIds: string[], message: string, entityData?: Reco
   }
 
   const link = buildEntityLink(entityData);
-  supabase.functions.invoke('send-telegram', { body: { recipientIds, message: text, link } }).catch(console.error);
+  supabase.functions
+    .invoke('send-telegram', {
+      body: {
+        recipientIds,
+        type,
+        message: text,
+        link,
+        taskId: entityData?.taskId,
+        contextTeamId: entityData?.contextTeamId || entityData?.teamId,
+        commentId: entityData?.commentId,
+      },
+    })
+    .catch(console.error);
 }
 
 /** Build a deep link to the entity referenced by a notification's entityData. */
 function buildEntityLink(entityData?: Record<string, any>): string | undefined {
   const origin = window.location.origin;
   if (entityData?.ticketId) return `${origin}/support?ticket=${entityData.ticketId}`;
-  const teamId = entityData?.teamId;
+  const teamId = entityData?.contextTeamId || entityData?.teamId;
   const taskId = entityData?.taskId;
-  return teamId ? `${origin}/teams/${teamId}${taskId ? `?task=${taskId}` : ''}` : undefined;
+  if (!taskId) return undefined;
+  const params = new URLSearchParams({ task: taskId });
+  if (teamId) params.set('context', teamId);
+  return `${origin}/workspace?${params.toString()}`;
 }
 
 const EMAIL_SUBJECTS: Record<NotificationType, string> = {
@@ -228,6 +352,7 @@ const EMAIL_SUBJECTS: Record<NotificationType, string> = {
   ticket_submitted: 'New support ticket',
   ticket_status_changed: 'Support ticket status updated',
   ticket_assigned: 'Support ticket assigned to you',
+  ticket_mention: 'You were mentioned in a support ticket',
   ticket_reply: 'New reply on your support ticket',
 };
 
@@ -252,9 +377,39 @@ function sendEmail(recipientIds: string[], type: NotificationType, message: stri
   const link = buildEntityLink(entityData);
   supabase.functions
     .invoke('send-email', {
-      body: { recipientIds, subject: fullSubject, message, link, taskDetails },
+      body: {
+        recipientIds,
+        type,
+        subject: fullSubject,
+        message,
+        link,
+        taskDetails,
+        taskId: entityData?.taskId,
+        contextTeamId: entityData?.contextTeamId || entityData?.teamId,
+        commentId: entityData?.commentId,
+      },
     })
     .catch(console.error);
+}
+
+function sendExternalAware(recipientIds: string[], send: (recipientIds: string[]) => void): void {
+  if (recipientIds.length === 0) return;
+  const state = useDataStore.getState();
+  if (useAuthStore.getState().currentUser?.accessScope !== 'full') {
+    send(recipientIds);
+    return;
+  }
+
+  // Keep the existing detailed internal payload while sending External users
+  // in a separate batch whose Edge authorization replaces client copy/link
+  // with the canonical server-derived payload.
+  const relatedIds = new Set(
+    state.members.filter((member) => member.accessScope === 'related_only').map((member) => member.id),
+  );
+  const internalRecipients = recipientIds.filter((recipientId) => !relatedIds.has(recipientId));
+  const externalRecipients = recipientIds.filter((recipientId) => relatedIds.has(recipientId));
+  if (internalRecipients.length > 0) send(internalRecipients);
+  if (externalRecipients.length > 0) send(externalRecipients);
 }
 
 // Notification types that should ONLY appear in-app (no Telegram, no email),
@@ -276,18 +431,27 @@ function notifyMany(recipientIds: string[], type: NotificationType, message: str
 
   const inAppRecipients = recipients.filter((id) => isChannelEnabled(id, type, 'in_app'));
   if (inAppRecipients.length > 0) {
-    db.insertNotifications(
-      inAppRecipients.map((recipientId) => ({ recipientId, actorId, type, message, entityData })),
-    ).catch(console.error);
+    if (useAuthStore.getState().currentUser?.accessScope === 'related_only') {
+      // Recipient opt-outs are intentionally invisible to External users. Keep
+      // each insert isolated so one RLS-rejected opt-out cannot roll back the
+      // notification for every other mentioned participant.
+      for (const recipientId of inAppRecipients) {
+        db.insertNotification({ recipientId, actorId, type, message, entityData }).catch(console.error);
+      }
+    } else {
+      db.insertNotifications(
+        inAppRecipients.map((recipientId) => ({ recipientId, actorId, type, message, entityData })),
+      ).catch(console.error);
+    }
   }
 
   if (IN_APP_ONLY_TYPES.has(type)) return;
 
   const tgRecipients = recipients.filter((id) => isChannelEnabled(id, type, 'telegram'));
-  if (tgRecipients.length > 0) sendTelegram(tgRecipients, message, entityData);
+  sendExternalAware(tgRecipients, (recipientBatch) => sendTelegram(recipientBatch, type, message, entityData));
 
   const emailRecipients = recipients.filter((id) => isChannelEnabled(id, type, 'email'));
-  if (emailRecipients.length > 0) sendEmail(emailRecipients, type, message, entityData);
+  sendExternalAware(emailRecipients, (recipientBatch) => sendEmail(recipientBatch, type, message, entityData));
 }
 
 function notify(recipientId: string, type: NotificationType, message: string, entityData?: Record<string, any>) {
@@ -301,7 +465,7 @@ function notify(recipientId: string, type: NotificationType, message: string, en
   if (IN_APP_ONLY_TYPES.has(type)) return;
 
   if (isChannelEnabled(recipientId, type, 'telegram')) {
-    sendTelegram([recipientId], message, entityData);
+    sendTelegram([recipientId], type, message, entityData);
   }
   if (isChannelEnabled(recipientId, type, 'email')) {
     sendEmail([recipientId], type, message, entityData);
@@ -331,6 +495,7 @@ interface DataState {
   teamHiddenColumns: Record<string, string[]>;
   teamPersonFieldConfig: PersonFieldConfigMap;
   notificationPreferences: NotificationPreference[];
+  taskAccessContexts: TaskAccessContext[];
 
   // Setters
   setTaskTeamLinks: (links: TaskTeamLink[]) => void;
@@ -359,6 +524,8 @@ interface DataState {
   setDeletedTaskCount: (count: number) => void;
   setTeamHiddenColumns: (hidden: Record<string, string[]>) => void;
   setTeamPersonFieldConfig: (cfg: PersonFieldConfigMap) => void;
+  setTaskAccessContexts: (contexts: TaskAccessContext[]) => void;
+  resetData: () => void;
 
   // Column visibility actions (team-wide, editor+ only)
   hideTeamColumn: (teamId: string, columnKey: string) => void;
@@ -457,6 +624,12 @@ interface DataState {
   updateMemberJobTitle: (memberId: string, jobTitle: string) => void;
   updateMemberTeams: (memberId: string, nextTeamIds: string[]) => void;
   updateMemberRole: (memberId: string, role: UserRole) => void;
+  updateMemberAccess: (
+    memberId: string,
+    accessScope: AccessScope,
+    teamIds?: string[],
+    role?: UserRole,
+  ) => Promise<void>;
 
   // Integration actions
   toggleIntegration: (key: string, currentUserId: string) => void;
@@ -468,7 +641,14 @@ interface DataState {
   loadDeletedTasks: () => Promise<void>;
 
   // Notification helpers
-  notifyMention: (recipientIds: string[], actorName: string, taskTitle: string, taskId: string, teamId: string) => void;
+  notifyMention: (
+    recipientIds: string[],
+    actorName: string,
+    taskTitle: string,
+    taskId: string,
+    teamId: string,
+    commentId: string,
+  ) => void;
 
   // Notification preference actions
   setNotificationPreference: (
@@ -479,7 +659,7 @@ interface DataState {
   ) => void;
 
   // Load all data
-  loadAllData: (authUserId: string) => Promise<Member | null>;
+  loadAllData: (authUserId: string, shouldCommit?: () => boolean) => Promise<Member | null>;
 }
 
 export const useDataStore = create<DataState>((set, get) => ({
@@ -505,6 +685,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   teamHiddenColumns: {},
   teamPersonFieldConfig: {},
   notificationPreferences: [],
+  taskAccessContexts: [],
 
   // Setters
   setTaskTeamLinks: (links) => set({ taskTeamLinks: links }),
@@ -602,6 +783,33 @@ export const useDataStore = create<DataState>((set, get) => ({
   setDeletedTaskCount: (deletedTaskCount) => set({ deletedTaskCount }),
   setTeamHiddenColumns: (hidden) => set({ teamHiddenColumns: hidden }),
   setTeamPersonFieldConfig: (cfg) => set({ teamPersonFieldConfig: cfg }),
+  setTaskAccessContexts: (contexts) => set({ taskAccessContexts: contexts }),
+  resetData: () =>
+    set({
+      tasks: [],
+      tickets: [],
+      teams: [],
+      members: [],
+      absences: [],
+      shifts: [],
+      logs: [],
+      teamStatuses: {},
+      teamTypes: {},
+      teamProperties: {},
+      permissions: {},
+      allPlacements: [],
+      teamPlacements: {},
+      integrations: {},
+      taskTeamLinks: [],
+      deletedTasks: [],
+      deletedTaskCount: 0,
+      sidebarTeamOrders: {},
+      scheduleTeamOrders: {},
+      teamHiddenColumns: {},
+      teamPersonFieldConfig: {},
+      notificationPreferences: [],
+      taskAccessContexts: [],
+    }),
 
   setPersonFieldConfig: (teamId, fieldKey, patch) => {
     const prev = get().teamPersonFieldConfig;
@@ -667,6 +875,7 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   // Task team link actions
   linkTaskToTeam: async (taskId, teamId) => {
+    if (!hasFullAccess()) return;
     const { taskTeamLinks, teamStatuses } = get();
     const statuses = teamStatuses[teamId] || [];
     let backlog = statuses.find((s) => s.name === 'Backlog');
@@ -701,6 +910,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   unlinkTaskFromTeam: (taskId, teamId) => {
+    if (!hasFullAccess()) return;
     const prev = get().taskTeamLinks;
     set({ taskTeamLinks: prev.filter((l) => !(l.taskId === taskId && l.teamId === teamId)) });
     db.deleteTaskTeamLink(taskId, teamId).catch(() => {
@@ -710,27 +920,81 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   updateLinkedTaskStatus: (taskId, teamId, newStatusId) => {
+    if (!hasFullAccess()) return;
     const prev = get().taskTeamLinks;
+    const task = get().tasks.find((candidate) => candidate.id === taskId);
+    const previousLink = prev.find((link) => link.taskId === taskId && link.teamId === teamId);
     set({
       taskTeamLinks: prev.map((l) =>
         l.taskId === taskId && l.teamId === teamId ? { ...l, statusId: newStatusId } : l,
       ),
     });
-    db.updateTaskTeamLinkStatus(taskId, teamId, newStatusId).catch(() => set({ taskTeamLinks: prev }));
+    db.updateTaskTeamLinkStatus(taskId, teamId, newStatusId)
+      .then(() => {
+        if (!task) return;
+        const people = getTaskPeopleByContext(task).filter((person) => person.contextTeamId === teamId);
+        const newName = getStatusName(get().teamStatuses, teamId, newStatusId);
+        const oldName = getStatusName(get().teamStatuses, teamId, previousLink?.statusId ?? null);
+        if (people.length > 0) {
+          notifyPeopleByContext(
+            people,
+            'task_status_changed',
+            `${getCurrentUserName()} changed "${task.title}" status from ${oldName} to ${newName}`,
+            { taskId, priority: task.priority },
+          );
+        }
+      })
+      .catch(() => set({ taskTeamLinks: prev }));
   },
 
   updateLinkedTaskFields: (taskId, teamId, values) => {
+    if (!hasFullAccess()) return;
     const prev = get().taskTeamLinks;
+    const task = get().tasks.find((candidate) => candidate.id === taskId);
+    const nextLinks = prev.map((link) =>
+      link.taskId === taskId && link.teamId === teamId ? { ...link, customFieldValues: values } : link,
+    );
     set({
-      taskTeamLinks: prev.map((l) =>
-        l.taskId === taskId && l.teamId === teamId ? { ...l, customFieldValues: values } : l,
-      ),
+      taskTeamLinks: nextLinks,
     });
-    db.updateTaskTeamLinkFields(taskId, teamId, values).catch(() => set({ taskTeamLinks: prev }));
+    db.updateTaskTeamLinkFields(taskId, teamId, values)
+      .then(() => {
+        if (!task) return;
+        const before = getTaskPeopleByContext(task, prev).filter((person) => person.contextTeamId === teamId);
+        const after = getTaskPeopleByContext(task, nextLinks).filter((person) => person.contextTeamId === teamId);
+        const beforeIds = new Set(before.map((person) => person.profileId));
+        const afterIds = new Set(after.map((person) => person.profileId));
+        const added = after.filter((person) => !beforeIds.has(person.profileId));
+        const removed = before.filter((person) => !afterIds.has(person.profileId));
+        const unchanged = after.filter((person) => beforeIds.has(person.profileId));
+        const actorName = getCurrentUserName();
+        const entityData = { taskId, priority: task.priority };
+        if (added.length > 0) {
+          notifyPeopleByContext(added, 'task_assigned', `${actorName} assigned you to "${task.title}"`, entityData);
+        }
+        if (removed.length > 0) {
+          notifyPeopleByContext(
+            removed,
+            'task_unassigned',
+            `${actorName} removed you from "${task.title}"`,
+            entityData,
+          );
+        }
+        if (unchanged.length > 0) {
+          notifyPeopleByContext(
+            unchanged,
+            'task_updated',
+            `${actorName} updated fields on "${task.title}"`,
+            entityData,
+          );
+        }
+      })
+      .catch(() => set({ taskTeamLinks: prev }));
   },
 
   // Task actions
   updateTaskStatus: (taskId, newStatusId, teamContext?) => {
+    if (!hasFullAccess()) return;
     // If teamContext is provided and differs from the task's home team, update the link instead
     if (teamContext && teamContext !== 'my-work') {
       const task = get().tasks.find((t) => t.id === taskId);
@@ -773,19 +1037,21 @@ export const useDataStore = create<DataState>((set, get) => ({
       logTaskActivity(taskId, activity);
 
       // Notify all people on task about status change
-      const statusPeople = getAllTaskPeople(task);
+      const statusPeople = getTaskPeopleByContext(task);
       if (statusPeople.length > 0) {
         const actorName = getCurrentUserName();
-        notifyMany(statusPeople, 'task_status_changed', `${actorName} changed "${task.title}" status to ${newName}`, {
-          taskId,
-          teamId: task.teamId,
-          priority: task.priority,
-        });
+        notifyPeopleByContext(
+          statusPeople,
+          'task_status_changed',
+          `${actorName} changed "${task.title}" status to ${newName}`,
+          { taskId, priority: task.priority },
+        );
       }
     }
   },
 
   updateTask: (updatedTask) => {
+    if (!hasFullAccess()) return;
     const prev = get().tasks;
     const oldTask = prev.find((t) => t.id === updatedTask.id);
     // Auto-stamp/clear doneDate on status-category transitions, unless the caller
@@ -804,67 +1070,16 @@ export const useDataStore = create<DataState>((set, get) => ({
       }
     }
     set({ tasks: prev.map((t) => (t.id === finalTask.id ? finalTask : t)) });
-    db.upsertTask(finalTask)
+    db.saveTaskWithRelations(finalTask)
       .then(() => {
-        db.syncTaskAssignees(finalTask.id, finalTask.assigneeIds);
-        db.syncTaskPlacements(finalTask.id, finalTask.placements);
+        if (oldTask) logTaskActivity(finalTask.id, diffTaskFields(oldTask, finalTask));
+        notifyTaskSaved(oldTask || null, finalTask);
       })
       .catch(() => set({ tasks: prev }));
-
-    // Log activity
-    if (oldTask) logTaskActivity(finalTask.id, diffTaskFields(oldTask, finalTask));
-
-    // Notify all people (assignees + editors + designers) about changes
-    if (oldTask) {
-      const actorName = getCurrentUserName();
-      const allNewPeople = getAllTaskPeople(finalTask);
-      const allOldPeople = getAllTaskPeople(oldTask);
-
-      // Notify newly added people
-      const newPeople = allNewPeople.filter((id) => !allOldPeople.includes(id));
-      if (newPeople.length > 0) {
-        notifyMany(newPeople, 'task_assigned', `${actorName} assigned you to "${finalTask.title}"`, {
-          taskId: finalTask.id,
-          teamId: finalTask.teamId,
-          priority: finalTask.priority,
-        });
-      }
-
-      // Notify removed people
-      const removedPeople = allOldPeople.filter((id) => !allNewPeople.includes(id));
-      if (removedPeople.length > 0) {
-        notifyMany(removedPeople, 'task_unassigned', `${actorName} removed you from "${finalTask.title}"`, {
-          taskId: finalTask.id,
-          teamId: finalTask.teamId,
-          priority: finalTask.priority,
-        });
-      }
-
-      // Detect meaningful field changes and notify all current people
-      const changes: string[] = [];
-      if (oldTask.title !== finalTask.title) changes.push('title');
-      if (oldTask.priority !== finalTask.priority) changes.push('priority');
-      if (oldTask.dueDate !== finalTask.dueDate) changes.push('due date');
-      if (oldTask.description !== finalTask.description) changes.push('description');
-      if (JSON.stringify(oldTask.placements) !== JSON.stringify(finalTask.placements)) changes.push('placements');
-      if (JSON.stringify(oldTask.customFieldValues) !== JSON.stringify(finalTask.customFieldValues))
-        changes.push('fields');
-
-      if (changes.length > 0 && allNewPeople.length > 0) {
-        const updateRecipients = allNewPeople.filter((id) => !newPeople.includes(id));
-        if (updateRecipients.length > 0) {
-          notifyMany(
-            updateRecipients,
-            'task_updated',
-            `${actorName} updated ${changes.join(', ')} on "${finalTask.title}"`,
-            { taskId: finalTask.id, teamId: finalTask.teamId, priority: finalTask.priority },
-          );
-        }
-      }
-    }
   },
 
   deleteTask: (taskId) => {
+    if (!hasFullAccess()) return;
     const snapshot = get();
     const task = snapshot.tasks.find((t) => t.id === taskId);
     if (!task) return;
@@ -891,11 +1106,12 @@ export const useDataStore = create<DataState>((set, get) => ({
     });
 
     // Notify all people on task about deletion
-    const deletePeople = getAllTaskPeople(task);
+    const deletePeople = getTaskPeopleByContext(task);
     if (deletePeople.length > 0) {
       const actorName = getCurrentUserName();
-      notifyMany(deletePeople, 'task_deleted', `${actorName} deleted "${task.title}"`, {
-        teamId: task.teamId,
+      notifyPeopleByContext(deletePeople, 'task_deleted', `${actorName} deleted "${task.title}"`, {
+        taskId,
+        priority: task.priority,
       });
     }
 
@@ -910,10 +1126,12 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   addTask: (task) => {
+    if (!hasFullAccess()) return;
     set({ tasks: [...get().tasks, task] });
   },
 
   reorderTaskInStatus: (taskId, targetTaskId, position) => {
+    if (!hasFullAccess()) return;
     const { tasks } = get();
     const task = tasks.find((t) => t.id === taskId);
     const targetTask = tasks.find((t) => t.id === targetTaskId);
@@ -948,6 +1166,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   saveTask: (taskData, teams) => {
+    if (!hasFullAccess()) return;
     if (!taskData.title) return;
 
     const existingTask = taskData.id ? get().tasks.find((t) => t.id === taskData.id) : null;
@@ -994,77 +1213,18 @@ export const useDataStore = create<DataState>((set, get) => ({
       set({ tasks: get().tasks.map((t) => (t.id === newTask.id ? newTask : t)) });
     }
 
-    db.upsertTask(newTask)
+    db.saveTaskWithRelations(newTask)
       .then(() => {
-        db.syncTaskAssignees(newTask.id, newTask.assigneeIds);
-        db.syncTaskPlacements(newTask.id, newTask.placements);
+        if (isNew) {
+          logAction('Task Created', `Created task "${newTask.title}"`, 'task');
+          logTaskActivity(newTask.id, [{ field: 'created' }]);
+        } else {
+          logAction('Task Updated', `Updated task "${newTask.title}"`, 'task');
+          if (existingTask) logTaskActivity(newTask.id, diffTaskFields(existingTask, newTask));
+        }
+        notifyTaskSaved(existingTask || null, newTask);
       })
       .catch(() => toast.error('Failed to save task'));
-
-    if (isNew) {
-      logAction('Task Created', `Created task "${newTask.title}"`, 'task');
-      logTaskActivity(newTask.id, [{ field: 'created' }]);
-    } else {
-      logAction('Task Updated', `Updated task "${newTask.title}"`, 'task');
-      if (existingTask) logTaskActivity(newTask.id, diffTaskFields(existingTask, newTask));
-    }
-
-    const actorName = getCurrentUserName();
-    const allNewPeople = getAllTaskPeople(newTask);
-
-    if (isNew) {
-      // Notify all people on a new task (assignees + editors + designers)
-      if (allNewPeople.length > 0) {
-        notifyMany(allNewPeople, 'task_assigned', `${actorName} assigned you to "${newTask.title}"`, {
-          taskId: newTask.id,
-          teamId: newTask.teamId,
-          priority: newTask.priority,
-        });
-      }
-    } else if (existingTask) {
-      const allOldPeople = getAllTaskPeople(existingTask);
-
-      // Notify newly added people
-      const newPeople = allNewPeople.filter((id) => !allOldPeople.includes(id));
-      if (newPeople.length > 0) {
-        notifyMany(newPeople, 'task_assigned', `${actorName} assigned you to "${newTask.title}"`, {
-          taskId: newTask.id,
-          teamId: newTask.teamId,
-          priority: newTask.priority,
-        });
-      }
-
-      // Notify removed people
-      const removedPeople = allOldPeople.filter((id) => !allNewPeople.includes(id));
-      if (removedPeople.length > 0) {
-        notifyMany(removedPeople, 'task_unassigned', `${actorName} removed you from "${newTask.title}"`, {
-          taskId: newTask.id,
-          teamId: newTask.teamId,
-          priority: newTask.priority,
-        });
-      }
-
-      const changes: string[] = [];
-      if (existingTask.title !== newTask.title) changes.push('title');
-      if (existingTask.priority !== newTask.priority) changes.push('priority');
-      if (existingTask.dueDate !== newTask.dueDate) changes.push('due date');
-      if (existingTask.description !== newTask.description) changes.push('description');
-      if (JSON.stringify(existingTask.placements) !== JSON.stringify(newTask.placements)) changes.push('placements');
-      if (JSON.stringify(existingTask.customFieldValues) !== JSON.stringify(newTask.customFieldValues))
-        changes.push('fields');
-
-      if (changes.length > 0 && allNewPeople.length > 0) {
-        const updateRecipients = allNewPeople.filter((id) => !newPeople.includes(id));
-        if (updateRecipients.length > 0) {
-          notifyMany(
-            updateRecipients,
-            'task_updated',
-            `${actorName} updated ${changes.join(', ')} on "${newTask.title}"`,
-            { taskId: newTask.id, teamId: newTask.teamId, priority: newTask.priority },
-          );
-        }
-      }
-    }
   },
 
   // Absence/Shift actions
@@ -1490,12 +1650,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       }));
       set({ tasks: [...get().tasks, ...newTasks] });
       for (const task of newTasks) {
-        db.upsertTask(task)
-          .then(() => {
-            db.syncTaskAssignees(task.id, task.assigneeIds);
-            db.syncTaskPlacements(task.id, task.placements);
-          })
-          .catch(() => toast.error('Failed to clone task'));
+        db.saveTaskWithRelations(task).catch(() => toast.error('Failed to clone task'));
       }
     }
   },
@@ -1625,13 +1780,15 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   updateMemberTeams: (memberId, nextTeamIds) => {
     const { members } = get();
+    const member = members.find((m) => m.id === memberId);
+    if (!member || member.accessScope === 'related_only') return;
     const prev = members;
     const primary = nextTeamIds[0] || '';
     const updatedMembers = members.map((m) =>
       m.id === memberId ? { ...m, teamId: primary, teamIds: nextTeamIds } : m,
     );
     set({ members: updatedMembers });
-    db.setProfileTeams(memberId, nextTeamIds).catch(() => {
+    db.updateMemberAccess(memberId, 'full', nextTeamIds, member.role).catch(() => {
       set({ members: prev });
       toast.error('Failed to update teams');
     });
@@ -1653,9 +1810,43 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   updateMemberRole: (memberId, role) => {
     const { members } = get();
+    const member = members.find((m) => m.id === memberId);
+    if (!member) return;
     const updatedMembers = members.map((m) => (m.id === memberId ? { ...m, role } : m));
     set({ members: updatedMembers });
-    db.updateProfileRole(memberId, role).catch(() => toast.error('Failed to update role'));
+    db.updateMemberAccess(memberId, member.accessScope, member.teamIds, role).catch(() => {
+      set({ members });
+      toast.error('Failed to update role');
+    });
+  },
+
+  updateMemberAccess: async (memberId, accessScope, teamIds = [], role = 'user') => {
+    const previous = get().members;
+    const existing = previous.find((m) => m.id === memberId);
+    if (!existing) return;
+    const nextTeamIds = accessScope === 'related_only' ? [] : teamIds;
+    const nextRole = accessScope === 'related_only' ? 'user' : role;
+    set({
+      members: previous.map((m) =>
+        m.id === memberId
+          ? {
+              ...m,
+              accessScope,
+              role: nextRole,
+              teamId: nextTeamIds[0] || '',
+              teamIds: nextTeamIds,
+            }
+          : m,
+      ),
+    });
+    try {
+      const updated = await db.updateMemberAccess(memberId, accessScope, nextTeamIds, nextRole);
+      set({ members: get().members.map((m) => (m.id === memberId ? { ...m, ...updated } : m)) });
+    } catch (error) {
+      set({ members: previous });
+      toast.error(error instanceof Error ? error.message : 'Failed to update access');
+      throw error;
+    }
   },
 
   // Integration actions
@@ -1733,9 +1924,9 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
   },
 
-  notifyMention: (recipientIds, actorName, taskTitle, taskId, teamId) => {
+  notifyMention: (recipientIds, actorName, taskTitle, taskId, teamId, commentId) => {
     const msg = `${actorName} mentioned you in a comment on "${taskTitle}"`;
-    notifyMany(recipientIds, 'comment_mention', msg, { taskId, teamId });
+    notifyMany(recipientIds, 'comment_mention', msg, { taskId, teamId, contextTeamId: teamId, commentId });
   },
 
   // === Support ticket actions ===
@@ -1901,7 +2092,10 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   notifyTicketMention: (recipientIds, actorName, ticketTitle, ticketId) => {
     const msg = `${actorName} mentioned you in a support ticket: "${ticketTitle}"`;
-    notifyMany(recipientIds, 'comment_mention', msg, { ticketId });
+    const internalRecipientIds = recipientIds.filter(
+      (recipientId) => get().members.find((member) => member.id === recipientId)?.accessScope !== 'related_only',
+    );
+    notifyMany(internalRecipientIds, 'ticket_mention', msg, { ticketId });
   },
 
   setNotificationPreference: (userId, category, channel, enabled) => {
@@ -1921,10 +2115,57 @@ export const useDataStore = create<DataState>((set, get) => ({
   },
 
   // Load all data with resilient fetching
-  loadAllData: async (authUserId) => {
+  loadAllData: async (authUserId, shouldCommit = () => true) => {
     // Profile is critical - must succeed
     const profileResult = await db.findProfileByAuthId(authUserId);
-    if (!profileResult) return null;
+    if (!profileResult || !shouldCommit()) return null;
+
+    if (profileResult.accessScope === 'related_only') {
+      // Clear full-workspace state before loading the restricted bundle so a
+      // downgrade/account switch cannot leave sensitive rows in memory.
+      get().resetData();
+      const results = await Promise.allSettled([
+        db.fetchTeams(), // 0
+        db.fetchTasks(), // 1
+        db.fetchVisibleMembers(), // 2
+        db.fetchTeamStatuses(), // 3
+        db.fetchTeamContentTypes(), // 4
+        db.fetchCustomProperties(), // 5
+        db.fetchPlacements(), // 6
+        db.fetchTaskTeamLinks(), // 7
+        db.fetchTeamPlacements(), // 8
+        db.fetchTeamPersonFieldConfig(), // 9
+        db.fetchAllNotificationPreferences(), // 10
+        db.fetchTaskAccessContexts(), // 11
+      ]);
+      const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
+        result.status === 'fulfilled' ? result.value : fallback;
+      const personFieldRows = getValue(results[9], [] as TeamPersonFieldConfig[]);
+      const personFieldMap: PersonFieldConfigMap = {};
+      for (const row of personFieldRows) {
+        if (!personFieldMap[row.teamId]) personFieldMap[row.teamId] = {};
+        personFieldMap[row.teamId][row.fieldKey] = { label: row.label, hidden: row.hidden };
+      }
+      if (!shouldCommit()) return null;
+      set({
+        teams: getValue(results[0], []),
+        tasks: getValue(results[1], []),
+        members: getValue(results[2], [profileResult]),
+        teamStatuses: getValue(results[3], {} as Record<string, TeamStatus[]>),
+        teamTypes: getValue(results[4], {} as Record<string, string[]>),
+        teamProperties: getValue(results[5], {} as Record<string, CustomProperty[]>),
+        allPlacements: getValue(results[6], [] as string[]),
+        taskTeamLinks: getValue(results[7], [] as TaskTeamLink[]),
+        teamPlacements: getValue(results[8], {} as Record<string, string[]>),
+        teamPersonFieldConfig: personFieldMap,
+        notificationPreferences: getValue(results[10], [] as NotificationPreference[]),
+        taskAccessContexts: getValue(results[11], [] as TaskAccessContext[]),
+      });
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') console.error(`Restricted data fetch [${index}] failed:`, result.reason);
+      });
+      return profileResult;
+    }
 
     // Use Promise.allSettled for remaining data - partial failure is OK
     const results = await Promise.allSettled([
@@ -1949,6 +2190,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchTeamPersonFieldConfig(), // 18
       db.fetchAllNotificationPreferences(), // 19
       db.fetchTickets(), // 20
+      db.fetchTaskAccessContexts(), // 21
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
@@ -1969,6 +2211,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       if (!personFieldMap[row.teamId]) personFieldMap[row.teamId] = {};
       personFieldMap[row.teamId][row.fieldKey] = { label: row.label, hidden: row.hidden };
     }
+
+    if (!shouldCommit()) return null;
 
     // Sort teams by user's sidebar order, falling back to default sort_order
     const teams = getValue(results[0], []);
@@ -1999,6 +2243,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       teamPersonFieldConfig: personFieldMap,
       notificationPreferences: getValue(results[19], [] as NotificationPreference[]),
       tickets: getValue(results[20], [] as Ticket[]),
+      taskAccessContexts: getValue(results[21], [] as TaskAccessContext[]),
+      deletedTasks: [],
     });
 
     // Auto-purge tasks deleted more than 30 days ago (fire-and-forget)

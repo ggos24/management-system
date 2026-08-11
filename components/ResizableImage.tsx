@@ -19,6 +19,7 @@ const ALIGN_OPTIONS = [
 
 interface ImageNodeAttrs {
   src: string;
+  storagePath?: string;
   alt?: string;
   title?: string;
   width?: number;
@@ -160,6 +161,11 @@ export const ResizableImage = Node.create({
   addAttributes() {
     return {
       src: { default: null },
+      storagePath: {
+        default: null,
+        parseHTML: (element) => element.getAttribute('data-storage-path'),
+        renderHTML: (attributes) => (attributes.storagePath ? { 'data-storage-path': attributes.storagePath } : {}),
+      },
       alt: { default: null },
       title: { default: null },
       width: {
@@ -210,7 +216,14 @@ export const ResizableImage = Node.create({
   addCommands() {
     return {
       setImage:
-        (options: { src: string; alt?: string; title?: string; width?: number; align?: string }) =>
+        (options: {
+          src: string;
+          storagePath?: string;
+          alt?: string;
+          title?: string;
+          width?: number;
+          align?: string;
+        }) =>
         ({ commands }: { commands: any }) => {
           return commands.insertContent({
             type: this.name,

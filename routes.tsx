@@ -1,5 +1,13 @@
 import React from 'react';
-import { createBrowserRouter, Navigate, Outlet, useParams, useNavigate, useOutletContext } from 'react-router-dom';
+import {
+  createBrowserRouter,
+  Navigate,
+  Outlet,
+  useLocation,
+  useParams,
+  useNavigate,
+  useOutletContext,
+} from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { AuthGuard } from './components/AuthGuard';
 import AppLayout from './layouts/AppLayout';
@@ -130,6 +138,7 @@ const MyWorkspaceRoute: React.FC = () => {
     hideTeamColumn,
     showTeamColumn,
     teamPersonFieldConfig,
+    taskAccessContexts,
   } = useDataStore(
     useShallow((s) => ({
       tasks: s.tasks,
@@ -160,6 +169,7 @@ const MyWorkspaceRoute: React.FC = () => {
       hideTeamColumn: s.hideTeamColumn,
       showTeamColumn: s.showTeamColumn,
       teamPersonFieldConfig: s.teamPersonFieldConfig,
+      taskAccessContexts: s.taskAccessContexts,
     })),
   );
   const searchQuery = useUiStore((s) => s.searchQuery);
@@ -210,6 +220,7 @@ const MyWorkspaceRoute: React.FC = () => {
       onHideColumn={(key) => hideTeamColumn('my-work', key)}
       onShowColumn={(key) => showTeamColumn('my-work', key)}
       personFieldConfig={teamPersonFieldConfig['my-work'] || {}}
+      taskAccessContexts={taskAccessContexts}
     />
   );
 };
@@ -351,6 +362,28 @@ const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   return <>{children}</>;
 };
 
+// Related-only collaborators can use My Workspace, but cannot enter broader app sections.
+export const FullAccessGuard: React.FC = () => {
+  const accessScope = useAuthStore((s) => s.currentUser?.accessScope);
+  const location = useLocation();
+  const teams = useDataStore((s) => s.teams);
+  if (accessScope !== 'related_only') return <Outlet />;
+
+  const incoming = new URLSearchParams(location.search);
+  const taskId = incoming.get('task');
+  if (!taskId) return <Navigate to="/workspace" replace />;
+
+  const redirect = new URLSearchParams({ task: taskId });
+  let contextTeamId = incoming.get('context');
+  if (!contextTeamId) {
+    const teamParam = location.pathname.match(/^\/teams\/([^/]+)/)?.[1];
+    const team = teamParam ? findTeamByParam(teams, decodeURIComponent(teamParam)) : undefined;
+    contextTeamId = team?.id ?? null;
+  }
+  if (contextTeamId) redirect.set('context', contextTeamId);
+  return <Navigate to={{ pathname: '/workspace', search: `?${redirect.toString()}` }} replace />;
+};
+
 const BinRoute: React.FC = () => {
   const loadDeletedTasks = useDataStore((s) => s.loadDeletedTasks);
   React.useEffect(() => {
@@ -394,38 +427,43 @@ export const router = createBrowserRouter([
         element: <AppLayout />,
         children: [
           { index: true, element: <Navigate to="/workspace" replace /> },
-          { path: 'dashboard', element: <DashboardRoute /> },
           { path: 'workspace', element: <MyWorkspaceRoute /> },
-          { path: 'schedule', element: <ScheduleRoute /> },
-          { path: 'support', element: <Support /> },
           {
-            path: 'tools',
-            element: (
-              <AdminGuard>
-                <ToolsView />
-              </AdminGuard>
-            ),
-          },
-          {
-            path: 'tools/email-template',
-            element: (
-              <AdminGuard>
-                <EmailTemplateGenerator />
-              </AdminGuard>
-            ),
-          },
-          { path: 'bin', element: <BinRoute /> },
-          {
-            path: 'docs',
-            element: <Outlet />,
+            element: <FullAccessGuard />,
             children: [
-              { path: 'help', element: <DocsRoute section="help" /> },
-              { path: 'help/:docId', element: <DocsRoute section="help" /> },
-              { path: 'kb', element: <DocsRoute section="knowledge-base" /> },
-              { path: 'kb/:docId', element: <DocsRoute section="knowledge-base" /> },
+              { path: 'dashboard', element: <DashboardRoute /> },
+              { path: 'schedule', element: <ScheduleRoute /> },
+              { path: 'support', element: <Support /> },
+              {
+                path: 'tools',
+                element: (
+                  <AdminGuard>
+                    <ToolsView />
+                  </AdminGuard>
+                ),
+              },
+              {
+                path: 'tools/email-template',
+                element: (
+                  <AdminGuard>
+                    <EmailTemplateGenerator />
+                  </AdminGuard>
+                ),
+              },
+              { path: 'bin', element: <BinRoute /> },
+              {
+                path: 'docs',
+                element: <Outlet />,
+                children: [
+                  { path: 'help', element: <DocsRoute section="help" /> },
+                  { path: 'help/:docId', element: <DocsRoute section="help" /> },
+                  { path: 'kb', element: <DocsRoute section="knowledge-base" /> },
+                  { path: 'kb/:docId', element: <DocsRoute section="knowledge-base" /> },
+                ],
+              },
+              { path: 'teams/:teamId', element: <TeamWorkspaceRoute /> },
             ],
           },
-          { path: 'teams/:teamId', element: <TeamWorkspaceRoute /> },
           { path: '*', element: <Navigate to="/workspace" replace /> },
         ],
       },

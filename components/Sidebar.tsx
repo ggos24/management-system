@@ -18,6 +18,7 @@ import {
 import { Team, UserRole } from '../types';
 import { IconComponent } from './IconComponent';
 import { isAdmin } from '../constants';
+import { useAuthStore } from '../stores/authStore';
 
 interface SidebarProps {
   currentView: string;
@@ -57,6 +58,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   openTicketCount = 0,
 }) => {
   // Icon rendering uses the shared IconComponent
+  const isRelatedOnly = useAuthStore((s) => s.currentUser?.accessScope === 'related_only');
 
   const activeClass = 'bg-zinc-900 dark:bg-white text-white dark:text-zinc-900';
   const inactiveClass =
@@ -160,204 +162,214 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </span>
               )}
             </button>
-            <button
-              onClick={() => onChangeView('dashboard')}
-              className={`w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-                currentView === 'dashboard' ? activeClass : inactiveClass
-              } ${isCollapsed ? 'justify-center px-0' : ''}`}
-              title="Dashboard"
-            >
-              <LayoutDashboard size={18} />
-              <span
-                className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
-              >
-                Dashboard
-              </span>
-            </button>
-            <button
-              onClick={() => onChangeView('schedule')}
-              className={`w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-                currentView === 'schedule' ? activeClass : inactiveClass
-              } ${isCollapsed ? 'justify-center px-0' : ''}`}
-              title="Schedule"
-            >
-              <Calendar size={18} />
-              <span
-                className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
-              >
-                Schedule
-              </span>
-              {!isCollapsed && isAdmin(userRole) && pendingAbsenceCount > 0 && (
-                <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center bg-amber-500 text-white text-[10px] font-semibold rounded-full px-1">
-                  {pendingAbsenceCount}
-                </span>
-              )}
-            </button>
+            {!isRelatedOnly && (
+              <>
+                <button
+                  onClick={() => onChangeView('dashboard')}
+                  className={`w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                    currentView === 'dashboard' ? activeClass : inactiveClass
+                  } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                  title="Dashboard"
+                >
+                  <LayoutDashboard size={18} />
+                  <span
+                    className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+                  >
+                    Dashboard
+                  </span>
+                </button>
+                <button
+                  onClick={() => onChangeView('schedule')}
+                  className={`w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                    currentView === 'schedule' ? activeClass : inactiveClass
+                  } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                  title="Schedule"
+                >
+                  <Calendar size={18} />
+                  <span
+                    className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+                  >
+                    Schedule
+                  </span>
+                  {!isCollapsed && isAdmin(userRole) && pendingAbsenceCount > 0 && (
+                    <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center bg-amber-500 text-white text-[10px] font-semibold rounded-full px-1">
+                      {pendingAbsenceCount}
+                    </span>
+                  )}
+                </button>
+              </>
+            )}
           </div>
 
           {/* Teams Section */}
-          <div>
-            <div className={`px-3 flex items-center justify-between mb-2 ${isCollapsed ? 'justify-center' : ''}`}>
-              {!isCollapsed && (
-                <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Workspaces</h3>
-              )}
-              {isCollapsed && <div className="h-px w-4 bg-zinc-200 dark:bg-zinc-800"></div>}
+          {!isRelatedOnly && (
+            <div>
+              <div className={`px-3 flex items-center justify-between mb-2 ${isCollapsed ? 'justify-center' : ''}`}>
+                {!isCollapsed && (
+                  <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Workspaces</h3>
+                )}
+                {isCollapsed && <div className="h-px w-4 bg-zinc-200 dark:bg-zinc-800"></div>}
 
-              {!isCollapsed && isAdmin(userRole) && (
-                <button
-                  onClick={onManageTeams}
-                  className="p-2.5 md:p-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
-                  title="Manage Teams"
-                >
-                  <Settings size={14} />
-                </button>
-              )}
-            </div>
+                {!isCollapsed && isAdmin(userRole) && (
+                  <button
+                    onClick={onManageTeams}
+                    className="p-2.5 md:p-1.5 text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-200"
+                    title="Manage Teams"
+                  >
+                    <Settings size={14} />
+                  </button>
+                )}
+              </div>
 
-            <nav className="space-y-0.5">
-              {teams
-                .filter((t) => !t.hidden && !t.archived && (!t.adminOnly || isAdmin(userRole)))
-                .map((team) => {
-                  const isActive = currentView === team.id;
-                  return (
-                    <button
-                      key={team.id}
-                      draggable={!isCollapsed}
-                      onDragStart={(e) => handleDragStart(e, team.id)}
-                      onDragOver={handleDragOver}
-                      onDrop={(e) => handleDrop(e, team.id)}
-                      onClick={() => onChangeView(team.id)}
-                      className={`group w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-                        isActive ? activeClass : inactiveClass
-                      } ${isCollapsed ? 'justify-center px-0' : ''}`}
-                      title={team.name}
-                    >
-                      <IconComponent name={team.icon} size={18} className="flex-shrink-0" />
-                      <span
-                        className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+              <nav className="space-y-0.5">
+                {teams
+                  .filter((t) => !t.hidden && !t.archived && (!t.adminOnly || isAdmin(userRole)))
+                  .map((team) => {
+                    const isActive = currentView === team.id;
+                    return (
+                      <button
+                        key={team.id}
+                        draggable={!isCollapsed}
+                        onDragStart={(e) => handleDragStart(e, team.id)}
+                        onDragOver={handleDragOver}
+                        onDrop={(e) => handleDrop(e, team.id)}
+                        onClick={() => onChangeView(team.id)}
+                        className={`group w-full flex items-center gap-3 px-3 py-3 md:py-2 rounded-md text-sm font-medium transition-all cursor-pointer focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                          isActive ? activeClass : inactiveClass
+                        } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                        title={team.name}
                       >
-                        {team.name}
-                      </span>
+                        <IconComponent name={team.icon} size={18} className="flex-shrink-0" />
+                        <span
+                          className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+                        >
+                          {team.name}
+                        </span>
 
-                      {!isCollapsed && (
-                        <div className="ml-auto flex items-center">
-                          {(taskCounts[team.id] || 0) > 0 && (
-                            <span
-                              className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center group-hover:hidden ${isActive ? activeBadgeClass : inactiveBadgeClass}`}
-                            >
-                              {taskCounts[team.id]}
-                            </span>
-                          )}
-                          <div className="hidden group-hover:block text-zinc-300 hover:text-zinc-500 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing">
-                            <GripVertical size={14} />
+                        {!isCollapsed && (
+                          <div className="ml-auto flex items-center">
+                            {(taskCounts[team.id] || 0) > 0 && (
+                              <span
+                                className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center group-hover:hidden ${isActive ? activeBadgeClass : inactiveBadgeClass}`}
+                              >
+                                {taskCounts[team.id]}
+                              </span>
+                            )}
+                            <div className="hidden group-hover:block text-zinc-300 hover:text-zinc-500 dark:hover:text-zinc-200 cursor-grab active:cursor-grabbing">
+                              <GripVertical size={14} />
+                            </div>
                           </div>
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-            </nav>
-          </div>
+                        )}
+                      </button>
+                    );
+                  })}
+              </nav>
+            </div>
+          )}
         </div>
 
         <div className="mt-auto p-2 pt-3 border-t border-zinc-200 dark:border-zinc-800 space-y-0.5 safe-b">
-          <button
-            onClick={() => onChangeView('docs-kb')}
-            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-              currentView === 'docs-kb'
-                ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
-                : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
-            } ${isCollapsed ? 'justify-center px-0' : ''}`}
-            title="Knowledge Base"
-          >
-            <BookOpen size={18} />
-            <span
-              className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
-            >
-              Knowledge Base
-            </span>
-          </button>
-          <button
-            onClick={() => onChangeView('docs-help')}
-            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-              currentView === 'docs-help'
-                ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
-                : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
-            } ${isCollapsed ? 'justify-center px-0' : ''}`}
-            title="FAQ"
-          >
-            <HelpCircle size={18} />
-            <span
-              className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
-            >
-              FAQ
-            </span>
-          </button>
-          {isAdmin(userRole) && (
-            <button
-              onClick={() => onChangeView('tools')}
-              className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-                currentView === 'tools'
-                  ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
-                  : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
-              } ${isCollapsed ? 'justify-center px-0' : ''}`}
-              title="Tools"
-            >
-              <Wrench size={18} />
-              <span
-                className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+          {!isRelatedOnly && (
+            <>
+              <button
+                onClick={() => onChangeView('docs-kb')}
+                className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                  currentView === 'docs-kb'
+                    ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                    : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+                } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                title="Knowledge Base"
               >
-                Tools
-              </span>
-            </button>
+                <BookOpen size={18} />
+                <span
+                  className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+                >
+                  Knowledge Base
+                </span>
+              </button>
+              <button
+                onClick={() => onChangeView('docs-help')}
+                className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                  currentView === 'docs-help'
+                    ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                    : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+                } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                title="FAQ"
+              >
+                <HelpCircle size={18} />
+                <span
+                  className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+                >
+                  FAQ
+                </span>
+              </button>
+              {isAdmin(userRole) && (
+                <button
+                  onClick={() => onChangeView('tools')}
+                  className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                    currentView === 'tools'
+                      ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                      : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+                  } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                  title="Tools"
+                >
+                  <Wrench size={18} />
+                  <span
+                    className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+                  >
+                    Tools
+                  </span>
+                </button>
+              )}
+              <button
+                onClick={() => onChangeView('support')}
+                className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                  currentView === 'support'
+                    ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                    : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+                } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                title="Support"
+              >
+                <LifeBuoy size={18} />
+                <span
+                  className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+                >
+                  Support
+                </span>
+                {!isCollapsed && openTicketCount > 0 && (
+                  <span
+                    className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'support' ? activeBadgeClass : inactiveBadgeClass}`}
+                  >
+                    {openTicketCount}
+                  </span>
+                )}
+              </button>
+              <div className="h-px bg-zinc-100 dark:bg-zinc-800/50 mx-2 my-1.5" />
+              <button
+                onClick={() => onChangeView('bin')}
+                className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                  currentView === 'bin'
+                    ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                    : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+                } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                title="Bin"
+              >
+                <Trash2 size={18} />
+                <span
+                  className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+                >
+                  Bin
+                </span>
+                {!isCollapsed && deletedTaskCount > 0 && (
+                  <span
+                    className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'bin' ? activeBadgeClass : inactiveBadgeClass}`}
+                  >
+                    {deletedTaskCount}
+                  </span>
+                )}
+              </button>
+            </>
           )}
-          <button
-            onClick={() => onChangeView('support')}
-            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-              currentView === 'support'
-                ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
-                : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
-            } ${isCollapsed ? 'justify-center px-0' : ''}`}
-            title="Support"
-          >
-            <LifeBuoy size={18} />
-            <span
-              className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
-            >
-              Support
-            </span>
-            {!isCollapsed && openTicketCount > 0 && (
-              <span
-                className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'support' ? activeBadgeClass : inactiveBadgeClass}`}
-              >
-                {openTicketCount}
-              </span>
-            )}
-          </button>
-          <div className="h-px bg-zinc-100 dark:bg-zinc-800/50 mx-2 my-1.5" />
-          <button
-            onClick={() => onChangeView('bin')}
-            className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
-              currentView === 'bin'
-                ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
-                : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
-            } ${isCollapsed ? 'justify-center px-0' : ''}`}
-            title="Bin"
-          >
-            <Trash2 size={18} />
-            <span
-              className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
-            >
-              Bin
-            </span>
-            {!isCollapsed && deletedTaskCount > 0 && (
-              <span
-                className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'bin' ? activeBadgeClass : inactiveBadgeClass}`}
-              >
-                {deletedTaskCount}
-              </span>
-            )}
-          </button>
           <button
             onClick={onOpenSettings}
             className={`w-full flex items-center gap-3 text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md hover:bg-zinc-100 dark:hover:bg-zinc-800/50 focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${isCollapsed ? 'justify-center px-0' : ''}`}

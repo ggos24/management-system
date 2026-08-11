@@ -133,7 +133,10 @@ const TicketDetail: React.FC<TicketDetailProps> = ({
     if (comment) {
       setReply('');
       setComments((prev) => [...prev, comment]);
-      const mentioned = parseMentionedMemberIds(text, members);
+      const mentioned = parseMentionedMemberIds(
+        text,
+        members.filter((member) => member.accessScope !== 'related_only'),
+      );
       if (mentioned.length > 0) notifyTicketMention(mentioned, currentUserName, ticket.title, ticket.id);
     }
   };
@@ -157,7 +160,9 @@ const TicketDetail: React.FC<TicketDetailProps> = ({
   }));
   const assigneeOptions: SelectOption[] = [
     { value: '', label: 'Unassigned' },
-    ...members.map((m) => ({ value: m.id, label: m.name })),
+    ...members
+      .filter((member) => member.accessScope !== 'related_only')
+      .map((member) => ({ value: member.id, label: member.name })),
   ];
 
   return (

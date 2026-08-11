@@ -31,20 +31,25 @@ export const DocsView: React.FC<DocsViewProps> = ({ section, docId, onNavigate }
   const [treeFilter, setTreeFilter] = useState('');
   const [deleteConfirm, setDeleteConfirm] = useState<Doc | null>(null);
 
-  const loadDocs = useCallback(async () => {
-    try {
-      setLoading(true);
-      const data = await fetchDocs(section);
-      setDocs(data);
-    } catch {
-      toast.error('Failed to load articles');
-    } finally {
-      setLoading(false);
-    }
-  }, [section]);
+  const loadDocs = useCallback(
+    async (showLoading = true) => {
+      try {
+        if (showLoading) setLoading(true);
+        const data = await fetchDocs(section);
+        setDocs(data);
+      } catch {
+        if (showLoading) toast.error('Failed to load articles');
+      } finally {
+        if (showLoading) setLoading(false);
+      }
+    },
+    [section],
+  );
 
   useEffect(() => {
-    loadDocs();
+    void loadDocs();
+    const signedUrlRefresh = window.setInterval(() => void loadDocs(false), 8 * 60 * 1000);
+    return () => window.clearInterval(signedUrlRefresh);
   }, [loadDocs]);
 
   const activeDoc = useMemo(() => (docId ? docs.find((d) => d.id === docId) : null), [docId, docs]);

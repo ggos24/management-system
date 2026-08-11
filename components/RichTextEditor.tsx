@@ -131,6 +131,11 @@ function sanitizeHtml(html: string): string {
   return doc.body.innerHTML;
 }
 
+/** Sanitize stored rich text for non-editable renderers. */
+export function sanitizeRichTextHtml(html: string): string {
+  return sanitizeHtml(html);
+}
+
 /** Formatting under the caret, mirrored onto the toolbar so toggles read as on/off. */
 interface ToolbarState {
   bold: boolean;

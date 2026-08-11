@@ -1,4 +1,11 @@
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import {
+  authorizeNotificationRecipients,
+  claimExternalNotificationDeliveries,
+  claimRestrictedTaskNotificationDeliveries,
+  markExternalNotificationDeliverySent,
+  markRestrictedTaskNotificationDeliverySent,
+} from '../_shared/notification-auth.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -7,18 +14,6 @@ const corsHeaders = {
 };
 
 const SENDPULSE_API = 'https://api.sendpulse.com';
-
-function isServiceRoleJwt(jwt: string): boolean {
-  try {
-    const parts = jwt.split('.');
-    if (parts.length !== 3) return false;
-    const padded = parts[1].replace(/-/g, '+').replace(/_/g, '/');
-    const payload = JSON.parse(atob(padded + '==='.slice((padded.length + 3) % 4)));
-    return payload.role === 'service_role';
-  } catch {
-    return false;
-  }
-}
 
 async function getSendPulseToken(clientId: string, clientSecret: string): Promise<string> {
   const res = await fetch(`${SENDPULSE_API}/oauth/access_token`, {
@@ -35,6 +30,15 @@ async function getSendPulseToken(clientId: string, clientSecret: string): Promis
   }
   const data = await res.json();
   return data.access_token;
+}
+
+function escapeHtml(value: unknown): string {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
 }
 
 Deno.serve(async (req) => {
@@ -74,10 +78,12 @@ Deno.serve(async (req) => {
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const adminClient = createClient(supabaseUrl, supabaseServiceKey);
 
-    // Allow trusted server-to-server callers (e.g. Vercel cron) to authenticate
-    // with any service_role-scoped JWT. Otherwise verify a user JWT.
+    // Only the exact configured service key is trusted server-to-server. Merely
+    // decoding an unverified JWT `role` claim would allow a forged bypass.
     const jwt = authHeader.replace('Bearer ', '');
-    if (!isServiceRoleJwt(jwt)) {
+    const serviceCaller = jwt === supabaseServiceKey;
+    let callerAuthUserId: string | null = null;
+    if (!serviceCaller) {
       const {
         data: { user },
         error: authError,
@@ -90,20 +96,60 @@ Deno.serve(async (req) => {
         });
       }
       console.log('send-email: authenticated as', user.email);
+      callerAuthUserId = user.id;
     } else {
       console.log('send-email: authenticated via service role');
     }
 
-    const { recipientIds, subject, message, link, taskDetails } = await req.json();
-    if (!recipientIds?.length || !message || !subject) {
+    const {
+      recipientIds: requestedRecipientIds,
+      subject,
+      message,
+      link,
+      taskDetails,
+      type,
+      taskId,
+      contextTeamId,
+      commentId,
+    } = await req.json();
+    if (!requestedRecipientIds?.length || !message || !subject) {
       return new Response(JSON.stringify({ error: 'recipientIds, subject, and message are required' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
+    const authorization = await authorizeNotificationRecipients({
+      adminClient,
+      serviceCaller,
+      callerAuthUserId,
+      recipientIds: requestedRecipientIds,
+      type,
+      taskId,
+      contextTeamId,
+      commentId,
+      channel: 'email',
+    });
+    if (authorization.error) {
+      return new Response(JSON.stringify({ error: authorization.error }), {
+        status: authorization.status ?? 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const recipientIds = authorization.recipientIds;
+    if (recipientIds.length === 0) {
+      return new Response(JSON.stringify({ sent: 0 }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    const outboundSubject = (authorization.externalPayload?.subject ?? subject).replace(/[\r\n]+/g, ' ').trim();
+    const outboundMessage = authorization.externalPayload?.message ?? message;
+    const outboundLink = authorization.externalPayload ? authorization.externalPayload.link : link;
+    const outboundTaskDetails = authorization.externalPayload ? undefined : taskDetails;
+
     // Look up emails for the recipients via profiles → auth.users join
-    const { data: profiles } = await adminClient.from('profiles').select('auth_user_id').in('id', recipientIds);
+    const { data: profiles } = await adminClient.from('profiles').select('id, auth_user_id').in('id', recipientIds);
 
     if (!profiles || profiles.length === 0) {
       return new Response(JSON.stringify({ sent: 0 }), {
@@ -113,14 +159,14 @@ Deno.serve(async (req) => {
     }
 
     // Get auth user emails
-    const emails: string[] = [];
+    const emails: Array<{ profileId: string; email: string }> = [];
     for (const profile of profiles) {
       if (!profile.auth_user_id) continue;
       const {
         data: { user: authUser },
       } = await adminClient.auth.admin.getUserById(profile.auth_user_id);
       if (authUser?.email) {
-        emails.push(authUser.email);
+        emails.push({ profileId: profile.id, email: authUser.email });
       }
     }
 
@@ -133,6 +179,51 @@ Deno.serve(async (req) => {
 
     // Get SendPulse access token
     const spToken = await getSendPulseToken(clientId, clientSecret);
+    let deliverableEmails = emails;
+    const claimTargetIds = new Set(authorization.mentionClaimRecipientIds ?? []);
+    const emailClaimTargetIds = emails
+      .map((entry) => entry.profileId)
+      .filter((profileId) => claimTargetIds.has(profileId));
+    if (emailClaimTargetIds.length > 0) {
+      const claimedIds = new Set(
+        await claimExternalNotificationDeliveries(adminClient, emailClaimTargetIds, commentId, 'email'),
+      );
+      deliverableEmails = emails.filter(
+        (entry) => !claimTargetIds.has(entry.profileId) || claimedIds.has(entry.profileId),
+      );
+      if (deliverableEmails.length === 0) {
+        return new Response(JSON.stringify({ sent: 0 }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
+    const restrictedTaskClaimTargetIds = new Set(authorization.restrictedTaskClaimRecipientIds ?? []);
+    const emailRestrictedTaskClaimIds = emails
+      .map((entry) => entry.profileId)
+      .filter((profileId) => restrictedTaskClaimTargetIds.has(profileId));
+    const restrictedTaskClaims =
+      emailRestrictedTaskClaimIds.length > 0
+        ? await claimRestrictedTaskNotificationDeliveries(
+            adminClient,
+            emailRestrictedTaskClaimIds,
+            taskId,
+            contextTeamId,
+            type,
+            'email',
+          )
+        : new Map<string, string>();
+    if (emailRestrictedTaskClaimIds.length > 0) {
+      deliverableEmails = deliverableEmails.filter(
+        (entry) => !restrictedTaskClaimTargetIds.has(entry.profileId) || restrictedTaskClaims.has(entry.profileId),
+      );
+      if (deliverableEmails.length === 0) {
+        return new Response(JSON.stringify({ sent: 0 }), {
+          status: 200,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    }
 
     // Format date helper (European DD/MM/YYYY)
     const fmtDate = (iso: string) => {
@@ -156,36 +247,44 @@ Deno.serve(async (req) => {
 
     // Build task details block
     let detailsHtml = '';
-    if (taskDetails && (taskDetails.teamName || taskDetails.dueDate || taskDetails.priority || taskDetails.status)) {
-      const pColor = taskDetails.priority ? priorityColors[taskDetails.priority] || priorityColors.low : null;
+    if (
+      outboundTaskDetails &&
+      (outboundTaskDetails.teamName ||
+        outboundTaskDetails.dueDate ||
+        outboundTaskDetails.priority ||
+        outboundTaskDetails.status)
+    ) {
+      const pColor = outboundTaskDetails.priority
+        ? priorityColors[outboundTaskDetails.priority] || priorityColors.low
+        : null;
       const rows: string[] = [];
-      if (taskDetails.teamName) {
+      if (outboundTaskDetails.teamName) {
         rows.push(`<tr>
           <td style="padding:8px 12px;color:#71717a;font-size:12px;white-space:nowrap">Team</td>
-          <td style="padding:8px 12px;font-size:13px;color:#18181b;font-weight:500">${taskDetails.teamName}</td>
+          <td style="padding:8px 12px;font-size:13px;color:#18181b;font-weight:500">${escapeHtml(outboundTaskDetails.teamName)}</td>
         </tr>`);
       }
-      if (taskDetails.dueDate) {
+      if (outboundTaskDetails.dueDate) {
         rows.push(`<tr>
           <td style="padding:8px 12px;color:#71717a;font-size:12px;white-space:nowrap">Due date</td>
-          <td style="padding:8px 12px;font-size:13px;color:#18181b">${fmtDate(taskDetails.dueDate)}</td>
+          <td style="padding:8px 12px;font-size:13px;color:#18181b">${escapeHtml(fmtDate(outboundTaskDetails.dueDate))}</td>
         </tr>`);
       }
-      if (taskDetails.priority && pColor) {
+      if (outboundTaskDetails.priority && pColor) {
         rows.push(`<tr>
           <td style="padding:8px 12px;color:#71717a;font-size:12px;white-space:nowrap">Priority</td>
           <td style="padding:8px 12px">
             <span style="display:inline-flex;align-items:center;gap:6px;font-size:13px;color:${pColor.text}">
               <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${pColor.dot}"></span>
-              ${taskDetails.priority.charAt(0).toUpperCase() + taskDetails.priority.slice(1)}
+              ${escapeHtml(outboundTaskDetails.priority.charAt(0).toUpperCase() + outboundTaskDetails.priority.slice(1))}
             </span>
           </td>
         </tr>`);
       }
-      if (taskDetails.status) {
+      if (outboundTaskDetails.status) {
         rows.push(`<tr>
           <td style="padding:8px 12px;color:#71717a;font-size:12px;white-space:nowrap">Status</td>
-          <td style="padding:8px 12px;font-size:13px;color:#18181b">${taskDetails.status}</td>
+          <td style="padding:8px 12px;font-size:13px;color:#18181b">${escapeHtml(outboundTaskDetails.status)}</td>
         </tr>`);
       }
       detailsHtml = `<table style="width:100%;border-collapse:collapse;margin-top:16px;border:1px solid #e4e4e7;border-radius:8px;overflow:hidden">
@@ -194,8 +293,8 @@ Deno.serve(async (req) => {
     }
 
     // Build button
-    const buttonHtml = link
-      ? `<div style="margin-top:24px"><a href="${link}" style="display:inline-block;padding:10px 24px;background-color:#18181b;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:500;font-size:13px">Open in app</a></div>`
+    const buttonHtml = outboundLink
+      ? `<div style="margin-top:24px"><a href="${escapeHtml(outboundLink)}" style="display:inline-block;padding:10px 24px;background-color:#18181b;color:#ffffff;text-decoration:none;border-radius:6px;font-weight:500;font-size:13px">Open in app</a></div>`
       : '';
 
     const html = `<!DOCTYPE html>
@@ -204,7 +303,7 @@ Deno.serve(async (req) => {
 <body style="margin:0;padding:0;background-color:#fafafa;font-family:'Inter',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif">
   <div style="max-width:560px;margin:32px auto;background:#ffffff;border:1px solid #e4e4e7;border-radius:12px;overflow:hidden">
     <div style="padding:32px 32px 24px">
-      <p style="font-size:15px;line-height:1.6;color:#27272a;margin:0">${message}</p>
+      <p style="font-size:15px;line-height:1.6;color:#27272a;margin:0">${escapeHtml(outboundMessage).replaceAll('\n', '<br>')}</p>
       ${detailsHtml}
       ${buttonHtml}
     </div>
@@ -217,12 +316,12 @@ Deno.serve(async (req) => {
 
     // Base64 encode with UTF-8 support
     const htmlBase64 = btoa(String.fromCharCode(...new TextEncoder().encode(html)));
-    const textBase64 = btoa(String.fromCharCode(...new TextEncoder().encode(message)));
+    const textBase64 = btoa(String.fromCharCode(...new TextEncoder().encode(outboundMessage)));
 
     // Send via SendPulse SMTP API
     let sent = 0;
     await Promise.allSettled(
-      emails.map(async (recipientEmail) => {
+      deliverableEmails.map(async ({ profileId, email: recipientEmail }) => {
         const res = await fetch(`${SENDPULSE_API}/smtp/emails`, {
           method: 'POST',
           headers: {
@@ -231,7 +330,7 @@ Deno.serve(async (req) => {
           },
           body: JSON.stringify({
             email: {
-              subject,
+              subject: outboundSubject,
               from: { name: senderName, email: senderEmail },
               to: [{ email: recipientEmail }],
               html: htmlBase64,
@@ -239,8 +338,16 @@ Deno.serve(async (req) => {
             },
           }),
         });
-        if (res.ok) sent++;
-        else console.error(`SendPulse send failed for ${recipientEmail}: ${res.status}`, await res.text());
+        if (res.ok) {
+          sent++;
+          if (claimTargetIds.has(profileId)) {
+            await markExternalNotificationDeliverySent(adminClient, profileId, commentId, 'email');
+          }
+          const restrictedTaskClaimId = restrictedTaskClaims.get(profileId);
+          if (restrictedTaskClaimId) {
+            await markRestrictedTaskNotificationDeliverySent(adminClient, restrictedTaskClaimId);
+          }
+        } else console.error(`SendPulse send failed for ${recipientEmail}: ${res.status}`, await res.text());
       }),
     );
 

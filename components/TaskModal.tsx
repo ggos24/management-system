@@ -28,7 +28,7 @@ import {
   History,
 } from 'lucide-react';
 import { Modal } from './Modal';
-import { RichTextEditor } from './RichTextEditor';
+import { RichTextEditor, sanitizeRichTextHtml } from './RichTextEditor';
 import { MultiSelect, MultiSelectOptionGroup } from './MultiSelect';
 import { CustomSelect } from './CustomSelect';
 import { TagSelect } from './TagSelect';
@@ -43,8 +43,16 @@ import { cn } from '../lib/cn';
 import { formatDateEU, toDateOnly } from '../lib/utils';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusColor } from '../constants';
 import { getStatusName } from '../lib/statusUtils';
+import { collectTaskParticipantIds, getMentionToken, resolveCommentMentionIds } from '../lib/mentions';
 import * as db from '../lib/database';
 import { supabase } from '../lib/supabase';
+
+const ReadOnlyTaskField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div className="min-w-0 space-y-1">
+    <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">{label}</p>
+    <div className="min-h-6 text-sm text-zinc-700 dark:text-zinc-300">{children}</div>
+  </div>
+);
 
 export const TaskModal: React.FC = () => {
   const [isAddPropertyOpen, setIsAddPropertyOpen] = useState(false);
@@ -79,6 +87,8 @@ export const TaskModal: React.FC = () => {
   } = useDataStore();
 
   const currentUser = useAuthStore((s) => s.currentUser);
+  const isRelatedOnly = currentUser?.accessScope === 'related_only';
+  const contextTeamId = taskModalData.viewingTeamId || taskModalData.teamId || '';
 
   const sortedMembers = useMemo(
     () => [...members].sort((a, b) => (a.id === currentUser?.id ? -1 : b.id === currentUser?.id ? 1 : 0)),
@@ -101,12 +111,12 @@ export const TaskModal: React.FC = () => {
   const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
 
   const handleClose = useCallback(() => {
-    if (hasUnsavedChanges()) {
+    if (!isRelatedOnly && hasUnsavedChanges()) {
       setIsUnsavedConfirmOpen(true);
       return;
     }
     setIsTaskModalOpen(false);
-  }, [hasUnsavedChanges, setIsTaskModalOpen]);
+  }, [hasUnsavedChanges, isRelatedOnly, setIsTaskModalOpen]);
 
   // --- Grouped placement options with composite values (teamId:name) ---
   const placementGroups = useMemo(() => {
@@ -203,8 +213,10 @@ export const TaskModal: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'comments' | 'activity'>('comments');
   const [comments, setComments] = useState<TaskComment[]>([]);
   const [commentText, setCommentText] = useState('');
+  const [selectedMentionIds, setSelectedMentionIds] = useState<string[]>([]);
   const [editingCommentId, setEditingCommentId] = useState<string | null>(null);
   const [editingCommentText, setEditingCommentText] = useState('');
+  const [editingMentionIds, setEditingMentionIds] = useState<string[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [activities, setActivities] = useState<TaskActivity[]>([]);
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
@@ -212,9 +224,39 @@ export const TaskModal: React.FC = () => {
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
   const [mentionFilter, setMentionFilter] = useState('');
   const [mentionCursorPos, setMentionCursorPos] = useState(0);
+  const [showEditingMentionDropdown, setShowEditingMentionDropdown] = useState(false);
+  const [editingMentionFilter, setEditingMentionFilter] = useState('');
+  const [editingMentionCursorPos, setEditingMentionCursorPos] = useState(0);
   const commentInputRef = useRef<HTMLTextAreaElement>(null);
+  const editingCommentInputRef = useRef<HTMLTextAreaElement>(null);
   const commentsEndRef = useRef<HTMLDivElement>(null);
   const titleRef = useRef<HTMLTextAreaElement>(null);
+  const commentRequestRef = useRef(0);
+
+  const hydrateCommentAuthors = useCallback(
+    (data: TaskComment[]): TaskComment[] =>
+      data.map((comment) => {
+        const author = members.find((member) => member.id === comment.userId);
+        return {
+          ...comment,
+          userName: comment.userName || author?.name || 'Unknown',
+          userAvatar: comment.userAvatar || author?.avatar || '',
+        };
+      }),
+    [members],
+  );
+  const hydrateActivityAuthors = useCallback(
+    (data: TaskActivity[]): TaskActivity[] =>
+      data.map((activity) => {
+        const author = members.find((member) => member.id === activity.userId);
+        return {
+          ...activity,
+          userName: activity.userName || author?.name || 'Unknown',
+          userAvatar: activity.userAvatar || author?.avatar || '',
+        };
+      }),
+    [members],
+  );
 
   useLayoutEffect(() => {
     const el = titleRef.current;
@@ -224,27 +266,36 @@ export const TaskModal: React.FC = () => {
   }, [taskModalData.title]);
 
   // Load comments when modal opens with an existing task
-  const loadComments = useCallback(async (taskId: string) => {
-    setIsLoadingComments(true);
-    try {
-      const data = await db.fetchTaskComments(taskId);
-      setComments(data);
-    } catch {
-      toast.error('Failed to load comments');
-    } finally {
-      setIsLoadingComments(false);
-    }
-  }, []);
+  const loadComments = useCallback(
+    async (taskId: string) => {
+      const requestId = ++commentRequestRef.current;
+      setIsLoadingComments(true);
+      try {
+        const data = await db.fetchTaskComments(taskId);
+        if (commentRequestRef.current === requestId) setComments(hydrateCommentAuthors(data));
+      } catch {
+        if (commentRequestRef.current === requestId) toast.error('Failed to load comments');
+      } finally {
+        if (commentRequestRef.current === requestId) setIsLoadingComments(false);
+      }
+    },
+    [hydrateCommentAuthors],
+  );
 
   useEffect(() => {
     if (isTaskModalOpen && taskModalData.id) {
       loadComments(taskModalData.id);
     } else {
+      commentRequestRef.current++;
       setComments([]);
+      setIsLoadingComments(false);
     }
     setCommentText('');
+    setSelectedMentionIds([]);
     setEditingCommentId(null);
+    setEditingMentionIds([]);
     setShowMentionDropdown(false);
+    setShowEditingMentionDropdown(false);
     setActiveTab('comments');
     setActivities([]);
     activityLoadedRef.current = false;
@@ -252,17 +303,22 @@ export const TaskModal: React.FC = () => {
 
   // Lazy-load activity when tab is first activated
   useEffect(() => {
-    if (activeTab === 'activity' && taskModalData.id && !activityLoadedRef.current) {
+    let active = true;
+    if (isTaskModalOpen && activeTab === 'activity' && taskModalData.id && !activityLoadedRef.current) {
       setIsLoadingActivities(true);
       db.fetchTaskActivity(taskModalData.id)
         .then((data) => {
+          if (!active) return;
           activityLoadedRef.current = true;
-          setActivities(data);
+          setActivities(hydrateActivityAuthors(data));
         })
-        .catch(() => toast.error('Failed to load activity'))
-        .finally(() => setIsLoadingActivities(false));
+        .catch(() => active && toast.error('Failed to load activity'))
+        .finally(() => active && setIsLoadingActivities(false));
     }
-  }, [activeTab, taskModalData.id]);
+    return () => {
+      active = false;
+    };
+  }, [activeTab, hydrateActivityAuthors, isTaskModalOpen, taskModalData.id]);
 
   // Realtime subscription for comments on the open task
   useEffect(() => {
@@ -273,74 +329,137 @@ export const TaskModal: React.FC = () => {
         'postgres_changes',
         { event: '*', schema: 'public', table: 'task_comments', filter: `task_id=eq.${taskModalData.id}` },
         () => {
-          db.fetchTaskComments(taskModalData.id!).then(setComments).catch(console.error);
+          void loadComments(taskModalData.id!);
         },
       )
       .subscribe();
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [isTaskModalOpen, taskModalData.id]);
+  }, [isTaskModalOpen, loadComments, taskModalData.id]);
 
   // Scroll to bottom when new comments arrive
   useEffect(() => {
     commentsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [comments.length]);
 
-  // Parse @mentions from text, return matched member IDs
-  const parseMentions = useCallback(
-    (text: string): string[] => {
-      const mentionRegex = /@(\S+)/g;
-      const mentioned: string[] = [];
-      let match;
-      while ((match = mentionRegex.exec(text)) !== null) {
-        const name = match[1].toLowerCase();
-        const member = members.find((m) => m.name.toLowerCase().replace(/\s+/g, '') === name);
-        if (member) mentioned.push(member.id);
-      }
-      return [...new Set(mentioned)];
+  const taskParticipantIds = useMemo(() => {
+    if (!taskModalData.id || !taskModalData.teamId) return new Set<string>();
+    return new Set(
+      collectTaskParticipantIds(
+        {
+          id: taskModalData.id,
+          teamId: taskModalData.teamId,
+          assigneeIds: taskModalData.assigneeIds || [],
+          contentInfo: taskModalData.contentInfo,
+          customFieldValues: taskModalData.customFieldValues,
+        },
+        taskTeamLinks,
+        teamProperties,
+        contextTeamId,
+        comments,
+      ),
+    );
+  }, [comments, contextTeamId, taskModalData, taskTeamLinks, teamProperties]);
+
+  const mentionableMembers = useMemo(
+    () =>
+      isRelatedOnly
+        ? members.filter((member) => member.id !== currentUser?.id && taskParticipantIds.has(member.id))
+        : members,
+    [currentUser?.id, isRelatedOnly, members, taskParticipantIds],
+  );
+
+  const resolveSubmittedMentions = useCallback(
+    (text: string, pickerIds: string[]): string[] => {
+      const allowedPickerIds = isRelatedOnly
+        ? pickerIds.filter((id) => id !== currentUser?.id && taskParticipantIds.has(id))
+        : pickerIds;
+      return resolveCommentMentionIds(text, allowedPickerIds, members);
     },
-    [members],
+    [currentUser?.id, isRelatedOnly, members, taskParticipantIds],
   );
 
   const handleAddComment = async () => {
-    if (!commentText.trim() || !taskModalData.id || !currentUser) return;
+    if (!commentText.trim() || !taskModalData.id || !currentUser || !contextTeamId) return;
     const text = commentText.trim();
+    const mentionedIds = resolveSubmittedMentions(text, selectedMentionIds);
     setCommentText('');
+    setSelectedMentionIds([]);
     setShowMentionDropdown(false);
     try {
-      const newComment = await db.insertTaskComment(taskModalData.id, currentUser.id, text);
-      setComments((prev) => [...prev, newComment]);
+      const newComment = await db.insertTaskComment(
+        taskModalData.id,
+        currentUser.id,
+        text,
+        contextTeamId,
+        mentionedIds,
+      );
+      const hydratedNewComment = hydrateCommentAuthors([newComment])[0];
+      setComments((prev) =>
+        prev.some((comment) => comment.id === hydratedNewComment.id)
+          ? prev.map((comment) => (comment.id === hydratedNewComment.id ? hydratedNewComment : comment))
+          : [...prev, hydratedNewComment],
+      );
       // Send notifications for @mentions
-      const mentionedIds = parseMentions(text);
-      if (mentionedIds.length > 0) {
+      const persistedMentionIds = newComment.mentionedIds || [];
+      if (persistedMentionIds.length > 0) {
         const { notifyMention } = useDataStore.getState();
         notifyMention(
-          mentionedIds,
+          persistedMentionIds,
           currentUser.name,
           taskModalData.title || 'Untitled',
           taskModalData.id!,
-          taskModalData.teamId!,
+          contextTeamId,
+          newComment.id,
         );
       }
     } catch {
       toast.error('Failed to add comment');
       setCommentText(text);
+      setSelectedMentionIds(mentionedIds);
     }
   };
 
   const handleUpdateComment = async (commentId: string) => {
-    if (!editingCommentText.trim()) return;
+    const existing = comments.find((comment) => comment.id === commentId);
+    if (!editingCommentText.trim() || !existing || !currentUser) return;
+    if (isRelatedOnly && existing.userId !== currentUser.id) return;
+    const text = editingCommentText.trim();
+    const mentionedIds = resolveSubmittedMentions(text, editingMentionIds);
+    const commentContextTeamId = existing.contextTeamId || contextTeamId;
+    if (!commentContextTeamId) return;
     try {
-      const updated = await db.updateTaskComment(commentId, editingCommentText.trim());
-      setComments((prev) => prev.map((c) => (c.id === commentId ? updated : c)));
+      const updated = await db.updateTaskComment(commentId, text, commentContextTeamId, mentionedIds);
+      const hydratedUpdated = { ...existing, ...hydrateCommentAuthors([updated])[0] };
+      setComments((prev) => prev.map((c) => (c.id === commentId ? hydratedUpdated : c)));
+      const newlyMentionedIds = (updated.mentionedIds || []).filter(
+        (id) => !(existing.mentionedIds || []).includes(id),
+      );
+      if (newlyMentionedIds.length > 0 && taskModalData.id) {
+        useDataStore
+          .getState()
+          .notifyMention(
+            newlyMentionedIds,
+            currentUser.name,
+            taskModalData.title || 'Untitled',
+            taskModalData.id,
+            commentContextTeamId,
+            commentId,
+          );
+      }
       setEditingCommentId(null);
+      setEditingMentionIds([]);
+      setShowEditingMentionDropdown(false);
     } catch {
       toast.error('Failed to update comment');
     }
   };
 
   const handleDeleteComment = async (commentId: string) => {
+    const existing = comments.find((comment) => comment.id === commentId);
+    if (!existing || !currentUser) return;
+    if (isRelatedOnly && existing.userId !== currentUser.id) return;
     try {
       await db.deleteTaskComment(commentId);
       setComments((prev) => prev.filter((c) => c.id !== commentId));
@@ -366,26 +485,58 @@ export const TaskModal: React.FC = () => {
     }
   };
 
-  const insertMention = (memberName: string) => {
+  const insertMention = (member: (typeof members)[number]) => {
     const textBefore = commentText.slice(0, mentionCursorPos);
     const atIdx = textBefore.lastIndexOf('@');
-    const newText =
-      commentText.slice(0, atIdx) + '@' + memberName.replace(/\s+/g, '') + ' ' + commentText.slice(mentionCursorPos);
+    const newText = commentText.slice(0, atIdx) + getMentionToken(member) + ' ' + commentText.slice(mentionCursorPos);
     setCommentText(newText);
+    setSelectedMentionIds((ids) => (ids.includes(member.id) ? ids : [...ids, member.id]));
     setShowMentionDropdown(false);
     commentInputRef.current?.focus();
   };
 
-  const filteredMembers = members.filter((m) => m.name.toLowerCase().includes(mentionFilter));
+  const handleEditingCommentInput = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const value = e.target.value;
+    const cursor = e.target.selectionStart;
+    setEditingCommentText(value);
+    const atMatch = value.slice(0, cursor).match(/@(\S*)$/);
+    if (atMatch) {
+      setShowEditingMentionDropdown(true);
+      setEditingMentionFilter(atMatch[1].toLowerCase());
+      setEditingMentionCursorPos(cursor);
+    } else {
+      setShowEditingMentionDropdown(false);
+    }
+  };
+
+  const insertEditingMention = (member: (typeof members)[number]) => {
+    const textBefore = editingCommentText.slice(0, editingMentionCursorPos);
+    const atIdx = textBefore.lastIndexOf('@');
+    const newText =
+      editingCommentText.slice(0, atIdx) +
+      getMentionToken(member) +
+      ' ' +
+      editingCommentText.slice(editingMentionCursorPos);
+    setEditingCommentText(newText);
+    setEditingMentionIds((ids) => (ids.includes(member.id) ? ids : [...ids, member.id]));
+    setShowEditingMentionDropdown(false);
+    editingCommentInputRef.current?.focus();
+  };
+
+  const filteredMembers = mentionableMembers.filter((m) => m.name.toLowerCase().includes(mentionFilter));
+  const filteredEditingMembers = mentionableMembers.filter((m) => m.name.toLowerCase().includes(editingMentionFilter));
 
   // Render comment text with highlighted @mentions
-  const renderCommentContent = (text: string) => {
+  const renderCommentContent = (text: string, mentionedIds: string[]) => {
     const parts = text.split(/(@\S+)/g);
     return parts.map((part, i) => {
       if (part.startsWith('@')) {
-        const name = part.slice(1).toLowerCase();
-        const isMember = members.some((m) => m.name.toLowerCase().replace(/\s+/g, '') === name);
-        if (isMember) {
+        const name = part
+          .slice(1)
+          .replace(/[.,!?;:]+$/, '')
+          .toLowerCase();
+        const mentionedMember = members.find((m) => m.name.toLowerCase().replace(/\s+/g, '') === name);
+        if (mentionedMember && mentionedIds.includes(mentionedMember.id)) {
           return (
             <span key={i} className="text-blue-600 dark:text-blue-400 font-medium">
               {part}
@@ -502,6 +653,7 @@ export const TaskModal: React.FC = () => {
   };
 
   const handleSaveTask = () => {
+    if (isRelatedOnly) return;
     if (!taskModalData.title?.trim()) {
       toast.error('Title is required');
       return;
@@ -527,11 +679,13 @@ export const TaskModal: React.FC = () => {
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const handleDeleteTask = (taskId: string) => {
+    if (isRelatedOnly) return;
     setPendingDeleteId(taskId);
     setIsDeleteConfirmOpen(true);
   };
 
   const confirmDeleteTask = () => {
+    if (isRelatedOnly) return;
     if (pendingDeleteId) {
       deleteTask(pendingDeleteId);
       setIsDeleteConfirmOpen(false);
@@ -547,7 +701,8 @@ export const TaskModal: React.FC = () => {
       toast.warning('Please create the task first before sharing.');
       return;
     }
-    const url = `${window.location.origin}${window.location.pathname}?task=${taskModalData.id}`;
+    const context = contextTeamId ? `&context=${encodeURIComponent(contextTeamId)}` : '';
+    const url = `${window.location.origin}/workspace?task=${encodeURIComponent(taskModalData.id)}${context}`;
     navigator.clipboard
       .writeText(url)
       .then(() => {
@@ -568,6 +723,7 @@ export const TaskModal: React.FC = () => {
   const [editLinkUrl, setEditLinkUrl] = useState('');
 
   const handleAddLink = () => {
+    if (isRelatedOnly) return;
     const url = newLinkUrl.trim();
     if (!url) return;
     const title = newLinkTitle.trim() || url;
@@ -581,6 +737,7 @@ export const TaskModal: React.FC = () => {
   };
 
   const handleSaveEditLink = (idx: number) => {
+    if (isRelatedOnly) return;
     const url = editLinkUrl.trim();
     if (!url) return;
     const title = editLinkTitle.trim() || url;
@@ -593,6 +750,7 @@ export const TaskModal: React.FC = () => {
   };
 
   const handleRemoveLink = (idx: number) => {
+    if (isRelatedOnly) return;
     setTaskModalData((prev: Partial<Task>) => {
       const newLinks = [...(prev.links || [])];
       newLinks.splice(idx, 1);
@@ -604,6 +762,79 @@ export const TaskModal: React.FC = () => {
   const editorCfg = resolvePersonFieldConfig(teamPersonFieldConfig, taskModalData.teamId, 'editor');
   const designerCfg = resolvePersonFieldConfig(teamPersonFieldConfig, taskModalData.teamId, 'designer');
 
+  const readOnlyContextLink = taskModalData.id
+    ? taskTeamLinks.find((link) => link.taskId === taskModalData.id && link.teamId === contextTeamId)
+    : undefined;
+  const readOnlyStatusId =
+    contextTeamId !== taskModalData.teamId && readOnlyContextLink
+      ? readOnlyContextLink.statusId
+      : taskModalData.statusId;
+  const readOnlyProperties = teamProperties[contextTeamId] || [];
+  const readOnlyFieldValues =
+    contextTeamId !== taskModalData.teamId && readOnlyContextLink
+      ? readOnlyContextLink.customFieldValues
+      : taskModalData.customFieldValues || {};
+  const readOnlyDescription = useMemo(() => {
+    const html = taskModalData.description || '';
+    if (!html) return { html: '', hasContent: false };
+    const sanitized = sanitizeRichTextHtml(html);
+    if (typeof DOMParser === 'undefined') {
+      return { html: sanitized, hasContent: sanitized.replace(/<[^>]*>/g, ' ').trim().length > 0 };
+    }
+    const body = new DOMParser().parseFromString(sanitized, 'text/html').body;
+    return {
+      html: sanitized,
+      hasContent: Boolean(body.textContent?.trim() || body.querySelector('[data-checklist], img')),
+    };
+  }, [taskModalData.description]);
+
+  const renderReadOnlyPeople = (ids: string[] | undefined) => {
+    const people = members.filter((member) => (ids || []).includes(member.id));
+    if (people.length === 0) return <span className="text-zinc-400">—</span>;
+    return (
+      <div className="flex flex-wrap gap-1.5">
+        {people.map((person) => (
+          <span
+            key={person.id}
+            className="inline-flex items-center gap-1.5 rounded-full bg-zinc-100 dark:bg-zinc-800 px-2 py-1 text-xs"
+          >
+            <Avatar src={person.avatar} alt={person.name} size="sm" className="!h-4 !w-4" />
+            {person.name}
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  const renderReadOnlyCustomValue = (property: CustomProperty) => {
+    const value = readOnlyFieldValues[property.id];
+    if (property.type === 'person') {
+      const ids = Array.isArray(value) ? value : value ? [value] : [];
+      return renderReadOnlyPeople(ids);
+    }
+    if (property.type === 'tags' || property.type === 'multiselect') {
+      const values = Array.isArray(value) ? value : value ? [value] : [];
+      return values.length > 0 ? (
+        <div className="flex flex-wrap gap-1">
+          {values.map((item: string) => (
+            <span
+              key={item}
+              className="rounded bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 text-xs text-zinc-600 dark:text-zinc-300"
+            >
+              {item}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <span className="text-zinc-400">—</span>
+      );
+    }
+    if (property.type === 'date') {
+      return value ? formatDateEU(toDateOnly(String(value))) : <span className="text-zinc-400">—</span>;
+    }
+    return value ? String(value) : <span className="text-zinc-400">—</span>;
+  };
+
   return (
     <Modal
       isOpen={isTaskModalOpen}
@@ -611,13 +842,15 @@ export const TaskModal: React.FC = () => {
       title=""
       headerActions={
         <div className="flex gap-1 md:gap-2 mr-1 md:mr-2 relative">
-          <button
-            onClick={() => handleDeleteTask(taskModalData.id!)}
-            aria-label="Delete Task"
-            className={`h-11 w-11 md:h-9 md:w-9 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors ${!taskModalData.id ? 'hidden' : ''}`}
-          >
-            <Trash2 size={18} />
-          </button>
+          {!isRelatedOnly && (
+            <button
+              onClick={() => handleDeleteTask(taskModalData.id!)}
+              aria-label="Delete Task"
+              className={`h-11 w-11 md:h-9 md:w-9 flex items-center justify-center text-red-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-full transition-colors ${!taskModalData.id ? 'hidden' : ''}`}
+            >
+              <Trash2 size={18} />
+            </button>
+          )}
           <div className="relative">
             <button
               onClick={handleShareTask}
@@ -635,7 +868,11 @@ export const TaskModal: React.FC = () => {
         </div>
       }
       actions={
-        taskModalData.deletedAt ? (
+        isRelatedOnly ? (
+          <Button variant="ghost" onClick={handleClose}>
+            Close
+          </Button>
+        ) : taskModalData.deletedAt ? (
           <>
             <Button variant="ghost" onClick={() => setIsTaskModalOpen(false)}>
               Close
@@ -680,319 +917,413 @@ export const TaskModal: React.FC = () => {
                 )}
               </p>
             </div>
-            <Button
-              size="sm"
-              className="inline-flex items-center"
-              onClick={() => {
-                restoreTask(taskModalData.id!);
-                setIsTaskModalOpen(false);
-              }}
-            >
-              <RotateCcw size={14} className="mr-1.5" />
-              Restore
-            </Button>
+            {!isRelatedOnly && (
+              <Button
+                size="sm"
+                className="inline-flex items-center"
+                onClick={() => {
+                  restoreTask(taskModalData.id!);
+                  setIsTaskModalOpen(false);
+                }}
+              >
+                <RotateCcw size={14} className="mr-1.5" />
+                Restore
+              </Button>
+            )}
           </div>
         )}
 
-        <div className={taskModalData.deletedAt ? 'pointer-events-none opacity-60 space-y-6' : 'space-y-6'}>
-          <textarea
-            ref={titleRef}
-            rows={1}
-            placeholder="Task Title"
-            value={taskModalData.title || ''}
-            onChange={(e) => setTaskModalData({ ...taskModalData, title: e.target.value.replace(/\r?\n/g, ' ') })}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter') e.preventDefault();
-            }}
-            className="w-full text-2xl font-bold bg-transparent border-none outline-none resize-none overflow-hidden break-words placeholder-zinc-300 dark:placeholder-zinc-700"
-            autoFocus={!taskModalData.deletedAt && !taskModalData.id}
-          />
-
-          <RichTextEditor
-            value={taskModalData.description || ''}
-            onChange={(html) => setTaskModalData({ ...taskModalData, description: html })}
-            placeholder="Description..."
-            minHeight="120px"
-          />
-
-          <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 md:gap-x-8 gap-y-4 md:gap-y-5">
-              <CustomSelect
-                icon={CheckCircle}
-                label="Section"
-                hint="Current workflow stage of this task"
-                options={(teamStatuses[taskModalData.teamId || ''] || []).map((s) => ({ value: s.id, label: s.name }))}
-                value={taskModalData.statusId || ''}
-                onChange={(val) => setTaskModalData({ ...taskModalData, statusId: val })}
-                onAdd={async (name) => {
-                  const teamId = taskModalData.teamId;
-                  if (!teamId) return;
-                  await addStatus(teamId, name);
-                  const created = (useDataStore.getState().teamStatuses[teamId] || []).find((s) => s.name === name);
-                  if (created) {
-                    setTaskModalData({ ...taskModalData, statusId: created.id });
-                  }
-                }}
-              />
-              <CustomSelect
-                icon={Layout}
-                label="Content Type"
-                hint="Format or medium of the content"
-                options={teamTypes[taskModalData.teamId || 'default'] || teamTypes['default'] || ['General']}
-                value={taskModalData.contentInfo?.type || ''}
-                onChange={(val) =>
-                  setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } })
-                }
-                onAdd={(val) => {
-                  addType(taskModalData.teamId || 'default', val);
-                  setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } });
-                }}
-              />
-              {!authorCfg.hidden && (
-                <MultiSelect
-                  icon={UserIcon}
-                  label={authorCfg.label}
-                  hint="Person who creates the content"
-                  options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
-                  selected={taskModalData.assigneeIds || []}
-                  onChange={(ids) => setTaskModalData({ ...taskModalData, assigneeIds: ids })}
-                  placeholder={`Select ${authorCfg.label}...`}
-                  searchable
-                  highlightValue={currentUser?.id}
+        <div className="space-y-6">
+          {isRelatedOnly && (
+            <div className="space-y-5">
+              <h2 className="text-2xl font-bold break-words text-zinc-900 dark:text-white">
+                {taskModalData.title || 'Untitled'}
+              </h2>
+              {readOnlyDescription.hasContent ? (
+                <div
+                  className="rte-content min-h-20 break-words text-sm text-zinc-700 dark:text-zinc-300 [&_a]:text-blue-500 [&_a]:underline [&_h2]:my-2 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:my-1 [&_h3]:text-lg [&_h3]:font-semibold [&_ol]:ml-4 [&_ol]:list-decimal [&_ul]:ml-4 [&_ul]:list-disc"
+                  dangerouslySetInnerHTML={{ __html: readOnlyDescription.html }}
                 />
+              ) : (
+                <div className="min-h-20 text-sm text-zinc-400">No description</div>
               )}
-              {!editorCfg.hidden && (
-                <MultiSelect
-                  icon={Eye}
-                  label={editorCfg.label}
-                  hint="Person who reviews and approves"
-                  options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
-                  selected={taskModalData.contentInfo?.editorIds || []}
-                  onChange={(ids) =>
-                    setTaskModalData({
-                      ...taskModalData,
-                      contentInfo: { ...taskModalData.contentInfo!, editorIds: ids },
-                    })
-                  }
-                  placeholder={`Select ${editorCfg.label}...`}
-                  searchable
-                  highlightValue={currentUser?.id}
-                />
-              )}
-              {!designerCfg.hidden && (
-                <MultiSelect
-                  icon={Paintbrush}
-                  label={designerCfg.label}
-                  hint="Person who handles visuals"
-                  options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
-                  selected={taskModalData.contentInfo?.designerIds || []}
-                  onChange={(ids) =>
-                    setTaskModalData({
-                      ...taskModalData,
-                      contentInfo: { ...taskModalData.contentInfo!, designerIds: ids },
-                    })
-                  }
-                  placeholder={`Select ${designerCfg.label}...`}
-                  searchable
-                  highlightValue={currentUser?.id}
-                />
-              )}
-
-              <CustomSelect
-                icon={Zap}
-                label="Priority"
-                hint="Urgency level for scheduling"
-                options={['low', 'medium', 'high']}
-                value={taskModalData.priority || 'medium'}
-                onChange={(val) => setTaskModalData({ ...taskModalData, priority: val as Task['priority'] })}
-                renderValue={(v) => (
-                  <span className={`capitalize inline-flex items-center gap-1.5 ${PRIORITY_COLORS[v] || ''}`}>
-                    <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[v] || 'bg-zinc-400'}`} />
-                    {v}
-                  </span>
+              <div className="grid grid-cols-1 gap-5 rounded-lg border border-zinc-200 bg-zinc-50 p-5 dark:border-zinc-800 dark:bg-zinc-900/50 md:grid-cols-2">
+                <ReadOnlyTaskField label="Section">
+                  {getStatusName(teamStatuses, contextTeamId, readOnlyStatusId ?? null) || '—'}
+                </ReadOnlyTaskField>
+                <ReadOnlyTaskField label="Content Type">
+                  {taskModalData.contentInfo?.type || <span className="text-zinc-400">—</span>}
+                </ReadOnlyTaskField>
+                {!authorCfg.hidden && (
+                  <ReadOnlyTaskField label={authorCfg.label}>
+                    {renderReadOnlyPeople(taskModalData.assigneeIds)}
+                  </ReadOnlyTaskField>
                 )}
-              />
-              <div className="space-y-1">
-                <div>
-                  <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                    <Calendar size={12} /> Due Date
-                  </label>
-                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Target completion deadline</p>
-                </div>
-                <SimpleDatePicker
-                  value={toDateOnly(taskModalData.dueDate)}
-                  onChange={(date) => setTaskModalData({ ...taskModalData, dueDate: toDateOnly(date) })}
-                  placeholder="Set due date"
-                />
+                {!editorCfg.hidden && (
+                  <ReadOnlyTaskField label={editorCfg.label}>
+                    {renderReadOnlyPeople(taskModalData.contentInfo?.editorIds)}
+                  </ReadOnlyTaskField>
+                )}
+                {!designerCfg.hidden && (
+                  <ReadOnlyTaskField label={designerCfg.label}>
+                    {renderReadOnlyPeople(taskModalData.contentInfo?.designerIds)}
+                  </ReadOnlyTaskField>
+                )}
+                <ReadOnlyTaskField label="Priority">
+                  <span
+                    className={`inline-flex items-center gap-1.5 rounded px-2 py-1 text-xs capitalize ${PRIORITY_COLORS[taskModalData.priority || 'medium'] || ''}`}
+                  >
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${PRIORITY_DOT[taskModalData.priority || 'medium'] || ''}`}
+                    />
+                    {taskModalData.priority || 'medium'}
+                  </span>
+                </ReadOnlyTaskField>
+                <ReadOnlyTaskField label="Deadline">
+                  {taskModalData.dueDate ? (
+                    formatDateEU(toDateOnly(taskModalData.dueDate))
+                  ) : (
+                    <span className="text-zinc-400">—</span>
+                  )}
+                </ReadOnlyTaskField>
+                <ReadOnlyTaskField label="Publication Date">
+                  {taskModalData.doneDate ? (
+                    formatDateEU(toDateOnly(taskModalData.doneDate))
+                  ) : (
+                    <span className="text-zinc-400">—</span>
+                  )}
+                </ReadOnlyTaskField>
+                <ReadOnlyTaskField label="Placements">
+                  {taskModalData.placements?.length ? (
+                    <div className="flex flex-wrap gap-1">
+                      {taskModalData.placements.map((placement) => (
+                        <span
+                          key={placement}
+                          className="rounded bg-zinc-100 px-1.5 py-0.5 text-xs text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300"
+                        >
+                          {placement}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
+                    <span className="text-zinc-400">—</span>
+                  )}
+                </ReadOnlyTaskField>
+                {readOnlyProperties.map((property) => (
+                  <ReadOnlyTaskField key={property.id} label={property.name}>
+                    {renderReadOnlyCustomValue(property)}
+                  </ReadOnlyTaskField>
+                ))}
               </div>
-              <div className="space-y-1">
-                <div>
-                  <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                    <CheckCircle size={12} /> Pub Date
-                  </label>
-                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Actual date of publication</p>
-                </div>
-                <SimpleDatePicker
-                  value={toDateOnly(taskModalData.doneDate)}
-                  onChange={(date) => setTaskModalData({ ...taskModalData, doneDate: date ? toDateOnly(date) : null })}
-                  placeholder="Set publish date"
-                />
-              </div>
-              <div>
-                <MultiSelect
-                  icon={Globe}
-                  label="Placements"
-                  hint="Channels where this content will be published"
-                  groups={placementGroups}
-                  selected={selectedCompositeKeys}
-                  onChange={(compositeKeys) => {
-                    // Extract plain placement names from composite keys, stripping any corrupted prefixes
-                    const plainNames = compositeKeys.map((k) => {
-                      const idx = k.indexOf(':');
-                      const raw = k.substring(idx + 1);
-                      // Strip nested composite prefix from corrupted data
-                      const innerIdx = raw.indexOf(':');
-                      return innerIdx > 8 ? raw.substring(innerIdx + 1) : raw;
-                    });
-                    setTaskModalData({ ...taskModalData, placements: plainNames });
-                  }}
-                  onToggleWithGroup={(compositeValue, isSelected, group) => {
-                    const _placementName = compositeValue.substring(compositeValue.indexOf(':') + 1);
-                    // Derive new placements from composite keys
-                    const newKeys = isSelected
-                      ? [...selectedCompositeKeys, compositeValue]
-                      : selectedCompositeKeys.filter((k) => k !== compositeValue);
-                    const newPlacements = newKeys.map((k) => k.substring(k.indexOf(':') + 1));
-                    setTaskModalData({ ...taskModalData, placements: newPlacements });
+            </div>
+          )}
+          <div
+            aria-hidden={isRelatedOnly}
+            className={cn(
+              'space-y-6',
+              taskModalData.deletedAt && 'pointer-events-none opacity-60',
+              isRelatedOnly && 'hidden',
+            )}
+          >
+            <textarea
+              ref={titleRef}
+              rows={1}
+              placeholder="Task Title"
+              value={taskModalData.title || ''}
+              readOnly={isRelatedOnly}
+              onChange={(e) => setTaskModalData({ ...taskModalData, title: e.target.value.replace(/\r?\n/g, ' ') })}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') e.preventDefault();
+              }}
+              className="w-full text-2xl font-bold bg-transparent border-none outline-none resize-none overflow-hidden break-words placeholder-zinc-300 dark:placeholder-zinc-700"
+              autoFocus={!isRelatedOnly && !taskModalData.deletedAt && !taskModalData.id}
+            />
 
-                    // If editing existing task and selecting a foreign placement, link immediately
-                    if (isSelected && group.teamId !== taskModalData.teamId && taskModalData.id) {
-                      const alreadyLinked = taskTeamLinks.some(
-                        (l) => l.taskId === taskModalData.id && l.teamId === group.teamId,
-                      );
-                      if (!alreadyLinked) linkTaskToTeam(taskModalData.id, group.teamId);
+            <RichTextEditor
+              value={taskModalData.description || ''}
+              onChange={(html) => setTaskModalData({ ...taskModalData, description: html })}
+              placeholder="Description..."
+              minHeight="120px"
+            />
+
+            <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 md:gap-x-8 gap-y-4 md:gap-y-5">
+                <CustomSelect
+                  icon={CheckCircle}
+                  label="Section"
+                  hint="Current workflow stage of this task"
+                  options={(teamStatuses[taskModalData.teamId || ''] || []).map((s) => ({
+                    value: s.id,
+                    label: s.name,
+                  }))}
+                  value={taskModalData.statusId || ''}
+                  onChange={(val) => setTaskModalData({ ...taskModalData, statusId: val })}
+                  onAdd={async (name) => {
+                    const teamId = taskModalData.teamId;
+                    if (!teamId) return;
+                    await addStatus(teamId, name);
+                    const created = (useDataStore.getState().teamStatuses[teamId] || []).find((s) => s.name === name);
+                    if (created) {
+                      setTaskModalData({ ...taskModalData, statusId: created.id });
                     }
                   }}
-                  onAdd={(newTag) => {
-                    const teamId = taskModalData.teamId || '';
-                    if (teamId) addTeamPlacement(teamId, newTag);
-                    if (!allPlacements.includes(newTag)) addPlacement(newTag);
-                    setTaskModalData({ ...taskModalData, placements: [...(taskModalData.placements || []), newTag] });
-                  }}
-                  placeholder="Add placements..."
                 />
-              </div>
-              {!taskModalData.id && pendingLinkedTeamIds.length > 0 && (
-                <div className="md:col-span-2">
-                  <div className="flex flex-wrap gap-1.5 items-center">
-                    <span className="text-xs text-zinc-400">Will also appear in:</span>
-                    {pendingLinkedTeamIds.map((teamId) => {
-                      const team = teams.find((t) => t.id === teamId);
-                      return team ? (
-                        <span
-                          key={teamId}
-                          className="inline-flex items-center text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-full px-2 py-0.5"
-                        >
-                          {team.name}
-                        </span>
-                      ) : null;
-                    })}
-                  </div>
-                </div>
-              )}
+                <CustomSelect
+                  icon={Layout}
+                  label="Content Type"
+                  hint="Format or medium of the content"
+                  options={teamTypes[taskModalData.teamId || 'default'] || teamTypes['default'] || ['General']}
+                  value={taskModalData.contentInfo?.type || ''}
+                  onChange={(val) =>
+                    setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } })
+                  }
+                  onAdd={(val) => {
+                    addType(taskModalData.teamId || 'default', val);
+                    setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } });
+                  }}
+                />
+                {!authorCfg.hidden && (
+                  <MultiSelect
+                    icon={UserIcon}
+                    label={authorCfg.label}
+                    hint="Person who creates the content"
+                    options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
+                    selected={taskModalData.assigneeIds || []}
+                    onChange={(ids) => setTaskModalData({ ...taskModalData, assigneeIds: ids })}
+                    placeholder={`Select ${authorCfg.label}...`}
+                    searchable
+                    highlightValue={currentUser?.id}
+                  />
+                )}
+                {!editorCfg.hidden && (
+                  <MultiSelect
+                    icon={Eye}
+                    label={editorCfg.label}
+                    hint="Person who reviews and approves"
+                    options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
+                    selected={taskModalData.contentInfo?.editorIds || []}
+                    onChange={(ids) =>
+                      setTaskModalData({
+                        ...taskModalData,
+                        contentInfo: { ...taskModalData.contentInfo!, editorIds: ids },
+                      })
+                    }
+                    placeholder={`Select ${editorCfg.label}...`}
+                    searchable
+                    highlightValue={currentUser?.id}
+                  />
+                )}
+                {!designerCfg.hidden && (
+                  <MultiSelect
+                    icon={Paintbrush}
+                    label={designerCfg.label}
+                    hint="Person who handles visuals"
+                    options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
+                    selected={taskModalData.contentInfo?.designerIds || []}
+                    onChange={(ids) =>
+                      setTaskModalData({
+                        ...taskModalData,
+                        contentInfo: { ...taskModalData.contentInfo!, designerIds: ids },
+                      })
+                    }
+                    placeholder={`Select ${designerCfg.label}...`}
+                    searchable
+                    highlightValue={currentUser?.id}
+                  />
+                )}
 
-              {/* Workspace status overview card */}
-              {taskModalData.id && taskTeamLinks.filter((l) => l.taskId === taskModalData.id).length > 0 && (
-                <div className="md:col-span-2">
-                  <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 mb-2">
-                    <Link2 size={12} /> Section per Workspace
-                  </label>
-                  <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
-                    {/* Home workspace */}
-                    {(() => {
-                      const homeTeam = teams.find((t) => t.id === taskModalData.teamId);
-                      if (!homeTeam) return null;
-                      const homeStatusName = getStatusName(teamStatuses, homeTeam.id, taskModalData.statusId ?? null);
-                      return (
-                        <div className="flex items-center justify-between px-3 py-2">
-                          <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">{homeTeam.name}</span>
+                <CustomSelect
+                  icon={Zap}
+                  label="Priority"
+                  hint="Urgency level for scheduling"
+                  options={['low', 'medium', 'high']}
+                  value={taskModalData.priority || 'medium'}
+                  onChange={(val) => setTaskModalData({ ...taskModalData, priority: val as Task['priority'] })}
+                  renderValue={(v) => (
+                    <span className={`capitalize inline-flex items-center gap-1.5 ${PRIORITY_COLORS[v] || ''}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[v] || 'bg-zinc-400'}`} />
+                      {v}
+                    </span>
+                  )}
+                />
+                <div className="space-y-1">
+                  <div>
+                    <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                      <Calendar size={12} /> Due Date
+                    </label>
+                    <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Target completion deadline</p>
+                  </div>
+                  <SimpleDatePicker
+                    value={toDateOnly(taskModalData.dueDate)}
+                    onChange={(date) => setTaskModalData({ ...taskModalData, dueDate: toDateOnly(date) })}
+                    placeholder="Set due date"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <div>
+                    <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                      <CheckCircle size={12} /> Pub Date
+                    </label>
+                    <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Actual date of publication</p>
+                  </div>
+                  <SimpleDatePicker
+                    value={toDateOnly(taskModalData.doneDate)}
+                    onChange={(date) =>
+                      setTaskModalData({ ...taskModalData, doneDate: date ? toDateOnly(date) : null })
+                    }
+                    placeholder="Set publish date"
+                  />
+                </div>
+                <div>
+                  <MultiSelect
+                    icon={Globe}
+                    label="Placements"
+                    hint="Channels where this content will be published"
+                    groups={placementGroups}
+                    selected={selectedCompositeKeys}
+                    onChange={(compositeKeys) => {
+                      // Extract plain placement names from composite keys, stripping any corrupted prefixes
+                      const plainNames = compositeKeys.map((k) => {
+                        const idx = k.indexOf(':');
+                        const raw = k.substring(idx + 1);
+                        // Strip nested composite prefix from corrupted data
+                        const innerIdx = raw.indexOf(':');
+                        return innerIdx > 8 ? raw.substring(innerIdx + 1) : raw;
+                      });
+                      setTaskModalData({ ...taskModalData, placements: plainNames });
+                    }}
+                    onToggleWithGroup={(compositeValue, isSelected, group) => {
+                      const _placementName = compositeValue.substring(compositeValue.indexOf(':') + 1);
+                      // Derive new placements from composite keys
+                      const newKeys = isSelected
+                        ? [...selectedCompositeKeys, compositeValue]
+                        : selectedCompositeKeys.filter((k) => k !== compositeValue);
+                      const newPlacements = newKeys.map((k) => k.substring(k.indexOf(':') + 1));
+                      setTaskModalData({ ...taskModalData, placements: newPlacements });
+
+                      // If editing existing task and selecting a foreign placement, link immediately
+                      if (isSelected && group.teamId !== taskModalData.teamId && taskModalData.id) {
+                        const alreadyLinked = taskTeamLinks.some(
+                          (l) => l.taskId === taskModalData.id && l.teamId === group.teamId,
+                        );
+                        if (!alreadyLinked) linkTaskToTeam(taskModalData.id, group.teamId);
+                      }
+                    }}
+                    onAdd={(newTag) => {
+                      const teamId = taskModalData.teamId || '';
+                      if (teamId) addTeamPlacement(teamId, newTag);
+                      if (!allPlacements.includes(newTag)) addPlacement(newTag);
+                      setTaskModalData({
+                        ...taskModalData,
+                        placements: [...(taskModalData.placements || []), newTag],
+                      });
+                    }}
+                    placeholder="Add placements..."
+                  />
+                </div>
+                {!taskModalData.id && pendingLinkedTeamIds.length > 0 && (
+                  <div className="md:col-span-2">
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      <span className="text-xs text-zinc-400">Will also appear in:</span>
+                      {pendingLinkedTeamIds.map((teamId) => {
+                        const team = teams.find((t) => t.id === teamId);
+                        return team ? (
                           <span
-                            className={`text-[11px] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(homeStatusName)}`}
+                            key={teamId}
+                            className="inline-flex items-center text-xs bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded-full px-2 py-0.5"
                           >
-                            {homeStatusName}
+                            {team.name}
                           </span>
-                        </div>
-                      );
-                    })()}
-                    {/* Linked workspaces */}
-                    {taskTeamLinks
-                      .filter((l) => l.taskId === taskModalData.id)
-                      .map((link) => {
-                        const linkedTeam = teams.find((t) => t.id === link.teamId);
-                        if (!linkedTeam) return null;
-                        const linkStatusName = getStatusName(teamStatuses, linkedTeam.id, link.statusId);
+                        ) : null;
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Workspace status overview card */}
+                {taskModalData.id && taskTeamLinks.filter((l) => l.taskId === taskModalData.id).length > 0 && (
+                  <div className="md:col-span-2">
+                    <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 mb-2">
+                      <Link2 size={12} /> Section per Workspace
+                    </label>
+                    <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
+                      {/* Home workspace */}
+                      {(() => {
+                        const homeTeam = teams.find((t) => t.id === taskModalData.teamId);
+                        if (!homeTeam) return null;
+                        const homeStatusName = getStatusName(teamStatuses, homeTeam.id, taskModalData.statusId ?? null);
                         return (
-                          <div key={link.id} className="flex items-center justify-between px-3 py-2">
+                          <div className="flex items-center justify-between px-3 py-2">
                             <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
-                              {linkedTeam.name}
+                              {homeTeam.name}
                             </span>
                             <span
-                              className={`text-[11px] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(linkStatusName)}`}
+                              className={`text-[11px] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(homeStatusName)}`}
                             >
-                              {linkStatusName}
+                              {homeStatusName}
                             </span>
                           </div>
                         );
-                      })}
+                      })()}
+                      {/* Linked workspaces */}
+                      {taskTeamLinks
+                        .filter((l) => l.taskId === taskModalData.id)
+                        .map((link) => {
+                          const linkedTeam = teams.find((t) => t.id === link.teamId);
+                          if (!linkedTeam) return null;
+                          const linkStatusName = getStatusName(teamStatuses, linkedTeam.id, link.statusId);
+                          return (
+                            <div key={link.id} className="flex items-center justify-between px-3 py-2">
+                              <span className="text-sm font-medium text-zinc-700 dark:text-zinc-200">
+                                {linkedTeam.name}
+                              </span>
+                              <span
+                                className={`text-[11px] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(linkStatusName)}`}
+                              >
+                                {linkStatusName}
+                              </span>
+                            </div>
+                          );
+                        })}
+                    </div>
                   </div>
-                </div>
-              )}
+                )}
 
-              {/* Custom Properties Inputs */}
-              {(() => {
-                const viewingTeamId = (taskModalData as any).viewingTeamId as string | undefined;
-                const isViewingLinkedTeam =
-                  viewingTeamId &&
-                  viewingTeamId !== taskModalData.teamId &&
-                  taskTeamLinks.some((l) => l.taskId === taskModalData.id && l.teamId === viewingTeamId);
-                const propsTeamId = isViewingLinkedTeam ? viewingTeamId : taskModalData.teamId || 'default';
-                const props = teamProperties[propsTeamId] || [];
-                const fieldValues = isViewingLinkedTeam
-                  ? taskTeamLinks.find((l) => l.taskId === taskModalData.id && l.teamId === viewingTeamId)
-                      ?.customFieldValues || {}
-                  : taskModalData.customFieldValues || {};
+                {/* Custom Properties Inputs */}
+                {(() => {
+                  const viewingTeamId = (taskModalData as any).viewingTeamId as string | undefined;
+                  const isViewingLinkedTeam =
+                    viewingTeamId &&
+                    viewingTeamId !== taskModalData.teamId &&
+                    taskTeamLinks.some((l) => l.taskId === taskModalData.id && l.teamId === viewingTeamId);
+                  const propsTeamId = isViewingLinkedTeam ? viewingTeamId : taskModalData.teamId || 'default';
+                  const props = teamProperties[propsTeamId] || [];
+                  const fieldValues = isViewingLinkedTeam
+                    ? taskTeamLinks.find((l) => l.taskId === taskModalData.id && l.teamId === viewingTeamId)
+                        ?.customFieldValues || {}
+                    : taskModalData.customFieldValues || {};
 
-                const handleFieldChange = (propId: string, value: any) => {
-                  if (isViewingLinkedTeam && taskModalData.id) {
-                    updateLinkedTaskFields(taskModalData.id, viewingTeamId!, { ...fieldValues, [propId]: value });
-                  } else {
-                    setTaskModalData({
-                      ...taskModalData,
-                      customFieldValues: { ...taskModalData.customFieldValues, [propId]: value },
-                    });
-                  }
-                };
+                  const handleFieldChange = (propId: string, value: any) => {
+                    if (isViewingLinkedTeam && taskModalData.id) {
+                      updateLinkedTaskFields(taskModalData.id, viewingTeamId!, { ...fieldValues, [propId]: value });
+                    } else {
+                      setTaskModalData({
+                        ...taskModalData,
+                        customFieldValues: { ...taskModalData.customFieldValues, [propId]: value },
+                      });
+                    }
+                  };
 
-                return props.map((prop) => (
-                  <div key={prop.id} className="space-y-1 relative">
-                    <div className="flex items-center justify-between group/prop">
-                      {editingPropId === prop.id ? (
-                        <input
-                          autoFocus
-                          className="text-xs font-medium bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 outline-none w-full"
-                          value={editingPropName}
-                          onChange={(e) => setEditingPropName(e.target.value)}
-                          onBlur={() => {
-                            if (editingPropName.trim()) {
-                              updateProperty(propsTeamId, {
-                                ...prop,
-                                name: editingPropName.trim(),
-                              });
-                            }
-                            setEditingPropId(null);
-                          }}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter') {
+                  return props.map((prop) => (
+                    <div key={prop.id} className="space-y-1 relative">
+                      <div className="flex items-center justify-between group/prop">
+                        {editingPropId === prop.id ? (
+                          <input
+                            autoFocus
+                            className="text-xs font-medium bg-white dark:bg-zinc-800 border border-zinc-300 dark:border-zinc-700 rounded px-1.5 py-0.5 outline-none w-full"
+                            value={editingPropName}
+                            onChange={(e) => setEditingPropName(e.target.value)}
+                            onBlur={() => {
                               if (editingPropName.trim()) {
                                 updateProperty(propsTeamId, {
                                   ...prop,
@@ -1000,221 +1331,237 @@ export const TaskModal: React.FC = () => {
                                 });
                               }
                               setEditingPropId(null);
-                            }
-                            if (e.key === 'Escape') setEditingPropId(null);
-                          }}
-                        />
-                      ) : (
-                        <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 capitalize">
-                          {prop.name}
-                        </label>
-                      )}
-                      {editingPropId !== prop.id && (
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setPropMenuId(propMenuId === prop.id ? null : prop.id);
-                          }}
-                          className="opacity-100 md:opacity-0 md:group-hover/prop:opacity-100 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-opacity p-0.5"
-                        >
-                          <MoreHorizontal size={14} />
-                        </button>
-                      )}
-                    </div>
-                    {propMenuId === prop.id && (
-                      <div className="absolute right-0 top-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 w-44">
-                        <button
-                          onClick={() => {
-                            setEditingPropId(prop.id);
-                            setEditingPropName(prop.name);
-                            setPropMenuId(null);
-                          }}
-                          className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
-                        >
-                          <Edit2 size={12} /> Rename
-                        </button>
-                        <Divider className="my-1" />
-                        <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase">Change Type</p>
-                        {[
-                          { type: 'text' as const, icon: Type, label: 'Text' },
-                          { type: 'select' as const, icon: ListIcon, label: 'Select' },
-                          { type: 'tags' as const, icon: TagsIcon, label: 'Tags' },
-                          { type: 'date' as const, icon: Calendar, label: 'Date' },
-                          { type: 'person' as const, icon: Users, label: 'Person' },
-                        ].map(({ type, icon: Icon, label }) => (
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                if (editingPropName.trim()) {
+                                  updateProperty(propsTeamId, {
+                                    ...prop,
+                                    name: editingPropName.trim(),
+                                  });
+                                }
+                                setEditingPropId(null);
+                              }
+                              if (e.key === 'Escape') setEditingPropId(null);
+                            }}
+                          />
+                        ) : (
+                          <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 capitalize">
+                            {prop.name}
+                          </label>
+                        )}
+                        {editingPropId !== prop.id && (
                           <button
-                            key={type}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setPropMenuId(propMenuId === prop.id ? null : prop.id);
+                            }}
+                            className="opacity-100 md:opacity-0 md:group-hover/prop:opacity-100 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 transition-opacity p-0.5"
+                          >
+                            <MoreHorizontal size={14} />
+                          </button>
+                        )}
+                      </div>
+                      {propMenuId === prop.id && (
+                        <div className="absolute right-0 top-5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 py-1 w-44">
+                          <button
                             onClick={() => {
-                              updateProperty(propsTeamId, { ...prop, type });
+                              setEditingPropId(prop.id);
+                              setEditingPropName(prop.name);
                               setPropMenuId(null);
                             }}
-                            className={`w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs ${prop.type === type ? 'text-black dark:text-white font-medium' : ''}`}
+                            className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
                           >
-                            <Icon size={12} /> {label} {prop.type === type && '(current)'}
+                            <Edit2 size={12} /> Rename
                           </button>
-                        ))}
-                        <Divider className="my-1" />
-                        <button
-                          onClick={() => {
-                            if (confirm(`Delete "${prop.name}" property?`)) {
-                              deleteProperty(propsTeamId, prop.id);
-                            }
-                            setPropMenuId(null);
+                          <Divider className="my-1" />
+                          <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase">Change Type</p>
+                          {[
+                            { type: 'text' as const, icon: Type, label: 'Text' },
+                            { type: 'select' as const, icon: ListIcon, label: 'Select' },
+                            { type: 'tags' as const, icon: TagsIcon, label: 'Tags' },
+                            { type: 'date' as const, icon: Calendar, label: 'Date' },
+                            { type: 'person' as const, icon: Users, label: 'Person' },
+                          ].map(({ type, icon: Icon, label }) => (
+                            <button
+                              key={type}
+                              onClick={() => {
+                                updateProperty(propsTeamId, { ...prop, type });
+                                setPropMenuId(null);
+                              }}
+                              className={`w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs ${prop.type === type ? 'text-black dark:text-white font-medium' : ''}`}
+                            >
+                              <Icon size={12} /> {label} {prop.type === type && '(current)'}
+                            </button>
+                          ))}
+                          <Divider className="my-1" />
+                          <button
+                            onClick={() => {
+                              if (confirm(`Delete "${prop.name}" property?`)) {
+                                deleteProperty(propsTeamId, prop.id);
+                              }
+                              setPropMenuId(null);
+                            }}
+                            className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs text-red-500"
+                          >
+                            <Trash2 size={12} /> Delete
+                          </button>
+                        </div>
+                      )}
+                      {prop.type === 'text' && (
+                        <Input
+                          value={fieldValues[prop.id] || ''}
+                          onChange={(e) => handleFieldChange(prop.id, e.target.value)}
+                        />
+                      )}
+                      {prop.type === 'date' && (
+                        <SimpleDatePicker
+                          value={fieldValues[prop.id] || ''}
+                          onChange={(date) => handleFieldChange(prop.id, date)}
+                          placeholder="Select Date"
+                        />
+                      )}
+                      {prop.type === 'select' && (
+                        <CustomSelect
+                          options={prop.options?.map((o) => ({ value: o, label: o })) || []}
+                          value={fieldValues[prop.id] || ''}
+                          onChange={(val) => handleFieldChange(prop.id, val)}
+                          placeholder="Select..."
+                          onAdd={(val) => {
+                            updateProperty(propsTeamId, {
+                              ...prop,
+                              options: [...(prop.options || []), val],
+                            });
+                            handleFieldChange(prop.id, val);
                           }}
-                          className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs text-red-500"
-                        >
-                          <Trash2 size={12} /> Delete
-                        </button>
-                      </div>
-                    )}
-                    {prop.type === 'text' && (
-                      <Input
-                        value={fieldValues[prop.id] || ''}
-                        onChange={(e) => handleFieldChange(prop.id, e.target.value)}
-                      />
-                    )}
-                    {prop.type === 'date' && (
-                      <SimpleDatePicker
-                        value={fieldValues[prop.id] || ''}
-                        onChange={(date) => handleFieldChange(prop.id, date)}
-                        placeholder="Select Date"
-                      />
-                    )}
-                    {prop.type === 'select' && (
-                      <CustomSelect
-                        options={prop.options?.map((o) => ({ value: o, label: o })) || []}
-                        value={fieldValues[prop.id] || ''}
-                        onChange={(val) => handleFieldChange(prop.id, val)}
-                        placeholder="Select..."
-                        onAdd={(val) => {
-                          updateProperty(propsTeamId, {
-                            ...prop,
-                            options: [...(prop.options || []), val],
-                          });
-                          handleFieldChange(prop.id, val);
-                        }}
-                      />
-                    )}
-                    {prop.type === 'person' && (
-                      <CustomSelect
-                        options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
-                        value={fieldValues[prop.id] || ''}
-                        onChange={(val) => handleFieldChange(prop.id, val)}
-                        placeholder="Select person..."
-                        searchable
-                        highlightValue={currentUser?.id}
-                      />
-                    )}
-                    {prop.type === 'tags' && (
-                      <TagSelect
-                        tags={prop.options || []}
-                        selected={(() => {
-                          const val = fieldValues[prop.id];
-                          return Array.isArray(val) ? val : val ? [val] : [];
-                        })()}
-                        tagColors={prop.optionColors || {}}
-                        onChange={(tags) => handleFieldChange(prop.id, tags)}
-                        onAddTag={(name, color) => {
-                          updateProperty(propsTeamId, {
-                            ...prop,
-                            options: [...(prop.options || []), name],
-                            optionColors: { ...(prop.optionColors || {}), [name]: color },
-                          });
-                        }}
-                        onUpdateTagColor={(name, color) => {
-                          updateProperty(propsTeamId, {
-                            ...prop,
-                            optionColors: { ...(prop.optionColors || {}), [name]: color },
-                          });
-                        }}
-                        onDeleteTag={(name) => {
-                          const newColors = { ...(prop.optionColors || {}) };
-                          delete newColors[name];
-                          updateProperty(propsTeamId, {
-                            ...prop,
-                            options: (prop.options || []).filter((o) => o !== name),
-                            optionColors: newColors,
-                          });
-                          const val = fieldValues[prop.id];
-                          const currentTags = Array.isArray(val) ? val : val ? [val] : [];
-                          if (currentTags.includes(name)) {
-                            handleFieldChange(
-                              prop.id,
-                              currentTags.filter((t: string) => t !== name),
-                            );
-                          }
-                        }}
-                        placeholder="Select tags..."
-                      />
-                    )}
-                  </div>
-                ));
-              })()}
+                        />
+                      )}
+                      {prop.type === 'person' && (
+                        <CustomSelect
+                          options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
+                          value={fieldValues[prop.id] || ''}
+                          onChange={(val) => handleFieldChange(prop.id, val)}
+                          placeholder="Select person..."
+                          searchable
+                          highlightValue={currentUser?.id}
+                        />
+                      )}
+                      {prop.type === 'tags' && (
+                        <TagSelect
+                          tags={prop.options || []}
+                          selected={(() => {
+                            const val = fieldValues[prop.id];
+                            return Array.isArray(val) ? val : val ? [val] : [];
+                          })()}
+                          tagColors={prop.optionColors || {}}
+                          onChange={(tags) => handleFieldChange(prop.id, tags)}
+                          onAddTag={(name, color) => {
+                            updateProperty(propsTeamId, {
+                              ...prop,
+                              options: [...(prop.options || []), name],
+                              optionColors: { ...(prop.optionColors || {}), [name]: color },
+                            });
+                          }}
+                          onUpdateTagColor={(name, color) => {
+                            updateProperty(propsTeamId, {
+                              ...prop,
+                              optionColors: { ...(prop.optionColors || {}), [name]: color },
+                            });
+                          }}
+                          onDeleteTag={(name) => {
+                            const newColors = { ...(prop.optionColors || {}) };
+                            delete newColors[name];
+                            updateProperty(propsTeamId, {
+                              ...prop,
+                              options: (prop.options || []).filter((o) => o !== name),
+                              optionColors: newColors,
+                            });
+                            const val = fieldValues[prop.id];
+                            const currentTags = Array.isArray(val) ? val : val ? [val] : [];
+                            if (currentTags.includes(name)) {
+                              handleFieldChange(
+                                prop.id,
+                                currentTags.filter((t: string) => t !== name),
+                              );
+                            }
+                          }}
+                          placeholder="Select tags..."
+                        />
+                      )}
+                    </div>
+                  ));
+                })()}
 
-              <div className="md:col-span-2 relative">
-                {isAddPropertyOpen ? (
-                  <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 space-y-2">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">New Property</h4>
-                      <button onClick={() => setIsAddPropertyOpen(false)} className="text-zinc-400 hover:text-zinc-600">
-                        <X size={14} />
-                      </button>
-                    </div>
-                    <Input
-                      placeholder="Property Name"
-                      value={newPropName}
-                      onChange={(e) => setNewPropName(e.target.value)}
-                      autoFocus
-                    />
-                    <div className="space-y-1">
-                      {[
-                        { type: 'text' as const, icon: Type, label: 'Text' },
-                        { type: 'select' as const, icon: ListIcon, label: 'Select' },
-                        { type: 'tags' as const, icon: TagsIcon, label: 'Tags' },
-                        { type: 'date' as const, icon: Calendar, label: 'Date' },
-                        { type: 'person' as const, icon: Users, label: 'Person' },
-                      ].map(({ type, icon: Icon, label }) => (
-                        <button
-                          key={type}
-                          onClick={() => setNewPropType(type)}
-                          className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === type ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                {!isRelatedOnly && (
+                  <div className="md:col-span-2 relative">
+                    {isAddPropertyOpen ? (
+                      <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 space-y-2">
+                        <div className="flex items-center justify-between">
+                          <h4 className="text-xs font-semibold text-zinc-900 dark:text-white">New Property</h4>
+                          <button
+                            onClick={() => setIsAddPropertyOpen(false)}
+                            className="text-zinc-400 hover:text-zinc-600"
+                          >
+                            <X size={14} />
+                          </button>
+                        </div>
+                        <Input
+                          placeholder="Property Name"
+                          value={newPropName}
+                          onChange={(e) => setNewPropName(e.target.value)}
+                          autoFocus
+                        />
+                        <div className="space-y-1">
+                          {[
+                            { type: 'text' as const, icon: Type, label: 'Text' },
+                            { type: 'select' as const, icon: ListIcon, label: 'Select' },
+                            { type: 'tags' as const, icon: TagsIcon, label: 'Tags' },
+                            { type: 'date' as const, icon: Calendar, label: 'Date' },
+                            { type: 'person' as const, icon: Users, label: 'Person' },
+                          ].map(({ type, icon: Icon, label }) => (
+                            <button
+                              key={type}
+                              onClick={() => setNewPropType(type)}
+                              className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 ${newPropType === type ? 'bg-zinc-100 dark:bg-zinc-800 font-medium' : 'hover:bg-zinc-50 dark:hover:bg-zinc-800/50'}`}
+                            >
+                              <Icon size={12} /> {label}
+                            </button>
+                          ))}
+                        </div>
+                        <Button
+                          size="sm"
+                          className="w-full"
+                          onClick={() => {
+                            if (!newPropName || !addProperty) return;
+                            const vtId = (taskModalData as any).viewingTeamId;
+                            const propTeam =
+                              vtId &&
+                              vtId !== taskModalData.teamId &&
+                              taskTeamLinks.some((l) => l.taskId === taskModalData.id && l.teamId === vtId)
+                                ? vtId
+                                : taskModalData.teamId || 'default';
+                            addProperty(propTeam, {
+                              id: crypto.randomUUID(),
+                              name: newPropName,
+                              type: newPropType,
+                              options: [],
+                            });
+                            setNewPropName('');
+                            setIsAddPropertyOpen(false);
+                          }}
                         >
-                          <Icon size={12} /> {label}
-                        </button>
-                      ))}
-                    </div>
-                    <Button
-                      size="sm"
-                      className="w-full"
-                      onClick={() => {
-                        if (!newPropName || !addProperty) return;
-                        const vtId = (taskModalData as any).viewingTeamId;
-                        const propTeam =
-                          vtId &&
-                          vtId !== taskModalData.teamId &&
-                          taskTeamLinks.some((l) => l.taskId === taskModalData.id && l.teamId === vtId)
-                            ? vtId
-                            : taskModalData.teamId || 'default';
-                        addProperty(propTeam, {
-                          id: crypto.randomUUID(),
-                          name: newPropName,
-                          type: newPropType,
-                          options: [],
-                        });
-                        setNewPropName('');
-                        setIsAddPropertyOpen(false);
-                      }}
-                    >
-                      Create
-                    </Button>
+                          Create
+                        </Button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => setIsAddPropertyOpen(true)}
+                        className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 font-medium transition-colors"
+                      >
+                        <Plus size={14} /> Add Property
+                      </button>
+                    )}
                   </div>
-                ) : (
-                  <button
-                    onClick={() => setIsAddPropertyOpen(true)}
-                    className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 font-medium transition-colors"
-                  >
-                    <Plus size={14} /> Add Property
-                  </button>
                 )}
               </div>
             </div>
@@ -1276,56 +1623,86 @@ export const TaskModal: React.FC = () => {
                               {c.updatedAt && (
                                 <span className="text-[11px] md:text-[10px] text-zinc-400 italic">(edited)</span>
                               )}
-                              {currentUser && (currentUser.id === c.userId || currentUser.role === 'admin') && (
-                                <div className="opacity-100 md:opacity-0 md:group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
-                                  {currentUser.id === c.userId && (
+                              {currentUser &&
+                                (currentUser.id === c.userId || (!isRelatedOnly && currentUser.role === 'admin')) && (
+                                  <div className="opacity-100 md:opacity-0 md:group-hover/comment:opacity-100 flex items-center gap-1 ml-auto transition-opacity">
+                                    {currentUser.id === c.userId && (
+                                      <button
+                                        onClick={() => {
+                                          setEditingCommentId(c.id);
+                                          setEditingCommentText(c.content);
+                                          setEditingMentionIds(c.mentionedIds || []);
+                                          setShowEditingMentionDropdown(false);
+                                        }}
+                                        className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                      >
+                                        <Edit2 size={12} />
+                                      </button>
+                                    )}
                                     <button
-                                      onClick={() => {
-                                        setEditingCommentId(c.id);
-                                        setEditingCommentText(c.content);
-                                      }}
-                                      className="text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300"
+                                      onClick={() => handleDeleteComment(c.id)}
+                                      className="text-zinc-400 hover:text-red-500"
                                     >
-                                      <Edit2 size={12} />
+                                      <Trash2 size={12} />
                                     </button>
-                                  )}
-                                  <button
-                                    onClick={() => handleDeleteComment(c.id)}
-                                    className="text-zinc-400 hover:text-red-500"
-                                  >
-                                    <Trash2 size={12} />
-                                  </button>
-                                </div>
-                              )}
+                                  </div>
+                                )}
                             </div>
                             {editingCommentId === c.id ? (
-                              <div className="space-y-1.5">
+                              <div className="space-y-1.5 relative">
                                 <textarea
+                                  ref={editingCommentInputRef}
                                   autoFocus
                                   className="w-full p-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs outline-none focus:ring-1 focus:ring-zinc-400 resize-none"
                                   rows={2}
                                   value={editingCommentText}
-                                  onChange={(e) => setEditingCommentText(e.target.value)}
+                                  onChange={handleEditingCommentInput}
                                   onKeyDown={(e) => {
-                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                    if (e.key === 'Enter' && !e.shiftKey && !showEditingMentionDropdown) {
                                       e.preventDefault();
                                       handleUpdateComment(c.id);
                                     }
-                                    if (e.key === 'Escape') setEditingCommentId(null);
+                                    if (e.key === 'Escape') {
+                                      setEditingCommentId(null);
+                                      setShowEditingMentionDropdown(false);
+                                    }
                                   }}
                                 />
+                                {showEditingMentionDropdown && filteredEditingMembers.length > 0 && (
+                                  <div className="absolute left-0 bottom-full mb-1 w-56 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-50 max-h-40 overflow-y-auto">
+                                    {filteredEditingMembers.map((member) => (
+                                      <button
+                                        key={member.id}
+                                        type="button"
+                                        onClick={() => insertEditingMention(member)}
+                                        className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
+                                      >
+                                        <Avatar src={member.avatar} alt={member.name} size="sm" />
+                                        <span className="text-zinc-900 dark:text-white">{member.name}</span>
+                                      </button>
+                                    ))}
+                                  </div>
+                                )}
                                 <div className="flex gap-1.5">
                                   <Button size="sm" onClick={() => handleUpdateComment(c.id)}>
                                     Save
                                   </Button>
-                                  <Button size="sm" variant="ghost" onClick={() => setEditingCommentId(null)}>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      setEditingCommentId(null);
+                                      setEditingMentionIds([]);
+                                      setShowEditingMentionDropdown(false);
+                                    }}
+                                  >
                                     Cancel
                                   </Button>
                                 </div>
                               </div>
                             ) : (
                               <p className="text-xs text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">
-                                {renderCommentContent(c.content)}
+                                {renderCommentContent(c.content, c.mentionedIds || [])}
                               </p>
                             )}
                           </div>
@@ -1366,7 +1743,8 @@ export const TaskModal: React.FC = () => {
                           {filteredMembers.map((m) => (
                             <button
                               key={m.id}
-                              onClick={() => insertMention(m.name)}
+                              type="button"
+                              onClick={() => insertMention(m)}
                               className="w-full text-left px-3 py-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 flex items-center gap-2 text-xs"
                             >
                               <Avatar src={m.avatar} alt={m.name} size="sm" />
@@ -1435,7 +1813,7 @@ export const TaskModal: React.FC = () => {
             {taskModalData.links && taskModalData.links.length > 0 && (
               <div className="space-y-1.5">
                 {taskModalData.links.map((link, idx) =>
-                  editingLinkIdx === idx ? (
+                  !isRelatedOnly && editingLinkIdx === idx ? (
                     <div
                       key={idx}
                       className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 space-y-2"
@@ -1482,24 +1860,26 @@ export const TaskModal: React.FC = () => {
                         </a>
                         {link.title && <span className="text-[10px] text-zinc-400 truncate block">{link.url}</span>}
                       </div>
-                      <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover/link:opacity-100 transition-opacity flex-shrink-0">
-                        <button
-                          onClick={() => {
-                            setEditingLinkIdx(idx);
-                            setEditLinkTitle(link.title);
-                            setEditLinkUrl(link.url);
-                          }}
-                          className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded"
-                        >
-                          <Edit2 size={12} />
-                        </button>
-                        <button
-                          onClick={() => handleRemoveLink(idx)}
-                          className="p-1 text-zinc-400 hover:text-red-500 rounded"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
+                      {!isRelatedOnly && (
+                        <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover/link:opacity-100 transition-opacity flex-shrink-0">
+                          <button
+                            onClick={() => {
+                              setEditingLinkIdx(idx);
+                              setEditLinkTitle(link.title);
+                              setEditLinkUrl(link.url);
+                            }}
+                            className="p-1 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 rounded"
+                          >
+                            <Edit2 size={12} />
+                          </button>
+                          <button
+                            onClick={() => handleRemoveLink(idx)}
+                            className="p-1 text-zinc-400 hover:text-red-500 rounded"
+                          >
+                            <X size={12} />
+                          </button>
+                        </div>
+                      )}
                     </div>
                   ),
                 )}
@@ -1507,62 +1887,63 @@ export const TaskModal: React.FC = () => {
             )}
 
             {/* Add link form */}
-            {isAddingLink ? (
-              <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 space-y-2">
-                <Input
-                  placeholder="https://..."
-                  value={newLinkUrl}
-                  onChange={(e) => setNewLinkUrl(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleAddLink();
-                    if (e.key === 'Escape') {
-                      setIsAddingLink(false);
-                      setNewLinkTitle('');
-                      setNewLinkUrl('');
-                    }
-                  }}
-                  autoFocus
-                />
-                <Input
-                  placeholder="Title (optional)"
-                  value={newLinkTitle}
-                  onChange={(e) => setNewLinkTitle(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter') handleAddLink();
-                  }}
-                />
-                <div className="flex gap-1.5">
-                  <Button size="sm" onClick={handleAddLink} disabled={!newLinkUrl.trim()}>
-                    Add
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    onClick={() => {
-                      setIsAddingLink(false);
-                      setNewLinkTitle('');
-                      setNewLinkUrl('');
+            {!isRelatedOnly &&
+              (isAddingLink ? (
+                <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-2.5 space-y-2">
+                  <Input
+                    placeholder="https://..."
+                    value={newLinkUrl}
+                    onChange={(e) => setNewLinkUrl(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAddLink();
+                      if (e.key === 'Escape') {
+                        setIsAddingLink(false);
+                        setNewLinkTitle('');
+                        setNewLinkUrl('');
+                      }
                     }}
-                  >
-                    Cancel
-                  </Button>
+                    autoFocus
+                  />
+                  <Input
+                    placeholder="Title (optional)"
+                    value={newLinkTitle}
+                    onChange={(e) => setNewLinkTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') handleAddLink();
+                    }}
+                  />
+                  <div className="flex gap-1.5">
+                    <Button size="sm" onClick={handleAddLink} disabled={!newLinkUrl.trim()}>
+                      Add
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => {
+                        setIsAddingLink(false);
+                        setNewLinkTitle('');
+                        setNewLinkUrl('');
+                      }}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
-              </div>
-            ) : (
-              <button
-                onClick={() => setIsAddingLink(true)}
-                className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 font-medium transition-colors"
-              >
-                <Plus size={14} /> Add Link
-              </button>
-            )}
+              ) : (
+                <button
+                  onClick={() => setIsAddingLink(true)}
+                  className="flex items-center gap-1.5 text-xs text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 font-medium transition-colors"
+                >
+                  <Plus size={14} /> Add Link
+                </button>
+              ))}
           </div>
         </div>
       </div>
 
       {/* Delete Confirmation Modal */}
       <Modal
-        isOpen={isDeleteConfirmOpen}
+        isOpen={!isRelatedOnly && isDeleteConfirmOpen}
         onClose={() => setIsDeleteConfirmOpen(false)}
         title="Move to Bin"
         size="sm"
@@ -1584,7 +1965,7 @@ export const TaskModal: React.FC = () => {
 
       {/* Unsaved Changes Confirmation Modal */}
       <Modal
-        isOpen={isUnsavedConfirmOpen}
+        isOpen={!isRelatedOnly && isUnsavedConfirmOpen}
         onClose={() => setIsUnsavedConfirmOpen(false)}
         title="Unsaved Changes"
         size="sm"

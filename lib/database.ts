@@ -21,10 +21,13 @@ import {
   DocSection,
   TeamStatus,
   StatusCategory,
+  AccessScope,
+  UserRole,
   Ticket,
   TicketComment,
   TicketStatus,
   TicketAttachment,
+  TaskAccessContext,
 } from '../types';
 import { toDateOnly } from './utils';
 
@@ -38,6 +41,7 @@ function mapProfile(row: any, teamIds: string[] = [], scheduleSortOrders: Record
     id: row.id,
     name: row.name,
     role: row.role,
+    accessScope: row.access_scope || 'full',
     jobTitle: row.job_title || '',
     avatar: row.avatar || '',
     teamId: primaryTeamId,
@@ -137,9 +141,38 @@ function mapLog(row: any): LogEntry {
 
 // === Fetch Functions ===
 
+// PostgREST silently caps every select at the project's `max_rows` ceiling and
+// returns the truncated set with NO error. Any bare `.select()` on a table that
+// grows past that cap therefore loses rows invisibly (this is what wiped shifts
+// from the schedule once the table crossed 1000 rows). `fetchAllPaged` walks the
+// full result with `.range()` so the cap can never truncate a fetch again.
+const PAGE_SIZE = 1000;
+
+/**
+ * Fetch every row of a select, paging past PostgREST's `max_rows` cap.
+ *
+ * Pass a *factory* that builds a fresh query each call — a PostgREST builder can
+ * only be awaited once, so each page needs a new one. The query MUST be ordered
+ * by a unique/stable key (e.g. the primary key); without a deterministic tiebreak
+ * the `.range()` windows can skip or duplicate rows at page boundaries.
+ *
+ * Re-throws the PostgrestError exactly like every other fetch* in this file.
+ */
+async function fetchAllPaged<T = any>(queryFactory: () => any): Promise<T[]> {
+  const all: T[] = [];
+  for (let from = 0; ; from += PAGE_SIZE) {
+    const { data, error } = await queryFactory().range(from, from + PAGE_SIZE - 1);
+    if (error) throw error;
+    const page = (data || []) as T[];
+    all.push(...page);
+    if (page.length < PAGE_SIZE) break; // a short page means we've read the last one
+  }
+  return all;
+}
+
 export async function fetchMembers(): Promise<Member[]> {
   const [{ data: profileRows, error: profileError }, { data: memberRows, error: memberError }] = await Promise.all([
-    supabase.from('profiles').select('id, name, role, job_title, avatar, team_id, status'),
+    supabase.from('profiles').select('id, name, role, access_scope, job_title, avatar, team_id, status'),
     supabase.from('team_members').select('profile_id, team_id, is_primary, sort_order'),
   ]);
   if (profileError) throw profileError;
@@ -170,18 +203,51 @@ export async function fetchTeams(): Promise<Team[]> {
   return (data || []).map(mapTeam);
 }
 
+/** Safe participant directory for related-only accounts. Full accounts may use fetchMembers(). */
+export async function fetchVisibleMembers(): Promise<Member[]> {
+  const { data, error } = await supabase.rpc('get_visible_profile_summaries');
+  if (error) throw error;
+  return (data || []).map((row: any) =>
+    mapProfile(
+      {
+        ...row,
+        role: row.role || 'user',
+        access_scope: row.access_scope || 'full',
+        status: row.status || 'active',
+      },
+      [],
+      {},
+    ),
+  );
+}
+
+export async function fetchTaskAccessContexts(): Promise<TaskAccessContext[]> {
+  const { data, error } = await supabase.rpc('get_my_task_access_contexts');
+  if (error) throw error;
+  return (data || []).map((row: any) => ({
+    taskId: row.task_id,
+    contextTeamId: row.context_team_id,
+  }));
+}
+
 export async function fetchTasks(): Promise<Task[]> {
-  const [taskResult, assigneeResult, placementResult] = await Promise.all([
-    supabase.from('tasks').select('*').is('deleted_at', null).order('sort_order'),
-    supabase.from('task_assignees').select('task_id, member_id, sort_order').order('sort_order'),
-    supabase.from('task_placements').select('task_id, placements(name)'),
+  // All three tables grow with content; page them so silent truncation can never
+  // drop a task, an assignee link, or a placement chip. Each is ordered by its full
+  // primary key (composite PKs included) so the `.range()` windows stay stable.
+  const [taskRows, assigneeRows, placementRows] = await Promise.all([
+    fetchAllPaged<any>(() => supabase.from('tasks').select('*').is('deleted_at', null).order('sort_order').order('id')),
+    fetchAllPaged<any>(() =>
+      supabase
+        .from('task_assignees')
+        .select('task_id, member_id, sort_order')
+        .order('sort_order')
+        .order('task_id')
+        .order('member_id'),
+    ),
+    fetchAllPaged<any>(() =>
+      supabase.from('task_placements').select('task_id, placements(name)').order('task_id').order('placement_id'),
+    ),
   ]);
-  const { data: taskRows, error: taskError } = taskResult;
-  if (taskError) throw taskError;
-  const { data: assigneeRows, error: assigneeError } = assigneeResult;
-  if (assigneeError) throw assigneeError;
-  const { data: placementRows, error: placementError } = placementResult;
-  if (placementError) throw placementError;
 
   // Group assignees and placements by task_id
   const assigneesByTask: Record<string, string[]> = {};
@@ -200,16 +266,44 @@ export async function fetchTasks(): Promise<Task[]> {
   return (taskRows || []).map((row) => mapTask(row, assigneesByTask[row.id] || [], placementsByTask[row.id] || []));
 }
 
+/** Fetch one task through RLS for deep links. Returns null when missing or unauthorized. */
+export async function fetchTaskById(taskId: string): Promise<Task | null> {
+  const [{ data: taskRow, error: taskError }, { data: assigneeRows, error: assigneeError }, placementRows] =
+    await Promise.all([
+      supabase.from('tasks').select('*').eq('id', taskId).is('deleted_at', null).maybeSingle(),
+      supabase.from('task_assignees').select('member_id, sort_order').eq('task_id', taskId).order('sort_order'),
+      fetchAllPaged<any>(() =>
+        supabase
+          .from('task_placements')
+          .select('task_id, placements(name)')
+          .eq('task_id', taskId)
+          .order('placement_id'),
+      ),
+    ]);
+  if (taskError) throw taskError;
+  if (assigneeError) throw assigneeError;
+  if (!taskRow) return null;
+  const placements = placementRows
+    .map((row) => row.placements?.name)
+    .filter((name): name is string => typeof name === 'string');
+  return mapTask(
+    taskRow,
+    (assigneeRows || []).map((row) => row.member_id),
+    placements,
+  );
+}
+
 export async function fetchAbsences(): Promise<Absence[]> {
-  const { data, error } = await supabase.from('absences').select('*');
-  if (error) throw error;
-  return (data || []).map(mapAbsence);
+  // Grows monotonically with every absence request — paged so it never truncates.
+  const rows = await fetchAllPaged(() => supabase.from('absences').select('*').order('id'));
+  return rows.map(mapAbsence);
 }
 
 export async function fetchShifts(): Promise<Shift[]> {
-  const { data, error } = await supabase.from('shifts').select('*');
-  if (error) throw error;
-  return (data || []).map(mapShift);
+  // Largest growing table (~one row per member/team/working-day). Order by the PK
+  // so paging is stable; the order is otherwise irrelevant (consumers index by date).
+  const rows = await fetchAllPaged(() => supabase.from('shifts').select('*').order('id'));
+  return rows.map(mapShift);
 }
 
 export async function fetchLogs(): Promise<LogEntry[]> {
@@ -396,6 +490,35 @@ export async function upsertTask(task: Task) {
   const { data, error } = await supabase.from('tasks').upsert(row, { onConflict: 'id' }).select().single();
 
   return { data, error };
+}
+
+/** Atomically persist a task and its assignee/placement junction rows. */
+export async function saveTaskWithRelations(task: Task) {
+  const taskRow = {
+    id: task.id || undefined,
+    title: task.title,
+    description: task.description,
+    team_id: task.teamId,
+    status_id: task.statusId,
+    priority: task.priority,
+    due_date: task.dueDate ? toDateOnly(task.dueDate) : null,
+    done_date: task.doneDate ? toDateOnly(task.doneDate) : null,
+    content_type: task.contentInfo?.type || null,
+    notes: task.contentInfo?.notes || null,
+    editor_ids: task.contentInfo?.editorIds || [],
+    designer_ids: task.contentInfo?.designerIds || [],
+    links: task.links || [],
+    files: task.contentInfo?.files || [],
+    custom_field_values: task.customFieldValues || {},
+    sort_order: task.sortOrder ?? 0,
+  };
+  const { data, error } = await supabase.rpc('save_task_with_relations', {
+    p_task: taskRow,
+    p_assignee_ids: task.assigneeIds,
+    p_placement_names: task.placements,
+  });
+  if (error) throw error;
+  return data;
 }
 
 export async function deleteTask(taskId: string) {
@@ -781,6 +904,7 @@ export async function upsertMember(member: Member) {
     id: member.id || undefined,
     name: member.name,
     role: member.role,
+    access_scope: member.accessScope,
     job_title: member.jobTitle,
     avatar: member.avatar,
     team_id: member.teamId,
@@ -788,6 +912,24 @@ export async function upsertMember(member: Member) {
   };
   const { data, error } = await supabase.from('profiles').upsert(row, { onConflict: 'id' }).select().single();
   return { data, error };
+}
+
+export async function updateMemberAccess(
+  memberId: string,
+  accessScope: AccessScope,
+  teamIds: string[],
+  role: UserRole,
+): Promise<Member> {
+  const { data, error } = await supabase.rpc('set_member_access_scope', {
+    p_profile_id: memberId,
+    p_access_scope: accessScope,
+    p_team_ids: teamIds,
+    p_role: role,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error('Member access RPC returned no profile');
+  return mapProfile(row, accessScope === 'related_only' ? [] : teamIds, {});
 }
 
 export async function deleteMember(id: string) {
@@ -929,13 +1071,21 @@ export async function deleteCustomProperty(id: string) {
 
 // === Avatar upload ===
 
-export async function updateProfileName(memberId: string, name: string): Promise<void> {
-  const { error } = await supabase.from('profiles').update({ name }).eq('id', memberId);
+export async function updateProfileName(_memberId: string, name: string): Promise<void> {
+  const { error } = await supabase.rpc('update_own_profile', {
+    p_name: name,
+    p_job_title: null,
+    p_avatar: null,
+  });
   if (error) throw error;
 }
 
-export async function updateProfileJobTitle(memberId: string, jobTitle: string): Promise<void> {
-  const { error } = await supabase.from('profiles').update({ job_title: jobTitle }).eq('id', memberId);
+export async function updateProfileJobTitle(_memberId: string, jobTitle: string): Promise<void> {
+  const { error } = await supabase.rpc('update_own_profile', {
+    p_name: null,
+    p_job_title: jobTitle,
+    p_avatar: null,
+  });
   if (error) throw error;
 }
 
@@ -1049,8 +1199,11 @@ export async function uploadAvatar(memberId: string, file: File): Promise<string
   // Append cache-buster so the browser loads the new image
   const publicUrl = `${data.publicUrl}?t=${Date.now()}`;
 
-  // Persist the URL directly via UPDATE (not upsert) so RLS update policy applies
-  const { error: updateError } = await supabase.from('profiles').update({ avatar: publicUrl }).eq('id', memberId);
+  const { error: updateError } = await supabase.rpc('update_own_profile', {
+    p_name: null,
+    p_job_title: null,
+    p_avatar: publicUrl,
+  });
   if (updateError) throw updateError;
 
   return publicUrl;
@@ -1206,6 +1359,9 @@ function mapComment(row: any): TaskComment {
     content: row.content,
     createdAt: row.created_at,
     updatedAt: row.updated_at || undefined,
+    mentionedIds:
+      row.mentioned_profile_ids || (row.task_comment_mentions || []).map((mention: any) => mention.profile_id),
+    contextTeamId: row.context_team_id || '',
     userName: row.profiles?.name || '',
     userAvatar: row.profiles?.avatar || '',
   };
@@ -1214,32 +1370,67 @@ function mapComment(row: any): TaskComment {
 export async function fetchTaskComments(taskId: string): Promise<TaskComment[]> {
   const { data, error } = await supabase
     .from('task_comments')
-    .select('*, profiles(name, avatar)')
+    .select('*, profiles(name, avatar), task_comment_mentions(profile_id)')
     .eq('task_id', taskId)
     .order('created_at', { ascending: true });
   if (error) throw error;
   return (data || []).map(mapComment);
 }
 
-export async function insertTaskComment(taskId: string, userId: string, content: string): Promise<TaskComment> {
+async function fetchTaskCommentById(commentId: string): Promise<TaskComment> {
   const { data, error } = await supabase
     .from('task_comments')
-    .insert({ task_id: taskId, user_id: userId, content })
-    .select('*, profiles(name, avatar)')
+    .select('*, profiles(name, avatar), task_comment_mentions(profile_id)')
+    .eq('id', commentId)
     .single();
   if (error) throw error;
   return mapComment(data);
 }
 
-export async function updateTaskComment(commentId: string, content: string): Promise<TaskComment> {
-  const { data, error } = await supabase
-    .from('task_comments')
-    .update({ content, updated_at: new Date().toISOString() })
-    .eq('id', commentId)
-    .select('*, profiles(name, avatar)')
-    .single();
+function rpcUuid(data: unknown): string {
+  if (typeof data === 'string') return data;
+  if (Array.isArray(data) && data.length > 0) return String(data[0]?.id || data[0]?.comment_id || data[0]);
+  if (data && typeof data === 'object') {
+    const row = data as Record<string, unknown>;
+    return String(row.id || row.comment_id || '');
+  }
+  return '';
+}
+
+export async function insertTaskComment(
+  taskId: string,
+  _userId: string,
+  content: string,
+  contextTeamId: string,
+  mentionedIds: string[],
+): Promise<TaskComment> {
+  const { data, error } = await supabase.rpc('create_task_comment_with_mentions', {
+    p_task_id: taskId,
+    p_content: content,
+    p_context_team_id: contextTeamId,
+    p_mentioned_profile_ids: mentionedIds,
+  });
   if (error) throw error;
-  return mapComment(data);
+  const commentId = rpcUuid(data);
+  if (!commentId) throw new Error('Comment RPC did not return a comment id');
+  return fetchTaskCommentById(commentId);
+}
+
+export async function updateTaskComment(
+  commentId: string,
+  content: string,
+  contextTeamId: string,
+  mentionedIds: string[],
+): Promise<TaskComment> {
+  const { data, error } = await supabase.rpc('update_task_comment_with_mentions', {
+    p_comment_id: commentId,
+    p_content: content,
+    p_context_team_id: contextTeamId,
+    p_mentioned_profile_ids: mentionedIds,
+  });
+  if (error) throw error;
+  const returnedId = rpcUuid(data) || commentId;
+  return fetchTaskCommentById(returnedId);
 }
 
 export async function deleteTaskComment(commentId: string) {
@@ -1304,9 +1495,9 @@ function mapTaskTeamLink(row: any): TaskTeamLink {
 }
 
 export async function fetchTaskTeamLinks(): Promise<TaskTeamLink[]> {
-  const { data, error } = await supabase.from('task_team_links').select('*');
-  if (error) throw error;
-  return (data || []).map(mapTaskTeamLink);
+  // Junction that grows with cross-team task links — paged so it never truncates.
+  const rows = await fetchAllPaged(() => supabase.from('task_team_links').select('*').order('id'));
+  return rows.map(mapTaskTeamLink);
 }
 
 export async function insertTaskTeamLink(
@@ -1360,6 +1551,125 @@ export async function updateTaskTeamLinkSortOrder(taskId: string, teamId: string
 
 // === Docs ===
 
+const PRIVATE_ASSET_URL_TTL_SECONDS = 10 * 60;
+
+function privateStorageReference(bucket: string, path: string): string {
+  return `storage://${bucket}/${path}`;
+}
+
+function storagePathFromValue(bucket: string, value: unknown): string | null {
+  if (typeof value !== 'string' || !value) return null;
+  const storagePrefix = `storage://${bucket}/`;
+  if (value.startsWith(storagePrefix)) return value.slice(storagePrefix.length);
+  const markers = [
+    `/storage/v1/object/public/${bucket}/`,
+    `/storage/v1/object/sign/${bucket}/`,
+    `/storage/v1/object/authenticated/${bucket}/`,
+  ];
+  const marker = markers.find((candidate) => value.includes(candidate));
+  if (!marker) return null;
+  const encodedPath = value.slice(value.indexOf(marker) + marker.length).split('?')[0];
+  try {
+    return decodeURIComponent(encodedPath);
+  } catch {
+    return encodedPath;
+  }
+}
+
+async function createPrivateAssetUrlMap(bucket: string, paths: Iterable<string>): Promise<Map<string, string>> {
+  const uniquePaths = [...new Set(paths)].filter(Boolean);
+  if (uniquePaths.length === 0) return new Map();
+  const { data, error } = await supabase.storage
+    .from(bucket)
+    .createSignedUrls(uniquePaths, PRIVATE_ASSET_URL_TTL_SECONDS);
+  if (error) throw error;
+  const urls = new Map<string, string>();
+  for (const entry of data || []) {
+    if (entry.path && entry.signedUrl) urls.set(entry.path, entry.signedUrl);
+  }
+  return urls;
+}
+
+type DocImageAttrs = Record<string, unknown> & { src?: string; storagePath?: string };
+
+function visitDocImageAttrs(value: unknown, visit: (attrs: DocImageAttrs) => void): void {
+  if (Array.isArray(value)) {
+    value.forEach((entry) => visitDocImageAttrs(entry, visit));
+    return;
+  }
+  if (!value || typeof value !== 'object') return;
+  const node = value as Record<string, unknown>;
+  if (node.type === 'image' && node.attrs && typeof node.attrs === 'object') {
+    visit(node.attrs as DocImageAttrs);
+  }
+  Object.values(node).forEach((entry) => visitDocImageAttrs(entry, visit));
+}
+
+function cloneDocContent(content: Record<string, unknown>): Record<string, unknown> {
+  return JSON.parse(JSON.stringify(content || {})) as Record<string, unknown>;
+}
+
+function transformDocHtml(html: string, transform: (image: HTMLImageElement, path: string | null) => void): string {
+  if (!html || typeof DOMParser === 'undefined') return html;
+  const parsed = new DOMParser().parseFromString(html, 'text/html');
+  parsed.body.querySelectorAll('img').forEach((image) => {
+    const path = image.dataset.storagePath || storagePathFromValue('docs-assets', image.getAttribute('src'));
+    transform(image, path || null);
+  });
+  return parsed.body.innerHTML;
+}
+
+function normalizeDocAssetsForStorage(
+  content: Record<string, unknown>,
+  contentHtml: string,
+): { content: Record<string, unknown>; contentHtml: string } {
+  const normalizedContent = cloneDocContent(content);
+  visitDocImageAttrs(normalizedContent, (attrs) => {
+    const path = attrs.storagePath || storagePathFromValue('docs-assets', attrs.src);
+    if (!path) return;
+    attrs.storagePath = path;
+    attrs.src = privateStorageReference('docs-assets', path);
+  });
+  const normalizedHtml = transformDocHtml(contentHtml, (image, path) => {
+    if (!path) return;
+    image.dataset.storagePath = path;
+    image.setAttribute('src', privateStorageReference('docs-assets', path));
+  });
+  return { content: normalizedContent, contentHtml: normalizedHtml };
+}
+
+async function hydrateDocAssets(docs: Doc[]): Promise<Doc[]> {
+  const hydrated = docs.map((doc) => ({
+    ...doc,
+    content: cloneDocContent(doc.content),
+  }));
+  const paths = new Set<string>();
+  for (const doc of hydrated) {
+    visitDocImageAttrs(doc.content, (attrs) => {
+      const path = attrs.storagePath || storagePathFromValue('docs-assets', attrs.src);
+      if (path) paths.add(path);
+    });
+    transformDocHtml(doc.contentHtml, (_image, path) => {
+      if (path) paths.add(path);
+    });
+  }
+  const signedUrls = await createPrivateAssetUrlMap('docs-assets', paths);
+  for (const doc of hydrated) {
+    visitDocImageAttrs(doc.content, (attrs) => {
+      const path = attrs.storagePath || storagePathFromValue('docs-assets', attrs.src);
+      if (!path) return;
+      attrs.storagePath = path;
+      attrs.src = signedUrls.get(path) || privateStorageReference('docs-assets', path);
+    });
+    doc.contentHtml = transformDocHtml(doc.contentHtml, (image, path) => {
+      if (!path) return;
+      image.dataset.storagePath = path;
+      image.setAttribute('src', signedUrls.get(path) || privateStorageReference('docs-assets', path));
+    });
+  }
+  return hydrated;
+}
+
 function mapDoc(row: any): Doc {
   return {
     id: row.id,
@@ -1388,13 +1698,13 @@ export async function fetchDocs(section: DocSection): Promise<Doc[]> {
     .order('sort_order')
     .order('title');
   if (error) throw error;
-  return (data || []).map(mapDoc);
+  return hydrateDocAssets((data || []).map(mapDoc));
 }
 
 export async function fetchDoc(id: string): Promise<Doc | null> {
   const { data, error } = await supabase.from('docs').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
-  return data ? mapDoc(data) : null;
+  return data ? (await hydrateDocAssets([mapDoc(data)]))[0] : null;
 }
 
 export async function searchDocs(query: string, section?: DocSection): Promise<Doc[]> {
@@ -1402,20 +1712,21 @@ export async function searchDocs(query: string, section?: DocSection): Promise<D
   if (section) q = q.eq('section', section);
   const { data, error } = await q.order('updated_at', { ascending: false });
   if (error) throw error;
-  return (data || []).map(mapDoc);
+  return hydrateDocAssets((data || []).map(mapDoc));
 }
 
 export async function upsertDoc(
   doc: Partial<Doc> & { section: DocSection; title: string; slug: string },
   userId: string,
 ): Promise<Doc> {
+  const normalizedAssets = normalizeDocAssetsForStorage(doc.content || {}, doc.contentHtml || '');
   const row: Record<string, unknown> = {
     section: doc.section,
     title: doc.title,
     slug: doc.slug,
     parent_id: doc.parentId || null,
-    content: doc.content || {},
-    content_html: doc.contentHtml || '',
+    content: normalizedAssets.content,
+    content_html: normalizedAssets.contentHtml,
     description: doc.description || null,
     icon: doc.icon || null,
     is_folder: doc.isFolder || false,
@@ -1429,7 +1740,7 @@ export async function upsertDoc(
   }
   const { data, error } = await supabase.from('docs').upsert(row, { onConflict: 'id' }).select().single();
   if (error) throw error;
-  return mapDoc(data);
+  return (await hydrateDocAssets([mapDoc(data)]))[0];
 }
 
 export async function deleteDoc(id: string): Promise<void> {
@@ -1437,15 +1748,56 @@ export async function deleteDoc(id: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function uploadDocImage(file: File): Promise<string> {
-  const path = `${Date.now()}-${file.name}`;
+export async function uploadDocImage(file: File): Promise<{ path: string; signedUrl: string }> {
+  const path = `${crypto.randomUUID()}-${file.name}`;
   const { error } = await supabase.storage.from('docs-assets').upload(path, file);
   if (error) throw error;
-  const { data } = supabase.storage.from('docs-assets').getPublicUrl(path);
-  return data.publicUrl;
+  const signedUrls = await createPrivateAssetUrlMap('docs-assets', [path]);
+  const signedUrl = signedUrls.get(path);
+  if (!signedUrl) throw new Error('Unable to sign uploaded document image');
+  return { path, signedUrl };
 }
 
 // === Support Tickets ===
+
+function serializeTicketAttachments(
+  attachments: TicketAttachment[],
+): Array<Omit<TicketAttachment, 'url'> | TicketAttachment> {
+  return attachments.map((attachment) => {
+    const path = attachment.path || storagePathFromValue('ticket-attachments', attachment.url) || undefined;
+    if (!path) return attachment;
+    return {
+      name: attachment.name,
+      path,
+      size: attachment.size,
+      type: attachment.type,
+    };
+  });
+}
+
+async function hydrateTicketAttachments(tickets: Ticket[]): Promise<Ticket[]> {
+  const paths = new Set<string>();
+  for (const ticket of tickets) {
+    for (const attachment of ticket.attachments) {
+      const path = attachment.path || storagePathFromValue('ticket-attachments', attachment.url);
+      if (path) paths.add(path);
+    }
+  }
+  const signedUrls = await createPrivateAssetUrlMap('ticket-attachments', paths);
+  return tickets.map((ticket) => ({
+    ...ticket,
+    attachments: ticket.attachments.map((attachment) => {
+      const path = attachment.path || storagePathFromValue('ticket-attachments', attachment.url) || undefined;
+      return path
+        ? {
+            ...attachment,
+            path,
+            url: signedUrls.get(path) || privateStorageReference('ticket-attachments', path),
+          }
+        : attachment;
+    }),
+  }));
+}
 
 function mapTicket(row: any): Ticket {
   return {
@@ -1468,13 +1820,13 @@ function mapTicket(row: any): Ticket {
 export async function fetchTickets(): Promise<Ticket[]> {
   const { data, error } = await supabase.from('tickets').select('*').order('created_at', { ascending: false });
   if (error) throw error;
-  return (data || []).map(mapTicket);
+  return hydrateTicketAttachments((data || []).map(mapTicket));
 }
 
 export async function fetchTicketById(id: string): Promise<Ticket | null> {
   const { data, error } = await supabase.from('tickets').select('*').eq('id', id).maybeSingle();
   if (error) throw error;
-  return data ? mapTicket(data) : null;
+  return data ? (await hydrateTicketAttachments([mapTicket(data)]))[0] : null;
 }
 
 export async function insertTicket(input: {
@@ -1493,12 +1845,12 @@ export async function insertTicket(input: {
       category: input.category,
       priority: input.priority,
       reporter_id: input.reporterId,
-      attachments: input.attachments || [],
+      attachments: serializeTicketAttachments(input.attachments || []),
     })
     .select()
     .single();
   if (error) throw error;
-  return mapTicket(data);
+  return (await hydrateTicketAttachments([mapTicket(data)]))[0];
 }
 
 /** Partial update of a ticket (status, priority, assignee, title, description, attachments, resolution). */
@@ -1523,7 +1875,7 @@ export async function updateTicket(
   if (patch.priority !== undefined) row.priority = patch.priority;
   if (patch.status !== undefined) row.status = patch.status;
   if (patch.assigneeId !== undefined) row.assignee_id = patch.assigneeId;
-  if (patch.attachments !== undefined) row.attachments = patch.attachments;
+  if (patch.attachments !== undefined) row.attachments = serializeTicketAttachments(patch.attachments);
   if (patch.resolvedAt !== undefined) row.resolved_at = patch.resolvedAt;
   if (patch.resolvedBy !== undefined) row.resolved_by = patch.resolvedBy;
   const { error } = await supabase.from('tickets').update(row).eq('id', id);
@@ -1539,8 +1891,10 @@ export async function uploadTicketAttachment(file: File): Promise<TicketAttachme
   const path = `tickets/${crypto.randomUUID()}-${file.name}`;
   const { error } = await supabase.storage.from('ticket-attachments').upload(path, file);
   if (error) throw error;
-  const { data } = supabase.storage.from('ticket-attachments').getPublicUrl(path);
-  return { name: file.name, url: data.publicUrl, size: file.size, type: file.type };
+  const signedUrls = await createPrivateAssetUrlMap('ticket-attachments', [path]);
+  const signedUrl = signedUrls.get(path);
+  if (!signedUrl) throw new Error('Unable to sign uploaded ticket attachment');
+  return { name: file.name, path, url: signedUrl, size: file.size, type: file.type };
 }
 
 // === Ticket Comments (mirrors task_comments) ===
