@@ -5,7 +5,7 @@ SET search_path = public, extensions;
 GRANT USAGE ON SCHEMA extensions TO service_role;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA extensions TO service_role;
 
-SELECT plan(75);
+SELECT plan(78);
 
 -- Stable fixture IDs are used for domain rows. Profile IDs come from the auth
 -- trigger and are captured in a temporary lookup table.
@@ -134,6 +134,62 @@ SELECT is(
   ),
   false,
   'authenticated callers cannot invoke the team-delete remap trigger directly'
+);
+SELECT is(
+  (
+    SELECT count(*)::integer
+    FROM (VALUES
+      ('public.after_profile_access_change()'),
+      ('public.enforce_profile_access_transition()'),
+      ('public.enforce_task_mention_consistency()'),
+      ('public.notify_task_access_grant_change()'),
+      ('public.rebuild_grants_for_custom_property()'),
+      ('public.rebuild_grants_for_task_child()'),
+      ('public.rebuild_grants_for_task_row()'),
+      ('public.reject_external_team_membership()')
+    ) AS trigger_function(signature)
+    WHERE has_function_privilege('anon', trigger_function.signature, 'EXECUTE')
+  ),
+  0,
+  'anonymous callers cannot execute SECURITY DEFINER trigger helpers'
+);
+SELECT is(
+  (
+    SELECT count(*)::integer
+    FROM (VALUES
+      ('public.after_profile_access_change()'),
+      ('public.enforce_profile_access_transition()'),
+      ('public.enforce_task_mention_consistency()'),
+      ('public.notify_task_access_grant_change()'),
+      ('public.rebuild_grants_for_custom_property()'),
+      ('public.rebuild_grants_for_task_child()'),
+      ('public.rebuild_grants_for_task_row()'),
+      ('public.reject_external_team_membership()')
+    ) AS trigger_function(signature)
+    WHERE has_function_privilege('authenticated', trigger_function.signature, 'EXECUTE')
+  ),
+  0,
+  'authenticated callers cannot execute SECURITY DEFINER trigger helpers'
+);
+SELECT results_eq(
+  $$
+    SELECT procedure.proname::text,
+           replace(configuration.setting, ' ', '')
+    FROM pg_catalog.pg_proc procedure
+    CROSS JOIN LATERAL unnest(procedure.proconfig) AS configuration(setting)
+    WHERE procedure.oid IN (
+      'public.prevent_self_team_link()'::regprocedure,
+      'public.try_uuid(text)'::regprocedure,
+      'public.update_updated_at()'::regprocedure
+    )
+      AND configuration.setting LIKE 'search_path=%'
+    ORDER BY procedure.proname
+  $$,
+  $$ VALUES
+       ('prevent_self_team_link'::text, 'search_path=pg_catalog,public'::text),
+       ('try_uuid'::text, 'search_path=pg_catalog'::text),
+       ('update_updated_at'::text, 'search_path=pg_catalog'::text) $$,
+  'Security Advisor functions use immutable lookup paths'
 );
 SELECT is(
   has_function_privilege('anon', 'public.update_own_profile(text,text,text)', 'EXECUTE'),
