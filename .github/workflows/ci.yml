@@ -28,6 +28,9 @@ jobs:
 
       - name: Test
         run: npm run test:run
+        env:
+          VITE_SUPABASE_URL: https://placeholder.supabase.co
+          VITE_SUPABASE_ANON_KEY: placeholder-key
 
       - name: Build
         run: npm run build
