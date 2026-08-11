@@ -1351,6 +1351,11 @@ export async function deleteTelegramLink(profileId: string) {
 
 // === Task Comments ===
 
+// Explicit FK hints are required because structured mentions introduce a
+// second task_comments -> profiles path through task_comment_mentions.
+export const TASK_COMMENT_SELECT =
+  '*, profiles:profiles!task_comments_user_id_fkey(name, avatar), task_comment_mentions:task_comment_mentions!task_comment_mentions_comment_id_fkey(profile_id)';
+
 function mapComment(row: any): TaskComment {
   return {
     id: row.id,
@@ -1370,7 +1375,7 @@ function mapComment(row: any): TaskComment {
 export async function fetchTaskComments(taskId: string): Promise<TaskComment[]> {
   const { data, error } = await supabase
     .from('task_comments')
-    .select('*, profiles(name, avatar), task_comment_mentions(profile_id)')
+    .select(TASK_COMMENT_SELECT)
     .eq('task_id', taskId)
     .order('created_at', { ascending: true });
   if (error) throw error;
@@ -1378,11 +1383,7 @@ export async function fetchTaskComments(taskId: string): Promise<TaskComment[]> 
 }
 
 async function fetchTaskCommentById(commentId: string): Promise<TaskComment> {
-  const { data, error } = await supabase
-    .from('task_comments')
-    .select('*, profiles(name, avatar), task_comment_mentions(profile_id)')
-    .eq('id', commentId)
-    .single();
+  const { data, error } = await supabase.from('task_comments').select(TASK_COMMENT_SELECT).eq('id', commentId).single();
   if (error) throw error;
   return mapComment(data);
 }
