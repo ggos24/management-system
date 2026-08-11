@@ -5,7 +5,7 @@ SET search_path = public, extensions;
 GRANT USAGE ON SCHEMA extensions TO service_role;
 GRANT EXECUTE ON ALL FUNCTIONS IN SCHEMA extensions TO service_role;
 
-SELECT plan(74);
+SELECT plan(75);
 
 -- Stable fixture IDs are used for domain rows. Profile IDs come from the auth
 -- trigger and are captured in a temporary lookup table.
@@ -224,6 +224,18 @@ SELECT results_eq(
        ('docs-assets'::text, false),
        ('ticket-attachments'::text, false) $$,
   'docs and ticket attachment buckets are private'
+);
+SELECT is(
+  (
+    SELECT relation.relrowsecurity
+    FROM pg_catalog.pg_class relation
+    JOIN pg_catalog.pg_namespace namespace
+      ON namespace.oid = relation.relnamespace
+    WHERE namespace.nspname = 'storage'
+      AND relation.relname = 'objects'
+  ),
+  true,
+  'storage.objects relies on the Supabase-owned RLS baseline without altering ownership'
 );
 SELECT is(
   (
