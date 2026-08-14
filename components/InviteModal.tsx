@@ -7,6 +7,7 @@ import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { supabase } from '../lib/supabase';
+import { readEdgeFunctionError } from '../lib/edgeFunctionError';
 import { Member } from '../types';
 
 interface InviteFormValues {
@@ -64,17 +65,7 @@ export const InviteModal: React.FC = () => {
       setInviteLoading(false);
 
       if (error) {
-        let message = 'Failed to send invitation';
-        try {
-          if (data?.error) {
-            message = data.error;
-          } else if (error.message) {
-            message = error.message;
-          }
-        } catch {
-          // keep default message
-        }
-        setInviteError(message);
+        setInviteError(await readEdgeFunctionError(error, 'Failed to send invitation'));
         return;
       }
 

@@ -131,14 +131,53 @@ Deno.serve(async (req) => {
     });
 
     if (inviteError) {
-      // Supabase returns specific error for duplicate emails
-      const isDuplicate =
-        inviteError.message?.toLowerCase().includes('already been registered') ||
-        inviteError.message?.toLowerCase().includes('already exists');
-      return new Response(
-        JSON.stringify({ error: isDuplicate ? 'A user with this email already exists' : inviteError.message }),
-        { status: isDuplicate ? 409 : 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
-      );
+      const rawMessage = inviteError.message || 'Failed to send the invitation';
+      const lowerMessage = rawMessage.toLowerCase();
+      const authCode = (inviteError as { code?: string }).code || '';
+      const authStatus = (inviteError as { status?: number }).status || 0;
+
+      // Logged so the failure is diagnosable from the function logs. Deliberately
+      // without the invitee's email — the caller already sees it in the response.
+      console.error('invite-user: inviteUserByEmail failed', {
+        status: authStatus,
+        code: authCode,
+        message: rawMessage,
+      });
+
+      if (
+        authCode === 'email_exists' ||
+        lowerMessage.includes('already been registered') ||
+        lowerMessage.includes('already registered') ||
+        lowerMessage.includes('already exists')
+      ) {
+        return new Response(JSON.stringify({ error: 'A user with this email already exists' }), {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // The built-in Supabase mailer allows only a couple of emails per hour, so a
+      // second invitation in quick succession fails here rather than in validation.
+      if (authStatus === 429 || authCode === 'over_email_send_rate_limit' || lowerMessage.includes('rate limit')) {
+        return new Response(
+          JSON.stringify({
+            error: `Email rate limit reached, so the invitation was not sent. Wait an hour and retry, or configure custom SMTP in Supabase. (${rawMessage})`,
+          }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } },
+        );
+      }
+
+      if (lowerMessage.includes('sending') || lowerMessage.includes('smtp') || lowerMessage.includes('email')) {
+        return new Response(JSON.stringify({ error: `The invitation email could not be sent: ${rawMessage}` }), {
+          status: 502,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify({ error: rawMessage }), {
+        status: authStatus >= 500 ? 502 : 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     const newAuthUser = inviteData.user;
