@@ -55,6 +55,24 @@ function shortenName(name: string): string {
   return `${parts[0]} ${parts[1][0]}.`;
 }
 
+/**
+ * "Sat, 1 Aug 2026" for one day, "1 – 5 Aug 2026 · 5 days" for a range.
+ * After a long press the modal has to confirm which cell the finger actually
+ * landed on; two bare date pickers do not answer that at a glance.
+ */
+function formatRangeLabel(startIso: string, endIso: string): string {
+  if (!startIso) return '';
+  const start = new Date(`${startIso}T00:00:00`);
+  if (!endIso || endIso === startIso) {
+    return start.toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  }
+  const end = new Date(`${endIso}T00:00:00`);
+  const dayCount = Math.round((end.getTime() - start.getTime()) / 86400000) + 1;
+  const from = start.toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+  const to = end.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+  return `${from} – ${to} · ${dayCount} days`;
+}
+
 const Schedule: React.FC<ScheduleProps> = ({
   members,
   absences,
@@ -568,7 +586,7 @@ const Schedule: React.FC<ScheduleProps> = ({
   const showPendingTab = isAdmin(userRole);
 
   return (
-    <div className="p-3 md:p-6 h-full flex flex-col bg-white dark:bg-black relative">
+    <div className="p-2 md:p-6 h-full flex flex-col bg-white dark:bg-black relative">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 mb-4 md:mb-6 flex-shrink-0">
         <div>
           <h1 className="text-xl md:text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">Schedule</h1>
@@ -704,7 +722,7 @@ const Schedule: React.FC<ScheduleProps> = ({
           >
             <div style={{ width: 'max-content', minWidth: '100%' }}>
               <div className="flex sticky top-0 z-30 bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 h-14">
-                <div className="sticky left-0 z-40 w-28 md:w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 px-2 py-3 md:p-3 text-[10px] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
+                <div className="sticky left-0 z-40 w-32 md:w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 px-2 py-3 md:p-3 text-[10px] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
                   <span className="md:hidden">Member</span>
                   <span className="hidden md:inline">Team Member</span>
                 </div>
@@ -744,21 +762,21 @@ const Schedule: React.FC<ScheduleProps> = ({
                 return (
                   <div key={group.team.id} onDragEnd={handleDragEnd}>
                     <div
-                      className={`flex border-b border-zinc-200 dark:border-zinc-800 ${teamDropClass}`}
+                      className={`flex border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/95 dark:bg-zinc-800/95 md:bg-transparent md:dark:bg-transparent ${teamDropClass}`}
                       draggable={isAdminUser}
                       onDragStart={(e) => handleTeamDragStart(e, group.team.id)}
                       onDragOver={(e) => handleTeamDragOver(e, group.team.id)}
                       onDrop={(e) => handleTeamDrop(e, group.team.id)}
                     >
                       <div
-                        className={`group sticky left-0 z-20 w-28 md:w-64 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur-sm border-r border-zinc-200 dark:border-zinc-800 px-2 md:px-3 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-zinc-200/95 dark:hover:bg-zinc-700/95 transition-colors shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] ${isCurrentUserTeam ? 'border-l-2 border-l-blue-400 dark:border-l-blue-500' : ''}`}
+                        className={`group sticky left-0 z-20 w-auto md:w-64 md:bg-zinc-100/95 md:dark:bg-zinc-800/95 md:backdrop-blur-sm md:border-r border-zinc-200 dark:border-zinc-800 px-2 md:px-3 py-1.5 flex items-center gap-1.5 cursor-pointer md:hover:bg-zinc-200/95 md:dark:hover:bg-zinc-700/95 transition-colors md:shadow-[1px_0_0_0_rgba(228,228,231,1)] md:dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] ${isCurrentUserTeam ? 'border-l-2 border-l-blue-400 dark:border-l-blue-500' : ''}`}
                         onClick={ifGridIsStill(() => toggleTeamCollapse(group.team.id))}
                       >
                         <ChevronDown
                           size={14}
                           className={`text-zinc-500 transition-transform duration-200 ${collapsedTeams[group.team.id] ? '-rotate-90' : ''}`}
                         />
-                        <span className="text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider">
+                        <span className="whitespace-nowrap text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider">
                           {group.team.name}
                         </span>
                         {isAdminUser && (
@@ -767,7 +785,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                           </div>
                         )}
                       </div>
-                      <div className="flex-1 min-w-0 bg-zinc-50/50 dark:bg-zinc-900/50"></div>
+                      <div className="flex-1 min-w-0 md:bg-zinc-50/50 md:dark:bg-zinc-900/50"></div>
                     </div>
 
                     {!collapsedTeams[group.team.id] &&
@@ -789,7 +807,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                             onDragEnd={handleDragEnd}
                           >
                             <div
-                              className={`group sticky left-0 z-10 w-28 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-1.5 md:px-2 flex items-center gap-1.5 md:gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 ${isCurrentUser ? 'bg-blue-50 dark:bg-blue-950' : 'bg-white dark:bg-zinc-900'}`}
+                              className={`group sticky left-0 z-10 w-32 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-1.5 md:px-2 flex items-center gap-1.5 md:gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 ${isCurrentUser ? 'bg-blue-50 dark:bg-blue-950' : 'bg-white dark:bg-zinc-900'}`}
                               onClick={ifGridIsStill(() => setSelectedMemberStats(member))}
                             >
                               <Avatar src={member.avatar} alt={member.name} size="sm" />
@@ -1068,11 +1086,13 @@ const Schedule: React.FC<ScheduleProps> = ({
                     <>
                       <button
                         onClick={handleDelete}
-                        className="p-2 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:border-red-200"
+                        aria-label="Delete"
+                        className="flex h-11 items-center justify-center gap-1.5 rounded-lg border border-zinc-200 px-3 text-sm font-medium text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 dark:border-zinc-700 dark:hover:bg-red-900/20 md:h-auto md:py-2"
                       >
                         <Trash2 size={18} />
+                        <span className="md:hidden">Delete</span>
                       </button>
-                      <Button onClick={handleSave} className="flex-1 py-2 text-center cursor-pointer">
+                      <Button onClick={handleSave} className="h-11 flex-1 cursor-pointer text-center md:h-auto md:py-2">
                         Save
                       </Button>
                     </>
@@ -1103,14 +1123,32 @@ const Schedule: React.FC<ScheduleProps> = ({
             const coveredShift = getShiftForDay(selectedCell.member.id, selectedCell.teamId, selectedCell.day);
             return (
               <div>
-                <p className="text-xs text-zinc-500 mb-4 font-medium flex items-center gap-1.5">
-                  {selectedCell.member.name}
-                  {cellTeam && (
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300">
-                      {cellTeam.name}
-                    </span>
-                  )}
-                </p>
+                {/* Who and when, up front. The old header was a 12px grey line,
+                    which is not enough to confirm a press landed on the right
+                    row of a 32px grid. */}
+                <div className="mb-4 flex items-center gap-3 border-b border-zinc-100 pb-4 dark:border-zinc-800">
+                  <Avatar
+                    src={selectedCell.member.avatar}
+                    alt={selectedCell.member.name}
+                    size="lg"
+                    className="!h-10 !w-10 flex-shrink-0"
+                  />
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-sm font-semibold text-zinc-900 dark:text-white">
+                      {selectedCell.member.name}
+                    </p>
+                    <div className="mt-0.5 flex flex-wrap items-center gap-x-1.5 gap-y-1">
+                      <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                        {formatRangeLabel(rangeStartDate, rangeEndDate)}
+                      </span>
+                      {cellTeam && (
+                        <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                          {cellTeam.name}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                </div>
 
                 {/* Status banner for existing absences */}
                 {existingAbsence && existingAbsence.status === 'pending' && (
@@ -1135,13 +1173,13 @@ const Schedule: React.FC<ScheduleProps> = ({
                             onApproveAbsence(existingAbsence.id);
                             setSelectedCell(null);
                           }}
-                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 rounded-md transition-colors"
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 md:py-1.5 text-sm md:text-xs font-medium text-emerald-700 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-900/30 dark:text-emerald-300 dark:hover:bg-emerald-900/50 rounded-md transition-colors"
                         >
                           <Check size={14} /> Approve
                         </button>
                         <button
                           onClick={() => setModalDeclineMode(true)}
-                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 rounded-md transition-colors"
+                          className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2.5 md:py-1.5 text-sm md:text-xs font-medium text-red-600 bg-red-50 hover:bg-red-100 dark:bg-red-900/20 dark:text-red-400 dark:hover:bg-red-900/30 rounded-md transition-colors"
                         >
                           <X size={14} /> Decline
                         </button>
@@ -1169,7 +1207,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                               onDeclineAbsence(existingAbsence.id, modalDeclineReason || undefined);
                               setSelectedCell(null);
                             }}
-                            className="flex-1 px-3 py-1.5 text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+                            className="flex-1 px-3 py-2.5 md:py-1.5 text-sm md:text-xs font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
                           >
                             Confirm Decline
                           </button>
@@ -1178,7 +1216,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                               setModalDeclineMode(false);
                               setModalDeclineReason('');
                             }}
-                            className="px-3 py-1.5 text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 transition-colors"
+                            className="px-3 py-2.5 md:py-1.5 text-sm md:text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-300 transition-colors"
                           >
                             Back
                           </button>
@@ -1229,16 +1267,18 @@ const Schedule: React.FC<ScheduleProps> = ({
 
                 <div className="space-y-4">
                   {isAdmin(userRole) ? (
-                    <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded mb-4">
+                    <div className="mb-4 flex gap-2 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800">
                       <button
                         onClick={() => setEditType('shift')}
-                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'shift' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+                        aria-pressed={editType === 'shift'}
+                        className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-colors md:py-1.5 md:text-xs ${editType === 'shift' ? 'bg-white text-black shadow-sm dark:bg-zinc-700 dark:text-white' : 'text-zinc-500'}`}
                       >
                         Shift
                       </button>
                       <button
                         onClick={() => setEditType('absence')}
-                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${editType === 'absence' ? 'bg-white dark:bg-zinc-700 shadow-sm text-black dark:text-white' : 'text-zinc-500'}`}
+                        aria-pressed={editType === 'absence'}
+                        className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-colors md:py-1.5 md:text-xs ${editType === 'absence' ? 'bg-white text-black shadow-sm dark:bg-zinc-700 dark:text-white' : 'text-zinc-500'}`}
                       >
                         Absence
                       </button>
@@ -1266,6 +1306,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                   <div className="grid grid-cols-2 gap-3">
                     <div className="min-w-0">
                       <Label className="mb-1 block">From</Label>
+
                       <SimpleDatePicker value={rangeStartDate} onChange={setRangeStartDate} placeholder="Select Date" />
                     </div>
                     <div className="min-w-0">
@@ -1291,36 +1332,41 @@ const Schedule: React.FC<ScheduleProps> = ({
                       />
                     </div>
                   ) : teams.find((t) => t.id === selectedCell?.teamId)?.rapidResponse ? (
-                    <div className="flex gap-2 p-1 bg-zinc-100 dark:bg-zinc-800 rounded">
+                    <div className="flex gap-2 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800">
                       <button
                         onClick={() => setShiftType('on_duty')}
-                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${shiftType === 'on_duty' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-500'}`}
+                        aria-pressed={shiftType === 'on_duty'}
+                        className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-colors md:py-1.5 md:text-xs ${shiftType === 'on_duty' ? 'bg-indigo-600 text-white shadow-sm' : 'text-zinc-500'}`}
                       >
                         DUTY
                       </button>
                       <button
                         onClick={() => setShiftType('on_call')}
-                        className={`flex-1 text-xs py-1.5 rounded font-medium transition-colors ${shiftType === 'on_call' ? 'bg-pink-600 text-white shadow-sm' : 'text-zinc-500'}`}
+                        aria-pressed={shiftType === 'on_call'}
+                        className={`flex-1 rounded-md py-2.5 text-sm font-medium transition-colors md:py-1.5 md:text-xs ${shiftType === 'on_call' ? 'bg-pink-600 text-white shadow-sm' : 'text-zinc-500'}`}
                       >
                         CALL
                       </button>
                     </div>
                   ) : (
                     <div className="space-y-3">
-                      <label className="flex items-center gap-2 cursor-pointer select-none">
-                        <button
-                          type="button"
-                          role="switch"
-                          aria-checked={isAllDay}
-                          onClick={() => setIsAllDay(!isAllDay)}
+                      <button
+                        type="button"
+                        role="switch"
+                        aria-checked={isAllDay}
+                        onClick={() => setIsAllDay(!isAllDay)}
+                        className="flex w-full select-none items-center gap-3 rounded-lg border border-zinc-200 px-3 py-2.5 text-left transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:hover:bg-zinc-800/50 md:border-0 md:px-0 md:py-0 md:hover:bg-transparent md:dark:hover:bg-transparent"
+                      >
+                        <span
+                          aria-hidden
                           className={`relative inline-flex h-5 w-9 shrink-0 rounded-full border-2 border-transparent transition-colors ${isAllDay ? 'bg-blue-600' : 'bg-zinc-300 dark:bg-zinc-600'}`}
                         >
                           <span
                             className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow-sm transition-transform ${isAllDay ? 'translate-x-4' : 'translate-x-0'}`}
                           />
-                        </button>
+                        </span>
                         <span className="text-sm text-zinc-700 dark:text-zinc-300">All day</span>
-                      </label>
+                      </button>
                       {!isAllDay && (
                         /* One per row below sm: a native time control has a fixed
                            intrinsic width that overlapped its neighbour in a
