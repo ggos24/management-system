@@ -197,7 +197,9 @@ Typed in `vite-env.d.ts`. Example in `.env.example`.
 
 ### Realtime
 
-Subscribed tables: `tasks`, `profiles`, `absences`, `shifts`, `notifications`. Strategy: full refetch on any change event.
+Subscribed tables (see `hooks/useRealtimeSync.ts`): `tasks`, `task_comments`, `tickets`, `profiles`, `team_members`, `absences`, `shifts`, `task_team_links`, `team_statuses`, `team_placements`, `team_hidden_columns`, `team_person_field_config`, `notifications`, `task_access_revisions`. Strategy: full refetch on any change event.
+
+**A subscription only fires if the table is a member of the `supabase_realtime` publication.** Subscribing to a table that is not published attaches without error and then silently receives nothing — clients keep the snapshot they loaded until a full page reload. Any table added to `useRealtimeSync` therefore needs `ALTER PUBLICATION supabase_realtime ADD TABLE` in the same migration (see `20260818000000_realtime_publication_backfill.sql`).
 
 ## Code Style
 
@@ -262,7 +264,7 @@ Minimal test coverage. Vitest with jsdom and Testing Library. Run with `npm run 
 2. Add RLS policies (SELECT for authenticated, mutations based on role)
 3. Use `(SELECT id FROM profiles WHERE auth_user_id = auth.uid())` for user-scoped RLS — NOT `auth.uid()` directly (profiles.id differs from auth.uid)
 4. Add mapper and fetch/upsert functions to `lib/database.ts`
-5. Add Realtime subscription in `hooks/useRealtimeSync.ts` if needed
+5. Add Realtime subscription in `hooks/useRealtimeSync.ts` if needed — and add the table to the `supabase_realtime` publication in the migration, or the subscription silently never fires
 
 ### Breaking schema changes (drop / rename columns)
 
