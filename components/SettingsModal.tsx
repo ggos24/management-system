@@ -14,6 +14,7 @@ import {
   Globe,
   Search,
   Users,
+  UserMinus,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
@@ -35,6 +36,7 @@ import { useUiStore } from '../stores/uiStore';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { isEditorOrAbove, isAdmin } from '../constants';
+import { noAutofillProps } from '../lib/formAutofill';
 import type { AccessScope, LogEntry, Member, NotificationCategory, NotificationChannel, UserRole } from '../types';
 
 type BadgeColor = 'zinc' | 'emerald' | 'red' | 'blue' | 'amber' | 'purple';
@@ -157,25 +159,42 @@ const LogsHistoryTab: React.FC<{ logs: LogEntry[]; members: Member[] }> = ({ log
         <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
         <input
           type="text"
+          name="log-search"
+          enterKeyHint="search"
           placeholder="Search logs..."
           value={localSearch}
           onChange={handleSearchChange}
-          className="w-full h-8 pl-8 pr-3 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+          {...noAutofillProps}
+          className="w-full h-9 sm:h-8 pl-8 pr-3 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
         />
       </div>
 
-      {/* Filters */}
-      <div className="grid grid-cols-3 gap-2 flex-shrink-0">
-        <DateRangeFilter
-          startDate={dateStart}
-          endDate={dateEnd}
-          onChange={(s, e) => {
-            setDateStart(s);
-            setDateEnd(e);
-          }}
+      {/* Filters — three across is unreadable inside the modal on a phone, so the
+          date range takes its own row and the two selects share the next. */}
+      <div className="grid grid-cols-2 gap-2 flex-shrink-0 sm:grid-cols-3">
+        <div className="col-span-2 sm:col-span-1">
+          <DateRangeFilter
+            startDate={dateStart}
+            endDate={dateEnd}
+            onChange={(s, e) => {
+              setDateStart(s);
+              setDateEnd(e);
+            }}
+          />
+        </div>
+        <CustomSelect
+          value={filterEntity}
+          onChange={setFilterEntity}
+          options={ENTITY_TYPE_OPTIONS}
+          className="min-w-0"
         />
-        <CustomSelect value={filterEntity} onChange={setFilterEntity} options={ENTITY_TYPE_OPTIONS} />
-        <CustomSelect value={filterUser} onChange={setFilterUser} options={userOptions} />
+        <CustomSelect
+          value={filterUser}
+          onChange={setFilterUser}
+          options={userOptions}
+          searchable
+          className="min-w-0"
+        />
       </div>
 
       {/* Result count */}
@@ -201,7 +220,7 @@ const LogsHistoryTab: React.FC<{ logs: LogEntry[]; members: Member[] }> = ({ log
                 </div>
                 <p className="text-sm text-zinc-800 dark:text-zinc-200">{log.details}</p>
                 <div className="flex items-center gap-1.5 mt-2">
-                  <Avatar src={user?.avatar} size="xs" />
+                  <Avatar src={user?.avatar} alt={user?.name} size="xs" />
                   <span className="text-xs text-zinc-500">{user?.name || 'Unknown User'}</span>
                 </div>
               </div>
@@ -372,7 +391,7 @@ export const SettingsModal: React.FC = () => {
           <div className="space-y-6">
             <div className="flex items-start gap-4 md:gap-5 border-b border-zinc-100 dark:border-zinc-800 pb-6">
               <div className="relative group flex-shrink-0">
-                <Avatar src={currentUser.avatar} size="lg" className="!w-20 !h-20" />
+                <Avatar src={currentUser.avatar} alt={currentUser.name} size="lg" className="!w-20 !h-20" />
                 {/* Desktop: full-overlay hover affordance */}
                 <button
                   onClick={handleChangeAvatar}
@@ -665,10 +684,10 @@ export const SettingsModal: React.FC = () => {
                 return (
                   <div
                     key={m.id}
-                    className="flex items-center justify-between px-3 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                    className="flex flex-col gap-2 px-3 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors sm:flex-row sm:items-center sm:justify-between"
                   >
                     <div className="flex items-center gap-3 min-w-0">
-                      <Avatar src={m.avatar} size="md" />
+                      <Avatar src={m.avatar} alt={m.name} size="md" />
                       <div className="min-w-0">
                         <p className="text-sm font-medium truncate">
                           {m.name}
@@ -677,10 +696,10 @@ export const SettingsModal: React.FC = () => {
                         {m.jobTitle && <p className="text-xs text-zinc-500 truncate">{m.jobTitle}</p>}
                       </div>
                     </div>
-                    <div className="flex flex-wrap items-center justify-end gap-2 flex-shrink-0">
+                    <div className="flex flex-wrap items-center gap-2 sm:justify-end sm:flex-shrink-0">
                       {canManage ? (
                         <>
-                          <div className="min-w-[180px] max-w-[260px]">
+                          <div className="w-full min-w-0 sm:w-auto sm:min-w-[180px] sm:max-w-[260px]">
                             <MultiSelect
                               compact
                               icon={Users}
@@ -783,14 +802,19 @@ export const SettingsModal: React.FC = () => {
                                   className="w-auto"
                                 />
                               )}
+                              {/* Was a bare zinc-400 label that read as disabled text and
+                                  gave a tap target under 20px tall on a phone. */}
                               <button
+                                type="button"
+                                aria-label={`Remove ${m.name}`}
                                 onClick={() => {
                                   if (confirm(`Remove ${m.name} from the team?`)) {
                                     removeMember(m.id, currentUser.id);
                                   }
                                 }}
-                                className="text-xs text-zinc-400 hover:text-red-500 transition-colors"
+                                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 dark:border-zinc-700 dark:text-red-400 dark:hover:border-red-900/60 dark:hover:bg-red-900/20"
                               >
+                                <UserMinus size={13} />
                                 Remove
                               </button>
                             </>

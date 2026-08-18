@@ -12,6 +12,7 @@ import { useDataStore } from '../stores/dataStore';
 import { TICKET_CATEGORIES, TICKET_CATEGORY_META, TICKET_PRIORITIES, PRIORITY_DOT } from '../constants';
 import type { TicketAttachment, TicketCategory, Priority } from '../types';
 import * as db from '../lib/database';
+import { noAutofillProps, noAutofillProseProps } from '../lib/formAutofill';
 
 const categoryOptions: SelectOption[] = TICKET_CATEGORIES.map((c) => ({
   value: c,
@@ -82,9 +83,12 @@ const NewTicketForm: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       <FormField label="What’s the problem?" required>
         <Input
           autoFocus
+          name="ticket-title"
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           placeholder="Short summary, e.g. “Login button does nothing on the admin panel”"
+          {...noAutofillProps}
+          autoCapitalize="sentences"
         />
       </FormField>
 
@@ -107,7 +111,9 @@ const NewTicketForm: React.FC<{ onClose: () => void }> = ({ onClose }) => {
           value={description}
           onChange={(e) => setDescription(e.target.value)}
           rows={6}
+          name="ticket-description"
           placeholder={'Steps to reproduce\nWhat you expected\nWhat actually happened'}
+          {...noAutofillProseProps}
           className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-base md:text-sm text-zinc-900 dark:text-white resize-y"
         />
       </FormField>

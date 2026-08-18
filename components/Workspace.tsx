@@ -3297,7 +3297,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               <div></div>
             </div>
 
-            <div className="hidden sm:grid grid-cols-7 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex-shrink-0">
+            <div className="hidden md:grid grid-cols-7 border-b border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 flex-shrink-0">
               {WEEKDAYS_MON_SHORT.map((d) => (
                 <div
                   key={d}
@@ -3309,7 +3309,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
             </div>
 
             {/* Mobile agenda — list of days with tasks */}
-            <div className="sm:hidden flex-1 overflow-y-auto bg-white dark:bg-black custom-scrollbar divide-y divide-zinc-100 dark:divide-zinc-800">
+            <div className="md:hidden flex-1 min-h-0 overflow-y-auto overscroll-contain bg-white dark:bg-black custom-scrollbar divide-y divide-zinc-100 dark:divide-zinc-800">
               {(() => {
                 const daysWithTasks = calendarDays
                   .filter((d) => d.type === 'current')
@@ -3359,7 +3359,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
             </div>
 
             {/* Full Height Grid with Scroll Fix */}
-            <div className="hidden sm:block flex-1 overflow-y-auto bg-white dark:bg-black custom-scrollbar">
+            <div className="hidden md:block flex-1 min-h-0 overflow-y-auto overscroll-contain bg-white dark:bg-black custom-scrollbar">
               <div className="grid grid-cols-7 auto-rows-fr border-b border-zinc-200 dark:border-zinc-800 h-full min-h-[500px]">
                 {calendarDays.map((dateObj, i) => {
                   const isCurrentMonth = dateObj.type === 'current';

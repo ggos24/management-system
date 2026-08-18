@@ -1,8 +1,9 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
 import { mondayIndex, formatDateEU } from '../lib/utils';
 import { useExitAnimation } from '../hooks/useExitAnimation';
+import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
 
 type PresetKey =
   | 'all'
@@ -235,19 +236,19 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
   const [activeTab, setActiveTab] = useState<TabKey>('presets');
   const triggerRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const [dropdownPos, setDropdownPos] = useState<{ top: number; right: number } | null>(null);
   const { shouldRender, state } = useExitAnimation(isOpen, 120);
+  // Right-anchored manual positioning put the 240px panel off the left edge
+  // whenever the trigger sat in a narrow column — which is where it sits in the
+  // logs filter row on a phone. The shared hook clamps to the viewport instead.
+  const dropdownPos = useViewportPortalPosition({
+    isOpen: shouldRender,
+    triggerRef,
+    fixedWidth: 240,
+    gap: 8,
+    estimatedHeight: 320,
+  });
 
   const presets = useMemo(() => buildPresets(), []);
-
-  const updatePosition = useCallback(() => {
-    if (!triggerRef.current) return;
-    const rect = triggerRef.current.getBoundingClientRect();
-    setDropdownPos({
-      top: rect.bottom + 8,
-      right: window.innerWidth - rect.right,
-    });
-  }, []);
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
@@ -264,17 +265,6 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, [isOpen]);
-
-  useLayoutEffect(() => {
-    if (isOpen) updatePosition();
-  }, [isOpen, updatePosition]);
-
-  useEffect(() => {
-    if (!isOpen) return;
-    const handleScroll = () => updatePosition();
-    window.addEventListener('scroll', handleScroll, true);
-    return () => window.removeEventListener('scroll', handleScroll, true);
-  }, [isOpen, updatePosition]);
 
   const handlePreset = (preset: Preset) => {
     const [s, e] = preset.getRange();
@@ -317,9 +307,12 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
             style={{
               position: 'fixed',
               top: dropdownPos.top,
-              right: dropdownPos.right,
+              left: dropdownPos.left,
+              width: dropdownPos.width,
+              maxHeight: dropdownPos.maxHeight,
+              transform: dropdownPos.flipUp ? 'translateY(-100%)' : undefined,
             }}
-            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] overflow-hidden w-[240px]"
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] overflow-y-auto"
           >
             {/* Tabs */}
             <div className="flex border-b border-zinc-100 dark:border-zinc-800">

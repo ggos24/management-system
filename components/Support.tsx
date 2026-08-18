@@ -36,6 +36,8 @@ import {
 } from '../constants';
 import type { Member, Ticket, TicketCategory, TicketComment, TicketStatus, Priority } from '../types';
 import { renderCommentContent, parseMentionedMemberIds, formatRelativeTime } from '../lib/mentions';
+import { noAutofillProps, noAutofillProseProps } from '../lib/formAutofill';
+import { useKeyboardInset } from '../hooks/useKeyboardInset';
 
 const StatusBadge: React.FC<{ status: TicketStatus }> = ({ status }) => {
   const meta = TICKET_STATUS_META[status];
@@ -87,6 +89,7 @@ const TicketDetail: React.FC<TicketDetailProps> = ({
   const [reply, setReply] = useState('');
   const [sending, setSending] = useState(false);
   const endRef = useRef<HTMLDivElement>(null);
+  const keyboardInset = useKeyboardInset();
 
   const memberName = (id: string | null) => (id ? (members.find((m) => m.id === id)?.name ?? 'Unknown') : null);
   const memberAvatar = (id: string | null) => (id ? members.find((m) => m.id === id)?.avatar : undefined);
@@ -199,32 +202,38 @@ const TicketDetail: React.FC<TicketDetailProps> = ({
           )}
         </div>
 
-        {/* Controls */}
-        <div className="flex flex-wrap items-center gap-2">
+        {/* Controls — a 2-up grid on phones. The admin selects have fixed pixel
+            widths that overflowed a 375px row, which pushed Resolve/Reopen off
+            the visible area. */}
+        <div
+          className={
+            admin ? 'grid grid-cols-2 gap-2 sm:flex sm:flex-wrap sm:items-center' : 'flex flex-wrap items-center gap-2'
+          }
+        >
           {admin ? (
             <>
               <CustomSelect
-                className="w-44"
+                className="w-full sm:w-44"
                 options={statusOptions}
                 value={ticket.status}
                 onChange={(v) => updateTicketStatus(ticket.id, v as TicketStatus)}
                 renderValue={() => <StatusBadge status={ticket.status} />}
               />
               <CustomSelect
-                className="w-32"
+                className="w-full sm:w-32"
                 options={priorityOptions}
                 value={ticket.priority}
                 onChange={(v) => updateTicket(ticket.id, { priority: v as Priority })}
                 renderValue={(v) => <PriorityDot priority={v as Priority} withLabel />}
               />
               <CustomSelect
-                className="w-40"
+                className="w-full sm:w-40"
                 options={categoryOptions}
                 value={ticket.category}
                 onChange={(v) => updateTicket(ticket.id, { category: v as TicketCategory })}
               />
               <CustomSelect
-                className="w-48"
+                className="w-full sm:w-48"
                 searchable
                 options={assigneeOptions}
                 value={ticket.assigneeId ?? ''}
@@ -246,14 +255,19 @@ const TicketDetail: React.FC<TicketDetailProps> = ({
             </>
           )}
 
-          <div className="ml-auto flex items-center gap-2">
+          <div className="col-span-2 flex items-center gap-2 sm:ml-auto">
             {admin && !meta.isDone && (
-              <Button size="sm" variant="primary" onClick={() => updateTicketStatus(ticket.id, 'resolved')}>
+              <Button
+                size="sm"
+                variant="primary"
+                className="flex-1 sm:flex-none"
+                onClick={() => updateTicketStatus(ticket.id, 'resolved')}
+              >
                 <CheckCircle2 size={14} className="mr-1.5" /> Resolve
               </Button>
             )}
             {canReopen && (
-              <Button size="sm" variant="ghost" onClick={() => reopenTicket(ticket.id)}>
+              <Button size="sm" variant="ghost" className="flex-1 sm:flex-none" onClick={() => reopenTicket(ticket.id)}>
                 <RotateCcw size={14} className="mr-1.5" /> Reopen
               </Button>
             )}
@@ -340,7 +354,10 @@ const TicketDetail: React.FC<TicketDetailProps> = ({
       </div>
 
       {/* Composer */}
-      <div className="flex-shrink-0 border-t border-zinc-200 dark:border-zinc-800 p-3 md:px-6 safe-b">
+      <div
+        className="flex-shrink-0 border-t border-zinc-200 dark:border-zinc-800 p-3 md:px-6 safe-b"
+        style={keyboardInset ? { paddingBottom: keyboardInset } : undefined}
+      >
         <div className="flex items-end gap-2">
           <textarea
             value={reply}
@@ -352,10 +369,19 @@ const TicketDetail: React.FC<TicketDetailProps> = ({
               }
             }}
             rows={1}
+            name="ticket-reply"
             placeholder="Write a reply…  (@ to mention)"
-            className="flex-1 px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-base md:text-sm text-zinc-900 dark:text-white resize-none max-h-32"
+            {...noAutofillProseProps}
+            className="min-w-0 flex-1 px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-base md:text-sm text-zinc-900 dark:text-white resize-none max-h-32"
           />
-          <Button variant="primary" size="md" onClick={handleSend} disabled={!reply.trim() || sending}>
+          <Button
+            variant="primary"
+            size="md"
+            className="flex-shrink-0"
+            onClick={handleSend}
+            disabled={!reply.trim() || sending}
+            aria-label="Send reply"
+          >
             <Send size={15} />
           </Button>
         </div>
@@ -432,7 +458,10 @@ export default function Support() {
             <input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
+              name="ticket-search"
+              enterKeyHint="search"
               placeholder="Search tickets…"
+              {...noAutofillProps}
               className="w-full pl-8 pr-3 py-1.5 bg-zinc-100 dark:bg-zinc-800/50 border-none rounded-md text-sm outline-none focus:ring-1 focus:ring-zinc-300 dark:focus:ring-zinc-600"
             />
           </div>

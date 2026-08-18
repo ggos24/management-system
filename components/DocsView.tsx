@@ -12,6 +12,7 @@ import { DocViewer } from './DocViewer';
 import { DocEditor } from './DocEditor';
 import { Button, Input } from './ui';
 import { Modal } from './Modal';
+import { noAutofillProps } from '../lib/formAutofill';
 
 interface DocsViewProps {
   section: DocSection;
@@ -159,7 +160,10 @@ export const DocsView: React.FC<DocsViewProps> = ({ section, docId, onNavigate }
             <Input
               value={treeFilter}
               onChange={(e) => setTreeFilter(e.target.value)}
+              name="docs-filter"
+              enterKeyHint="search"
               placeholder="Filter..."
+              {...noAutofillProps}
               className="pl-8 text-xs"
             />
           </div>
@@ -203,7 +207,7 @@ export const DocsView: React.FC<DocsViewProps> = ({ section, docId, onNavigate }
 
       {/* Right: Content area — only render on mobile when a doc is open */}
       <div
-        className={`${showContent ? 'flex' : 'hidden md:flex'} flex-1 flex-col overflow-y-auto custom-scrollbar p-4 md:p-8`}
+        className={`${showContent ? 'flex' : 'hidden md:flex'} min-w-0 flex-1 flex-col overflow-x-hidden overflow-y-auto custom-scrollbar p-4 md:p-8`}
       >
         {/* Mobile back button */}
         <button
@@ -295,7 +299,7 @@ export const DocsView: React.FC<DocsViewProps> = ({ section, docId, onNavigate }
               <>
                 {/* Folder cards */}
                 {indexFolders.length > 0 && (
-                  <div className="grid grid-cols-2 gap-3 mb-6">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-6">
                     {indexFolders.map((folder) => {
                       const count = childCount(folder.id);
                       return (

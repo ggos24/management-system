@@ -118,7 +118,7 @@ export const AbsenceApprovalQueue: React.FC<AbsenceApprovalQueueProps> = ({
             return (
               <div key={absence.id} className="px-4 py-3 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors">
                 <div className="flex items-center gap-3">
-                  <Avatar src={member?.avatar} size="md" />
+                  <Avatar src={member?.avatar} alt={member?.name} size="md" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium text-zinc-900 dark:text-white truncate">
@@ -230,7 +230,7 @@ export const AbsenceApprovalQueue: React.FC<AbsenceApprovalQueueProps> = ({
               return (
                 <div key={absence.id} className="px-4 py-2.5">
                   <div className="flex items-center gap-3">
-                    <Avatar src={member?.avatar} size="sm" />
+                    <Avatar src={member?.avatar} alt={member?.name} size="sm" />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-zinc-900 dark:text-white truncate">

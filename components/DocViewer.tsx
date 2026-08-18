@@ -21,7 +21,7 @@ export const DocViewer: React.FC<DocViewerProps> = ({ doc, breadcrumbs, onEdit, 
   });
 
   return (
-    <div className="max-w-3xl mx-auto">
+    <div className="max-w-3xl mx-auto w-full min-w-0">
       {/* Breadcrumbs */}
       {breadcrumbs.length > 0 && (
         <div className="flex items-center gap-1 text-xs text-zinc-400 mb-4">

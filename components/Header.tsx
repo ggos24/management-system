@@ -24,6 +24,7 @@ import { useDataStore } from '../stores/dataStore';
 import { teamSlug, formatDateEU } from '../lib/utils';
 import type { Notification, NotificationType } from '../types';
 import { useExitAnimation } from '../hooks/useExitAnimation';
+import { noAutofillProps } from '../lib/formAutofill';
 
 function getNotificationIcon(type: NotificationType) {
   switch (type) {
@@ -189,14 +190,17 @@ export const Header: React.FC = () => {
     <header className="h-16 border-b border-zinc-200 dark:border-zinc-800 flex items-center justify-between px-4 bg-white dark:bg-zinc-900/50 backdrop-blur-md sticky top-0 z-50">
       {/* Mobile search overlay */}
       {mobileSearchOpen && (
-        <div className="absolute inset-0 z-50 flex items-center px-4 bg-white dark:bg-zinc-900/95 md:hidden">
+        <div className="absolute inset-0 z-50 flex items-center px-4 bg-white dark:bg-zinc-950 md:hidden">
           <Search className="text-zinc-400 shrink-0" size={18} />
           <input
             autoFocus
             type="text"
+            name="app-search"
+            enterKeyHint="search"
             placeholder="Search..."
             value={displaySearch}
             onChange={handleSearchChange}
+            {...noAutofillProps}
             className="flex-1 px-3 py-2 bg-transparent border-none text-base outline-none text-zinc-900 dark:text-white"
           />
           <button
@@ -230,9 +234,12 @@ export const Header: React.FC = () => {
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" size={16} />
               <input
                 type="text"
+                name="app-search"
+                enterKeyHint="search"
                 placeholder="Search..."
                 value={displaySearch}
                 onChange={handleSearchChange}
+                {...noAutofillProps}
                 className="pl-9 pr-4 py-1.5 bg-zinc-100 dark:bg-zinc-800/50 border-none rounded-md text-sm w-64 focus:ring-1 focus:ring-zinc-300 dark:focus:ring-zinc-600 outline-none transition-all"
               />
             </div>

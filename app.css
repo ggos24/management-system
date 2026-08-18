@@ -94,6 +94,21 @@
   padding-top: env(safe-area-inset-top);
 }
 
+/* Modal shell height.
+   The overlay pads itself by the status-bar inset (safe-t) before the dialog
+   starts, so a plain 100dvh cap let the dialog run that far past the bottom of
+   the screen and cropped the footer — the Save/Create button lived there. The
+   footer adds its own safe-area-inset-bottom, so only the top inset is
+   subtracted here; subtracting both would double-count it. */
+.modal-shell {
+  max-height: calc(100dvh - 1rem - env(safe-area-inset-top));
+}
+@media (min-width: 768px) {
+  .modal-shell {
+    max-height: 90dvh;
+  }
+}
+
 /* Animated open/close panels — components set data-state="open|closed" */
 [data-state='open'] {
   animation: var(--animate-pop-in);
@@ -191,6 +206,15 @@ body {
 }
 
 /* Docs prose styling — shared between editor and viewer */
+/* Long words, URLs and code must wrap rather than widen the article — on a phone
+   an unbroken string otherwise pushes the whole page wider than the screen. */
+.docs-prose {
+  overflow-wrap: break-word;
+}
+.docs-prose pre {
+  overflow-x: auto;
+}
+
 .docs-prose h1 {
   font-size: 1.5rem;
   font-weight: 700;
@@ -285,6 +309,16 @@ body {
 .dark .docs-prose th {
   background: #27272a;
 }
+/* Below md a wide table scrolls inside its own box; on desktop it keeps the
+   normal full-width table layout. */
+@media (max-width: 767px) {
+  .docs-prose table {
+    display: block;
+    overflow-x: auto;
+    max-width: 100%;
+  }
+}
+
 .docs-prose hr {
   margin: 1rem 0;
   border-color: #e4e4e7;

@@ -22,6 +22,13 @@ const iconSizes = {
   lg: 20,
 };
 
+const initialsTextClasses = {
+  xs: 'text-[7px]',
+  sm: 'text-[9px]',
+  md: 'text-[11px]',
+  lg: 'text-sm',
+};
+
 /**
  * Strip the Supabase transform prefix if present, returning the plain
  * /object/public/… URL. This is used as a fallback when the transform
@@ -54,13 +61,46 @@ function getOptimizedUrl(src: string, size: string): string {
   return src;
 }
 
-const Fallback: React.FC<{ size: 'xs' | 'sm' | 'md' | 'lg'; className: string }> = ({ size, className }) => (
-  <div
-    className={`${sizeClasses[size]} rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center flex-shrink-0 ${className}`}
-  >
-    <User size={iconSizes[size]} className="text-zinc-400" />
-  </div>
-);
+/**
+ * First letter of the first two words — "Anna Marie Kovalenko" → "AM".
+ * Returns '' for names that carry no letters, so the icon fallback still wins.
+ */
+function getInitials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join('')
+    .toUpperCase();
+}
+
+/**
+ * Falls back to initials when a name is known and only to the generic icon when
+ * it is not — a row of identical placeholder icons tells you nothing about who
+ * is who, which is exactly the problem on the narrow mobile member lists.
+ */
+const Fallback: React.FC<{ size: 'xs' | 'sm' | 'md' | 'lg'; className: string; name?: string }> = ({
+  size,
+  className,
+  name,
+}) => {
+  const initials = name ? getInitials(name) : '';
+  return (
+    <div
+      title={name || undefined}
+      className={`${sizeClasses[size]} rounded-full border border-zinc-200 dark:border-zinc-700 bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center flex-shrink-0 select-none ${className}`}
+    >
+      {initials ? (
+        <span className={`${initialsTextClasses[size]} font-semibold text-zinc-500 dark:text-zinc-300 leading-none`}>
+          {initials}
+        </span>
+      ) : (
+        <User size={iconSizes[size]} className="text-zinc-400" />
+      )}
+    </div>
+  );
+};
 
 /** Inner component keyed on `src` so state auto-resets when the avatar URL changes. */
 const AvatarImage: React.FC<{ src: string; alt: string; size: 'xs' | 'sm' | 'md' | 'lg'; className: string }> = ({
@@ -77,7 +117,7 @@ const AvatarImage: React.FC<{ src: string; alt: string; size: 'xs' | 'sm' | 'md'
 
   const imgSrc = useOriginal ? plainSrc : optimizedSrc;
 
-  if (failed) return <Fallback size={size} className={className} />;
+  if (failed) return <Fallback size={size} className={className} name={alt} />;
 
   return (
     <img
@@ -96,6 +136,6 @@ const AvatarImage: React.FC<{ src: string; alt: string; size: 'xs' | 'sm' | 'md'
 };
 
 export const Avatar: React.FC<AvatarProps> = ({ src, alt = '', size = 'md', className = '' }) => {
-  if (!src) return <Fallback size={size} className={className} />;
+  if (!src) return <Fallback size={size} className={className} name={alt} />;
   return <AvatarImage key={src} src={src} alt={alt} size={size} className={className} />;
 };

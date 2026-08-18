@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { Member, Absence, Team, Shift, UserRole } from '../types';
 import {
   ChevronLeft,
@@ -41,6 +41,17 @@ interface ScheduleProps {
   onDeleteShift: (id: string) => void;
   onReorderTeams: (draggedId: string, targetId: string, position: 'before' | 'after') => void;
   onReorderMembers: (teamId: string, draggedId: string, targetId: string, position: 'before' | 'after') => void;
+}
+
+/**
+ * "Oleksandr Slobodskyi" → "Oleksandr S." — the mobile name column is 112px so
+ * that seven day columns still fit beside it on a 375px screen; full names get
+ * truncated to nothing useful at that width.
+ */
+function shortenName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length < 2 || !parts[1]) return name;
+  return `${parts[0]} ${parts[1][0]}.`;
 }
 
 const Schedule: React.FC<ScheduleProps> = ({
@@ -126,8 +137,46 @@ const Schedule: React.FC<ScheduleProps> = ({
   const [filterPerson, setFilterPerson] = useState('all');
   const [filterAbsenceType, setFilterAbsenceType] = useState('all');
 
-  // Ref to track touch-initiated member + team for drag selection
-  const touchMemberRef = useRef<{ member: Member; teamId: string } | null>(null);
+  // Touch bookkeeping. A press only becomes a range selection after it has held
+  // still for LONG_PRESS_MS; anything that moves first is a scroll and is
+  // dropped, which is what stops a horizontal swipe from opening the editor.
+  const touchRef = useRef<{
+    member: Member;
+    teamId: string;
+    day: number;
+    x: number;
+    y: number;
+    longPress: boolean;
+  } | null>(null);
+  const longPressTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  // Browsers replay a touch as mousedown/mouseup after touchend. Left alone
+  // that replay re-opens the editor on the single day under the finger and
+  // discards a range that was just dragged out, so mouse handlers ignore
+  // anything arriving in the shadow of a touch.
+  const ignoreMouseRef = useRef(false);
+  const ignoreMouseTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const [isTouchSelecting, setIsTouchSelecting] = useState(false);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(
+    () => () => {
+      clearTimeout(longPressTimer.current);
+      clearTimeout(ignoreMouseTimer.current);
+    },
+    [],
+  );
+
+  // Once a selection is live the grid must not scroll under the finger. React
+  // registers touchmove passively, so the preventDefault has to come from a
+  // listener attached here.
+  useEffect(() => {
+    if (!isTouchSelecting) return;
+    const el = gridScrollRef.current;
+    if (!el) return;
+    const block = (e: TouchEvent) => e.preventDefault();
+    el.addEventListener('touchmove', block, { passive: false });
+    return () => el.removeEventListener('touchmove', block);
+  }, [isTouchSelecting]);
 
   // Correctly get days in month
   const getDaysInMonth = (year: number, month: number) => new Date(year, month + 1, 0).getDate();
@@ -179,12 +228,19 @@ const Schedule: React.FC<ScheduleProps> = ({
     return `${shift.startTime.slice(0, 5)}–${shift.endTime.slice(0, 5)}`;
   };
 
-  const handleMouseDown = (member: Member, teamId: string, day: number) => {
+  const MOUSE_AFTER_TOUCH_MS = 600;
+
+  const beginSelection = (member: Member, teamId: string, day: number) => {
     // Admins can click any row; others can only click their own row (for absences)
     if (!isAdmin(userRole) && member.id !== currentUserId) return;
     setIsDragging(true);
     setDragStart({ memberId: member.id, teamId, day });
     setDragEnd({ memberId: member.id, teamId, day });
+  };
+
+  const handleMouseDown = (member: Member, teamId: string, day: number) => {
+    if (ignoreMouseRef.current) return;
+    beginSelection(member, teamId, day);
   };
 
   const handleMouseEnter = (member: Member, teamId: string, day: number) => {
@@ -193,12 +249,14 @@ const Schedule: React.FC<ScheduleProps> = ({
     }
   };
 
-  const handleMouseUp = (member: Member, teamId: string, day: number) => {
-    if (!isDragging || !dragStart) return;
-    setIsDragging(false);
-
-    const startDay = Math.min(dragStart.day, dragEnd?.day || day);
-    const endDay = Math.max(dragStart.day, dragEnd?.day || day);
+  /**
+   * Opens the editor for a day range. Split out of the drag handler because the
+   * tap path has to reach it too, and tap cannot read `dragStart` — the state
+   * write from the same event has not landed yet.
+   */
+  const openCellEditor = (member: Member, teamId: string, startDay: number, endDay: number) => {
+    // Admins can open any row; everyone else only their own (for absences).
+    if (!isAdmin(userRole) && member.id !== currentUserId) return;
 
     const startStr = getDateStr(startDay);
     const endStr = getDateStr(endDay);
@@ -245,34 +303,98 @@ const Schedule: React.FC<ScheduleProps> = ({
     // Reset decline mode
     setModalDeclineMode(false);
     setModalDeclineReason('');
+  };
 
+  const handleMouseUp = (member: Member, teamId: string, day: number) => {
+    if (ignoreMouseRef.current) return;
+    if (!isDragging || !dragStart) return;
+    setIsDragging(false);
+
+    const startDay = Math.min(dragStart.day, dragEnd?.day || day);
+    const endDay = Math.max(dragStart.day, dragEnd?.day || day);
+
+    setDragStart(null);
+    setDragEnd(null);
+    openCellEditor(member, teamId, startDay, endDay);
+  };
+
+  // --- Touch -----------------------------------------------------------------
+  // A tap opens one day. A press held still for LONG_PRESS_MS starts a range
+  // selection. A press that moves first is a scroll: it is abandoned, so
+  // swiping the month sideways no longer pops the editor open.
+  const LONG_PRESS_MS = 350;
+  const TOUCH_SLOP_PX = 8;
+
+  const ignoreReplayedMouse = () => {
+    ignoreMouseRef.current = true;
+    clearTimeout(ignoreMouseTimer.current);
+    ignoreMouseTimer.current = setTimeout(() => {
+      ignoreMouseRef.current = false;
+    }, MOUSE_AFTER_TOUCH_MS);
+  };
+
+  const abandonTouch = () => {
+    ignoreReplayedMouse();
+    clearTimeout(longPressTimer.current);
+    touchRef.current = null;
+    setIsTouchSelecting(false);
+    setIsDragging(false);
     setDragStart(null);
     setDragEnd(null);
   };
 
-  // Touch event handlers for mobile drag-select
   const handleTouchStart = (e: React.TouchEvent, member: Member, teamId: string, day: number) => {
-    touchMemberRef.current = { member, teamId };
-    handleMouseDown(member, teamId, day);
+    const touch = e.touches[0];
+    touchRef.current = { member, teamId, day, x: touch.clientX, y: touch.clientY, longPress: false };
+    clearTimeout(longPressTimer.current);
+    longPressTimer.current = setTimeout(() => {
+      const info = touchRef.current;
+      if (!info) return;
+      info.longPress = true;
+      setIsTouchSelecting(true);
+      beginSelection(info.member, info.teamId, info.day);
+    }, LONG_PRESS_MS);
   };
 
   const handleTouchMove = (e: React.TouchEvent) => {
-    if (!isDragging || !dragStart || !touchMemberRef.current) return;
-    e.preventDefault();
+    const info = touchRef.current;
+    if (!info) return;
     const touch = e.touches[0];
+
+    if (!info.longPress) {
+      const moved =
+        Math.abs(touch.clientX - info.x) > TOUCH_SLOP_PX || Math.abs(touch.clientY - info.y) > TOUCH_SLOP_PX;
+      if (moved) abandonTouch();
+      return;
+    }
+
     const el = document.elementFromPoint(touch.clientX, touch.clientY);
-    if (!el) return;
-    const cell = el.closest('[data-day]') as HTMLElement | null;
-    if (cell && cell.dataset.day) {
-      const day = parseInt(cell.dataset.day, 10);
-      handleMouseEnter(touchMemberRef.current.member, touchMemberRef.current.teamId, day);
+    const cell = el?.closest('[data-day]') as HTMLElement | null;
+    if (cell?.dataset.day) {
+      handleMouseEnter(info.member, info.teamId, parseInt(cell.dataset.day, 10));
     }
   };
 
   const handleTouchEnd = (_e: React.TouchEvent, member: Member, teamId: string, day: number) => {
-    const finalDay = dragEnd?.day ?? day;
-    handleMouseUp(member, teamId, finalDay);
-    touchMemberRef.current = null;
+    const info = touchRef.current;
+    ignoreReplayedMouse();
+    clearTimeout(longPressTimer.current);
+    touchRef.current = null;
+    const wasDragging = !!info?.longPress;
+    // Cleared by handleTouchMove — the gesture was a scroll, so open nothing.
+    if (!info) return;
+
+    if (wasDragging) {
+      setIsTouchSelecting(false);
+      const startDay = dragStart ? Math.min(dragStart.day, dragEnd?.day ?? day) : day;
+      const endDay = dragStart ? Math.max(dragStart.day, dragEnd?.day ?? day) : day;
+      setIsDragging(false);
+      setDragStart(null);
+      setDragEnd(null);
+      openCellEditor(member, teamId, startDay, endDay);
+    } else {
+      openCellEditor(member, teamId, day, day);
+    }
   };
 
   const handleSave = () => {
@@ -412,15 +534,18 @@ const Schedule: React.FC<ScheduleProps> = ({
 
   return (
     <div className="p-3 md:p-6 h-full flex flex-col bg-white dark:bg-black relative">
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6 flex-shrink-0">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-3 md:gap-4 mb-4 md:mb-6 flex-shrink-0">
         <div>
-          <h1 className="text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">Schedule</h1>
-          <p className="text-zinc-500 mt-1 text-sm">
+          <h1 className="text-xl md:text-2xl font-bold text-zinc-900 dark:text-white tracking-tight">Schedule</h1>
+          <p className="text-zinc-500 mt-0.5 md:mt-1 text-xs md:text-sm">
             Team availability & shifts for {monthName} {year}.
           </p>
         </div>
 
-        <div className="w-full md:w-auto flex items-stretch gap-2 md:gap-3 md:flex-wrap">
+        {/* Wraps on phones: [Me][People][Absence] on the first row, the month
+            stepper full-width on the second. One row of four squeezed each
+            control to about 90px. */}
+        <div className="w-full md:w-auto flex flex-wrap items-stretch gap-2 md:gap-3 md:flex-nowrap md:items-center">
           {(() => {
             const me = members.find((m) => m.id === currentUserId);
             if (!me) return null;
@@ -437,12 +562,12 @@ const Schedule: React.FC<ScheduleProps> = ({
                     : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-700'
                 }`}
               >
-                <Avatar src={me.avatar} size="sm" />
+                <Avatar src={me.avatar} alt={me.name} size="sm" />
                 <span className="hidden md:inline">Me</span>
               </button>
             );
           })()}
-          <div className="flex-1 grid grid-cols-3 gap-2 md:flex md:flex-none md:items-center md:gap-3 md:w-auto">
+          <div className="flex-1 grid grid-cols-2 gap-2 md:flex md:flex-none md:items-center md:gap-3 md:w-auto">
             <CustomSelect
               icon={User}
               options={[
@@ -472,26 +597,28 @@ const Schedule: React.FC<ScheduleProps> = ({
               placeholder="Absence Type"
               className="min-w-0 md:w-[140px]"
             />
-            <div className="flex items-center justify-between gap-1 md:gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[32px] px-1 md:px-2 py-1.5 min-w-0">
-              <button
-                onClick={() => changeMonth(-1)}
-                className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 flex-shrink-0"
-                aria-label="Previous month"
-              >
-                <ChevronLeft size={14} />
-              </button>
-              <span className="text-sm md:w-28 text-center text-zinc-900 dark:text-zinc-100 flex items-center justify-center gap-1 md:gap-1.5 min-w-0">
-                <Calendar size={14} className="text-zinc-400 flex-shrink-0 hidden md:inline" />
-                <span className="truncate">{monthName}</span>
+          </div>
+          <div className="w-full md:w-auto flex items-center justify-between gap-1 md:gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[36px] md:min-h-[32px] px-1 md:px-2 py-1 md:py-1.5 min-w-0">
+            <button
+              onClick={() => changeMonth(-1)}
+              className="p-2 md:p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 flex-shrink-0"
+              aria-label="Previous month"
+            >
+              <ChevronLeft size={16} />
+            </button>
+            <span className="text-sm font-medium md:font-normal md:w-32 text-center text-zinc-900 dark:text-zinc-100 flex items-center justify-center gap-1.5 min-w-0">
+              <Calendar size={14} className="text-zinc-400 flex-shrink-0" />
+              <span className="truncate">
+                {monthName} {year}
               </span>
-              <button
-                onClick={() => changeMonth(1)}
-                className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 flex-shrink-0"
-                aria-label="Next month"
-              >
-                <ChevronRight size={14} />
-              </button>
-            </div>
+            </span>
+            <button
+              onClick={() => changeMonth(1)}
+              className="p-2 md:p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 flex-shrink-0"
+              aria-label="Next month"
+            >
+              <ChevronRight size={16} />
+            </button>
           </div>
         </div>
       </div>
@@ -531,11 +658,17 @@ const Schedule: React.FC<ScheduleProps> = ({
         </div>
       ) : (
         <div className="bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 flex-1 flex flex-col overflow-hidden shadow-sm relative">
-          <div className="flex-1 overflow-auto snap-x snap-mandatory md:snap-none custom-scrollbar relative">
+          <div
+            ref={gridScrollRef}
+            className={`flex-1 overflow-auto custom-scrollbar relative overscroll-x-contain ${
+              isTouchSelecting ? 'touch-none' : ''
+            }`}
+          >
             <div style={{ width: 'max-content', minWidth: '100%' }}>
               <div className="flex sticky top-0 z-30 bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 h-14">
-                <div className="sticky left-0 z-40 w-40 md:w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 p-3 text-[11px] md:text-[10px] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
-                  Team Member
+                <div className="sticky left-0 z-40 w-28 md:w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 px-2 py-3 md:p-3 text-[10px] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
+                  <span className="md:hidden">Member</span>
+                  <span className="hidden md:inline">Team Member</span>
                 </div>
                 {days.map((day) => {
                   const isToday =
@@ -545,14 +678,16 @@ const Schedule: React.FC<ScheduleProps> = ({
                   return (
                     <div
                       key={day}
-                      className={`w-10 flex-shrink-0 text-center flex flex-col items-center justify-center border-r border-zinc-100 dark:border-zinc-800 text-[10px] text-zinc-400 font-medium last:border-r-0 select-none ${isToday ? 'bg-red-50/50 dark:bg-red-900/20' : isWeekend(day) ? 'bg-emerald-50/60 dark:bg-emerald-900/15' : ''}`}
+                      className={`w-8 md:w-10 flex-shrink-0 text-center flex flex-col items-center justify-center border-r border-zinc-100 dark:border-zinc-800 text-[10px] text-zinc-400 font-medium last:border-r-0 select-none ${isToday ? 'bg-red-50/50 dark:bg-red-900/20' : isWeekend(day) ? 'bg-emerald-50/60 dark:bg-emerald-900/15' : ''}`}
                     >
                       <span
                         className={`text-zinc-900 dark:text-white font-bold ${isToday ? 'text-red-600 dark:text-red-400' : ''}`}
                       >
                         {day}
                       </span>
-                      <span className={`text-[10px] uppercase ${isToday ? 'text-red-500 dark:text-red-400' : ''}`}>
+                      <span
+                        className={`text-[9px] md:text-[10px] uppercase ${isToday ? 'text-red-500 dark:text-red-400' : ''}`}
+                      >
                         {getDayShortName(day)}
                       </span>
                     </div>
@@ -578,7 +713,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                       onDrop={(e) => handleTeamDrop(e, group.team.id)}
                     >
                       <div
-                        className={`group sticky left-0 z-20 w-40 md:w-64 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur-sm border-r border-zinc-200 dark:border-zinc-800 px-3 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-zinc-200/95 dark:hover:bg-zinc-700/95 transition-colors shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] ${isCurrentUserTeam ? 'border-l-2 border-l-blue-400 dark:border-l-blue-500' : ''}`}
+                        className={`group sticky left-0 z-20 w-28 md:w-64 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur-sm border-r border-zinc-200 dark:border-zinc-800 px-2 md:px-3 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-zinc-200/95 dark:hover:bg-zinc-700/95 transition-colors shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] ${isCurrentUserTeam ? 'border-l-2 border-l-blue-400 dark:border-l-blue-500' : ''}`}
                         onClick={() => toggleTeamCollapse(group.team.id)}
                       >
                         <ChevronDown
@@ -616,15 +751,20 @@ const Schedule: React.FC<ScheduleProps> = ({
                             onDragEnd={handleDragEnd}
                           >
                             <div
-                              className={`group sticky left-0 z-10 w-40 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-2 flex items-center gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 ${isCurrentUser ? 'bg-blue-50 dark:bg-blue-950' : 'bg-white dark:bg-zinc-900'}`}
+                              className={`group sticky left-0 z-10 w-28 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-1.5 md:px-2 flex items-center gap-1.5 md:gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 ${isCurrentUser ? 'bg-blue-50 dark:bg-blue-950' : 'bg-white dark:bg-zinc-900'}`}
                               onClick={() => setSelectedMemberStats(member)}
                             >
-                              <Avatar src={member.avatar} size="sm" />
+                              <Avatar src={member.avatar} alt={member.name} size="sm" />
                               <div className="min-w-0 flex-1">
-                                <p className="text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate">
-                                  {member.name}
+                                <p
+                                  className="text-[11px] md:text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate"
+                                  title={member.name}
+                                >
+                                  <span className="md:hidden">{shortenName(member.name)}</span>
+                                  <span className="hidden md:inline">{member.name}</span>
                                 </p>
-                                <p className="text-[11px] text-zinc-400 truncate">{member.jobTitle}</p>
+                                {/* The job title has no room beside seven day columns. */}
+                                <p className="hidden md:block text-[11px] text-zinc-400 truncate">{member.jobTitle}</p>
                               </div>
                               {isAdminUser && (
                                 <div
@@ -770,7 +910,8 @@ const Schedule: React.FC<ScheduleProps> = ({
                                   onTouchStart={(e) => handleTouchStart(e, member, group.team.id, day)}
                                   onTouchMove={handleTouchMove}
                                   onTouchEnd={(e) => handleTouchEnd(e, member, group.team.id, day)}
-                                  className={`w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : !content && isWeekend(day) ? 'bg-emerald-50/40 dark:bg-emerald-900/10' : ''}`}
+                                  onTouchCancel={abandonTouch}
+                                  className={`w-8 md:w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : !content && isWeekend(day) ? 'bg-emerald-50/40 dark:bg-emerald-900/10' : ''}`}
                                 >
                                   {content}
                                 </div>
@@ -791,7 +932,12 @@ const Schedule: React.FC<ScheduleProps> = ({
         {selectedMemberStats && (
           <div>
             <div className="flex items-center gap-3 mb-6">
-              <Avatar src={selectedMemberStats.avatar} size="lg" className="!w-12 !h-12" />
+              <Avatar
+                src={selectedMemberStats.avatar}
+                alt={selectedMemberStats.name}
+                size="lg"
+                className="!w-12 !h-12"
+              />
               <div>
                 <h3 className="font-semibold text-lg text-zinc-900 dark:text-white">{selectedMemberStats.name}</h3>
                 <p className="text-xs text-zinc-500">{selectedMemberStats.jobTitle}</p>
@@ -1080,11 +1226,11 @@ const Schedule: React.FC<ScheduleProps> = ({
                   )}
 
                   <div className="grid grid-cols-2 gap-3">
-                    <div>
+                    <div className="min-w-0">
                       <Label className="mb-1 block">From</Label>
                       <SimpleDatePicker value={rangeStartDate} onChange={setRangeStartDate} placeholder="Select Date" />
                     </div>
-                    <div>
+                    <div className="min-w-0">
                       <Label className="mb-1 block">To</Label>
                       <SimpleDatePicker value={rangeEndDate} onChange={setRangeEndDate} placeholder="Select Date" />
                     </div>
@@ -1138,23 +1284,26 @@ const Schedule: React.FC<ScheduleProps> = ({
                         <span className="text-sm text-zinc-700 dark:text-zinc-300">All day</span>
                       </label>
                       {!isAllDay && (
-                        <div className="grid grid-cols-2 gap-3">
-                          <div>
+                        /* One per row below sm: a native time control has a fixed
+                           intrinsic width that overlapped its neighbour in a
+                           two-column grid on a phone. */
+                        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                          <div className="min-w-0">
                             <Label className="mb-1 block">Start Time</Label>
                             <Input
                               type="time"
                               value={startTime}
                               onChange={(e) => setStartTime(e.target.value)}
-                              className="p-2"
+                              className="p-2 min-w-0"
                             />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <Label className="mb-1 block">End Time</Label>
                             <Input
                               type="time"
                               value={endTime}
                               onChange={(e) => setEndTime(e.target.value)}
-                              className="p-2"
+                              className="p-2 min-w-0"
                             />
                           </div>
                         </div>

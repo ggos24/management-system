@@ -77,7 +77,7 @@ export const Modal: React.FC<ModalProps> = ({
         role="dialog"
         aria-modal="true"
         data-state={state}
-        className={`bg-white dark:bg-zinc-900 w-full ${sizeClasses[size]} rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 flex flex-col ${allowOverflow ? 'overflow-visible max-h-[calc(100dvh-1rem)] md:max-h-[90dvh]' : 'max-h-[calc(100dvh-1rem)] md:max-h-[90dvh]'}`}
+        className={`bg-white dark:bg-zinc-900 w-full ${sizeClasses[size]} rounded-lg shadow-2xl border border-zinc-200 dark:border-zinc-800 flex flex-col modal-shell ${allowOverflow ? 'overflow-visible' : ''}`}
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center px-4 md:px-6 py-3 md:py-4 flex-shrink-0">
