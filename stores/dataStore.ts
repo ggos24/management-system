@@ -84,6 +84,30 @@ function hasFullAccess(): boolean {
   return useAuthStore.getState().currentUser?.accessScope !== 'related_only';
 }
 
+/**
+ * Rollback handler for the optimistic schedule writes. These used to be
+ * `.catch(() => set(prev))` against database helpers that *returned* their
+ * error instead of throwing, so the rollback could never run: a write the
+ * database refused left the local schedule showing a change no other client
+ * could see, until that tab was reloaded. The helpers throw now, and a failure
+ * has to be visible rather than silently diverging from the server.
+ */
+function rollbackAbsences(set: (partial: { absences: Absence[] }) => void, prev: Absence[], message: string) {
+  return (error: unknown) => {
+    console.error(error);
+    set({ absences: prev });
+    toast.error(message);
+  };
+}
+
+function rollbackShifts(set: (partial: { shifts: Shift[] }) => void, prev: Shift[], message: string) {
+  return (error: unknown) => {
+    console.error(error);
+    set({ shifts: prev });
+    toast.error(message);
+  };
+}
+
 function logAction(action: string, details: string, entityType: string) {
   const userId = getCurrentUserId();
   if (!userId) return;
@@ -1235,38 +1259,44 @@ export const useDataStore = create<DataState>((set, get) => ({
     set({
       absences: existing ? prev.map((a) => (a.id === absence.id ? absence : a)) : [...prev, absence],
     });
-    db.upsertAbsence(absence).catch(() => set({ absences: prev }));
+    // Announce only once the write lands — a rejected write must not page the
+    // team about a schedule change the database never accepted.
+    const announce = () => {
+      const { members } = get();
+      const memberName = members.find((m) => m.id === absence.memberId)?.name || 'Someone';
 
-    const { members } = get();
-    const memberName = members.find((m) => m.id === absence.memberId)?.name || 'Someone';
+      const currentUserId = getCurrentUserId();
+      const actorName = getCurrentUserName();
+      const isOwnAbsence = absence.memberId === currentUserId;
 
-    const currentUserId = getCurrentUserId();
-    const actorName = getCurrentUserName();
-    const isOwnAbsence = absence.memberId === currentUserId;
+      if (isNew && isOwnAbsence) {
+        // User submitted their own absence → notify all admins
+        const adminIds = members.filter((m) => m.role === 'admin').map((m) => m.id);
+        notifyMany(
+          adminIds,
+          'absence_submitted',
+          `${memberName} submitted a ${absence.type.replace('_', ' ')} request`,
+          { absenceId: absence.id, memberId: absence.memberId },
+        );
+      } else if (!isOwnAbsence) {
+        // Admin created/edited absence for another user → notify that user
+        const action = isNew ? 'added' : 'updated';
+        notify(
+          absence.memberId,
+          'schedule_updated',
+          `${actorName} ${action} a ${absence.type.replace('_', ' ')} on your schedule`,
+          { absenceId: absence.id, memberId: absence.memberId },
+        );
+      }
+    };
 
-    if (isNew && isOwnAbsence) {
-      // User submitted their own absence → notify all admins
-      const adminIds = members.filter((m) => m.role === 'admin').map((m) => m.id);
-      notifyMany(adminIds, 'absence_submitted', `${memberName} submitted a ${absence.type.replace('_', ' ')} request`, {
-        absenceId: absence.id,
-        memberId: absence.memberId,
-      });
-    } else if (!isOwnAbsence) {
-      // Admin created/edited absence for another user → notify that user
-      const action = isNew ? 'added' : 'updated';
-      notify(
-        absence.memberId,
-        'schedule_updated',
-        `${actorName} ${action} a ${absence.type.replace('_', ' ')} on your schedule`,
-        { absenceId: absence.id, memberId: absence.memberId },
-      );
-    }
+    db.upsertAbsence(absence).then(announce, rollbackAbsences(set, prev, 'Failed to save the absence'));
   },
 
   deleteAbsence: (id) => {
     const prev = get().absences;
     set({ absences: prev.filter((a) => a.id !== id) });
-    db.deleteAbsence(id).catch(() => set({ absences: prev }));
+    db.deleteAbsence(id).catch(rollbackAbsences(set, prev, 'Failed to delete the absence'));
   },
 
   approveAbsence: (absenceId) => {
@@ -1284,17 +1314,20 @@ export const useDataStore = create<DataState>((set, get) => ({
       ),
     });
     if (!userId) return;
-    db.updateAbsenceDecision(absenceId, 'approved', userId).catch(() => set({ absences: prev }));
+    db.updateAbsenceDecision(absenceId, 'approved', userId).then(
+      () => {
+        const { members: m1 } = get();
+        const approvedName = m1.find((m) => m.id === absence.memberId)?.name || 'someone';
+        logAction('Absence Approved', `Approved ${absence.type.replace('_', ' ')} for ${approvedName}`, 'schedule');
 
-    const { members: m1 } = get();
-    const approvedName = m1.find((m) => m.id === absence.memberId)?.name || 'someone';
-    logAction('Absence Approved', `Approved ${absence.type.replace('_', ' ')} for ${approvedName}`, 'schedule');
-
-    notify(
-      absence.memberId,
-      'absence_decided',
-      `${actorName} approved your ${absence.type.replace('_', ' ')} request`,
-      { absenceId },
+        notify(
+          absence.memberId,
+          'absence_decided',
+          `${actorName} approved your ${absence.type.replace('_', ' ')} request`,
+          { absenceId },
+        );
+      },
+      rollbackAbsences(set, prev, 'Failed to approve the request'),
     );
   },
 
@@ -1319,17 +1352,20 @@ export const useDataStore = create<DataState>((set, get) => ({
       ),
     });
     if (!userId) return;
-    db.updateAbsenceDecision(absenceId, 'declined', userId, reason).catch(() => set({ absences: prev }));
+    db.updateAbsenceDecision(absenceId, 'declined', userId, reason).then(
+      () => {
+        const { members: m2 } = get();
+        const declinedName = m2.find((m) => m.id === absence.memberId)?.name || 'someone';
+        logAction('Absence Declined', `Declined ${absence.type.replace('_', ' ')} for ${declinedName}`, 'schedule');
 
-    const { members: m2 } = get();
-    const declinedName = m2.find((m) => m.id === absence.memberId)?.name || 'someone';
-    logAction('Absence Declined', `Declined ${absence.type.replace('_', ' ')} for ${declinedName}`, 'schedule');
-
-    notify(
-      absence.memberId,
-      'absence_decided',
-      `${actorName} declined your ${absence.type.replace('_', ' ')} request`,
-      { absenceId, reason },
+        notify(
+          absence.memberId,
+          'absence_decided',
+          `${actorName} declined your ${absence.type.replace('_', ' ')} request`,
+          { absenceId, reason },
+        );
+      },
+      rollbackAbsences(set, prev, 'Failed to decline the request'),
     );
   },
 
@@ -1339,16 +1375,19 @@ export const useDataStore = create<DataState>((set, get) => ({
     if (!absence) return;
 
     set({ absences: prev.filter((a) => a.id !== absenceId) });
-    db.deleteAbsence(absenceId).catch(() => set({ absences: prev }));
-
-    const { members } = get();
-    const memberName = getCurrentUserName();
-    const adminIds = members.filter((m) => m.role === 'admin').map((m) => m.id);
-    notifyMany(
-      adminIds,
-      'absence_cancelled',
-      `${memberName} cancelled their ${absence.type.replace('_', ' ')} request`,
-      { absenceId, memberId: absence.memberId },
+    db.deleteAbsence(absenceId).then(
+      () => {
+        const { members } = get();
+        const memberName = getCurrentUserName();
+        const adminIds = members.filter((m) => m.role === 'admin').map((m) => m.id);
+        notifyMany(
+          adminIds,
+          'absence_cancelled',
+          `${memberName} cancelled their ${absence.type.replace('_', ' ')} request`,
+          { absenceId, memberId: absence.memberId },
+        );
+      },
+      rollbackAbsences(set, prev, 'Failed to cancel the request'),
     );
   },
 
@@ -1357,22 +1396,25 @@ export const useDataStore = create<DataState>((set, get) => ({
     set({
       shifts: prev.find((s) => s.id === shift.id) ? prev.map((s) => (s.id === shift.id ? shift : s)) : [...prev, shift],
     });
-    db.upsertShift(shift).catch(() => set({ shifts: prev }));
-
-    // Notify user when admin updates their shift
-    const currentUserId = getCurrentUserId();
-    if (shift.memberId !== currentUserId) {
-      const actorName = getCurrentUserName();
-      notify(shift.memberId, 'schedule_updated', `${actorName} updated your shift schedule`, {
-        memberId: shift.memberId,
-      });
-    }
+    db.upsertShift(shift).then(
+      () => {
+        // Notify user when admin updates their shift
+        const currentUserId = getCurrentUserId();
+        if (shift.memberId !== currentUserId) {
+          const actorName = getCurrentUserName();
+          notify(shift.memberId, 'schedule_updated', `${actorName} updated your shift schedule`, {
+            memberId: shift.memberId,
+          });
+        }
+      },
+      rollbackShifts(set, prev, 'Failed to save the shift'),
+    );
   },
 
   deleteShift: (id) => {
     const prev = get().shifts;
     set({ shifts: prev.filter((s) => s.id !== id) });
-    db.deleteShift(id).catch(() => set({ shifts: prev }));
+    db.deleteShift(id).catch(rollbackShifts(set, prev, 'Failed to delete the shift'));
   },
 
   // Team actions

@@ -687,7 +687,31 @@ export async function syncTaskPlacements(taskId: string, placementNames: string[
 
 // === Absence mutations ===
 
-export async function upsertAbsence(absence: Absence) {
+/**
+ * PostgREST reports a write the RLS policy filtered out as a success with zero
+ * rows — no error is raised. An optimistic store update therefore keeps a
+ * change the database never accepted, and that client renders it until a full
+ * reload while every other client renders the real row. Ask for the affected
+ * ids back and treat an empty result as a failure so the caller can roll back.
+ */
+function assertAffected(rows: { id: string }[] | null, table: string, id: string, action: string): void {
+  if (!rows || rows.length === 0) {
+    throw new Error(`${table} ${action} for ${id} affected no rows (blocked by RLS or row is gone)`);
+  }
+}
+
+/**
+ * Same check for deletes, minus the false alarm: a delete that hits zero rows
+ * because someone else already removed the row has produced the intended state,
+ * so only a row that is still there counts as a rejected write.
+ */
+async function assertDeleted(rows: { id: string }[] | null, table: string, id: string): Promise<void> {
+  if (rows && rows.length > 0) return;
+  const { data } = await supabase.from(table).select('id').eq('id', id).maybeSingle();
+  if (data) throw new Error(`${table} delete for ${id} was blocked by RLS`);
+}
+
+export async function upsertAbsence(absence: Absence): Promise<void> {
   const row: Record<string, unknown> = {
     id: absence.id || undefined,
     member_id: absence.memberId,
@@ -699,8 +723,8 @@ export async function upsertAbsence(absence: Absence) {
   if (absence.decidedBy) row.decided_by = absence.decidedBy;
   if (absence.decidedAt) row.decided_at = absence.decidedAt;
   if (absence.declineReason !== undefined) row.decline_reason = absence.declineReason;
-  const { data, error } = await supabase.from('absences').upsert(row, { onConflict: 'id' }).select().single();
-  return { data, error };
+  const { error } = await supabase.from('absences').upsert(row, { onConflict: 'id' }).select('id').single();
+  if (error) throw error;
 }
 
 export async function updateAbsenceDecision(
@@ -708,15 +732,16 @@ export async function updateAbsenceDecision(
   decision: 'approved' | 'declined',
   decidedBy: string,
   reason?: string,
-) {
+): Promise<void> {
   const row: Record<string, unknown> = {
     status: decision,
     decided_by: decidedBy,
     decided_at: new Date().toISOString(),
   };
   if (reason !== undefined) row.decline_reason = reason;
-  const { error } = await supabase.from('absences').update(row).eq('id', id);
-  return { error };
+  const { data, error } = await supabase.from('absences').update(row).eq('id', id).select('id');
+  if (error) throw error;
+  assertAffected(data, 'absences', id, 'decision');
 }
 
 export async function fetchPendingAbsences(): Promise<Absence[]> {
@@ -729,14 +754,15 @@ export async function fetchPendingAbsences(): Promise<Absence[]> {
   return (data || []).map(mapAbsence);
 }
 
-export async function deleteAbsence(id: string) {
-  const { error } = await supabase.from('absences').delete().eq('id', id);
-  return { error };
+export async function deleteAbsence(id: string): Promise<void> {
+  const { data, error } = await supabase.from('absences').delete().eq('id', id).select('id');
+  if (error) throw error;
+  await assertDeleted(data, 'absences', id);
 }
 
 // === Shift mutations ===
 
-export async function upsertShift(shift: Shift) {
+export async function upsertShift(shift: Shift): Promise<void> {
   const row = {
     id: shift.id || undefined,
     member_id: shift.memberId,
@@ -746,13 +772,14 @@ export async function upsertShift(shift: Shift) {
     end_time: shift.endTime,
     shift_type: shift.shiftType || null,
   };
-  const { data, error } = await supabase.from('shifts').upsert(row, { onConflict: 'id' }).select().single();
-  return { data, error };
+  const { error } = await supabase.from('shifts').upsert(row, { onConflict: 'id' }).select('id').single();
+  if (error) throw error;
 }
 
-export async function deleteShift(id: string) {
-  const { error } = await supabase.from('shifts').delete().eq('id', id);
-  return { error };
+export async function deleteShift(id: string): Promise<void> {
+  const { data, error } = await supabase.from('shifts').delete().eq('id', id).select('id');
+  if (error) throw error;
+  await assertDeleted(data, 'shifts', id);
 }
 
 // === Team mutations ===
