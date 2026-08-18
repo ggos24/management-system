@@ -67,7 +67,10 @@
       "Bash(curl -s -o old.js \"https://unities.pro/assets/index-CvK39Lrg.js\")",
       "Bash(cat)",
       "Read(//tmp/**)",
-      "Bash(npx prettier *)"
+      "Bash(npx prettier *)",
+      "Bash(chmod +x /tmp/analyze_selects.sh)",
+      "Bash(/tmp/analyze_selects.sh)",
+      "Bash(python3 -c ' *)"
     ]
   }
 }
