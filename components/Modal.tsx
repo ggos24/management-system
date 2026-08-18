@@ -8,6 +8,7 @@ const sizeClasses = {
   md: 'max-w-lg',
   mdx: 'max-w-xl',
   lg: 'max-w-3xl',
+  xl: 'max-w-5xl',
 };
 
 interface ModalProps {
@@ -18,7 +19,7 @@ interface ModalProps {
   actions?: React.ReactNode;
   headerActions?: React.ReactNode;
   allowOverflow?: boolean;
-  size?: 'sm' | 'md' | 'mdx' | 'lg';
+  size?: 'sm' | 'md' | 'mdx' | 'lg' | 'xl';
 }
 
 export const Modal: React.FC<ModalProps> = ({
