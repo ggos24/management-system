@@ -169,6 +169,16 @@ const Schedule: React.FC<ScheduleProps> = ({
     return shifts.find((s) => s.memberId === memberId && s.teamId === teamId && s.date === dateStr);
   };
 
+  // Shifts and absences are separate records: an absence is drawn over the shift
+  // it covers rather than replacing it, so the roster survives a request that is
+  // later declined or cancelled. That only works if the covered shift is visible
+  // somewhere — otherwise deleting an absence looks like it conjured a schedule.
+  const describeShift = (shift: Shift) => {
+    if (shift.shiftType) return shift.shiftType === 'on_duty' ? 'DUTY' : 'CALL';
+    if (shift.startTime.startsWith('00:00') && shift.endTime.startsWith('23:59')) return 'All day';
+    return `${shift.startTime.slice(0, 5)}–${shift.endTime.slice(0, 5)}`;
+  };
+
   const handleMouseDown = (member: Member, teamId: string, day: number) => {
     // Admins can click any row; others can only click their own row (for absences)
     if (!isAdmin(userRole) && member.id !== currentUserId) return;
@@ -693,9 +703,16 @@ const Schedule: React.FC<ScheduleProps> = ({
                                 content = (
                                   <div
                                     className={`w-full h-full flex items-center justify-center ${bgClass} ${statusClass} text-[10px] font-semibold tracking-tight select-none relative`}
+                                    title={shift ? `${text} — shift ${describeShift(shift)} underneath` : text}
                                   >
                                     {text}
                                     {statusIcon}
+                                    {shift && (
+                                      <span
+                                        aria-hidden
+                                        className="absolute bottom-0.5 right-0.5 h-1 w-1 rounded-full bg-current opacity-50"
+                                      />
+                                    )}
                                   </div>
                                 );
                                 cellClass = '';
@@ -899,6 +916,7 @@ const Schedule: React.FC<ScheduleProps> = ({
               selectedCell.teamId && selectedCell.teamId !== '__no_team__'
                 ? teams.find((t) => t.id === selectedCell.teamId)
                 : null;
+            const coveredShift = getShiftForDay(selectedCell.member.id, selectedCell.teamId, selectedCell.day);
             return (
               <div>
                 <p className="text-xs text-zinc-500 mb-4 font-medium flex items-center gap-1.5">
@@ -1044,6 +1062,20 @@ const Schedule: React.FC<ScheduleProps> = ({
                   ) : (
                     <div className="mb-4">
                       <span className="text-xs font-medium text-zinc-500">Absence Request</span>
+                    </div>
+                  )}
+
+                  {editType === 'absence' && coveredShift && (
+                    <div className="mb-4 flex items-start gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2.5 dark:border-zinc-700 dark:bg-zinc-800/50">
+                      <Clock size={14} className="mt-px flex-shrink-0 text-zinc-400" />
+                      <p className="text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-400">
+                        A shift of{' '}
+                        <span className="font-medium text-zinc-900 dark:text-zinc-200">
+                          {describeShift(coveredShift)}
+                        </span>
+                        {cellTeam ? ` in ${cellTeam.name}` : ''} sits under this absence — it is hidden, not removed,
+                        and reappears once the absence is deleted or declined.
+                      </p>
                     </div>
                   )}
 
