@@ -14,6 +14,7 @@ import {
   AlertCircle,
   GripVertical,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
 import { SimpleDatePicker } from './SimpleDatePicker';
@@ -137,9 +138,10 @@ const Schedule: React.FC<ScheduleProps> = ({
   const [filterPerson, setFilterPerson] = useState('all');
   const [filterAbsenceType, setFilterAbsenceType] = useState('all');
 
-  // Touch bookkeeping. A press only becomes a range selection after it has held
-  // still for LONG_PRESS_MS; anything that moves first is a scroll and is
-  // dropped, which is what stops a horizontal swipe from opening the editor.
+  // Touch bookkeeping. On a phone the editor opens on a deliberate press-and-
+  // hold only — a plain tap does nothing. Tap-to-open kept firing by accident:
+  // the tap that stops an in-flight momentum scroll moves no distance at all,
+  // so it is indistinguishable from an intentional one.
   const touchRef = useRef<{
     member: Member;
     teamId: string;
@@ -157,11 +159,17 @@ const Schedule: React.FC<ScheduleProps> = ({
   const ignoreMouseTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
   const [isTouchSelecting, setIsTouchSelecting] = useState(false);
   const gridScrollRef = useRef<HTMLDivElement>(null);
+  // True from the first scroll event until the grid has been still for
+  // SCROLL_IDLE_MS. A press that starts inside that window is the user
+  // catching a moving grid, not reaching for a day.
+  const isScrollingRef = useRef(false);
+  const scrollIdleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   useEffect(
     () => () => {
       clearTimeout(longPressTimer.current);
       clearTimeout(ignoreMouseTimer.current);
+      clearTimeout(scrollIdleTimer.current);
     },
     [],
   );
@@ -319,11 +327,27 @@ const Schedule: React.FC<ScheduleProps> = ({
   };
 
   // --- Touch -----------------------------------------------------------------
-  // A tap opens one day. A press held still for LONG_PRESS_MS starts a range
-  // selection. A press that moves first is a scroll: it is abandoned, so
-  // swiping the month sideways no longer pops the editor open.
-  const LONG_PRESS_MS = 350;
-  const TOUCH_SLOP_PX = 8;
+  // Hold a day for LONG_PRESS_MS to open the editor; keep holding and drag to
+  // extend the range. A tap opens nothing, a press that moves is a scroll, and
+  // a press that lands on a still-moving grid is ignored outright.
+  const LONG_PRESS_MS = 450;
+  const TOUCH_SLOP_PX = 10;
+  const SCROLL_IDLE_MS = 200;
+
+  /** Same catch-tap problem as the day cells: a click landing on a grid that is
+   *  still moving is the user stopping it, not choosing a row. */
+  const ifGridIsStill = (run: () => void) => () => {
+    if (isScrollingRef.current) return;
+    run();
+  };
+
+  const handleGridScroll = () => {
+    isScrollingRef.current = true;
+    clearTimeout(scrollIdleTimer.current);
+    scrollIdleTimer.current = setTimeout(() => {
+      isScrollingRef.current = false;
+    }, SCROLL_IDLE_MS);
+  };
 
   const ignoreReplayedMouse = () => {
     ignoreMouseRef.current = true;
@@ -344,6 +368,9 @@ const Schedule: React.FC<ScheduleProps> = ({
   };
 
   const handleTouchStart = (e: React.TouchEvent, member: Member, teamId: string, day: number) => {
+    // Catching a momentum scroll — arm nothing, or the hold that follows the
+    // catch opens a day the user never aimed at.
+    if (isScrollingRef.current) return;
     const touch = e.touches[0];
     touchRef.current = { member, teamId, day, x: touch.clientX, y: touch.clientY, longPress: false };
     clearTimeout(longPressTimer.current);
@@ -352,6 +379,9 @@ const Schedule: React.FC<ScheduleProps> = ({
       if (!info) return;
       info.longPress = true;
       setIsTouchSelecting(true);
+      // The cell picks up its selection ring here, which is the only signal
+      // that the hold registered. Android can also buzz; iOS Safari cannot.
+      navigator.vibrate?.(10);
       beginSelection(info.member, info.teamId, info.day);
     }, LONG_PRESS_MS);
   };
@@ -384,17 +414,22 @@ const Schedule: React.FC<ScheduleProps> = ({
     // Cleared by handleTouchMove — the gesture was a scroll, so open nothing.
     if (!info) return;
 
-    if (wasDragging) {
-      setIsTouchSelecting(false);
-      const startDay = dragStart ? Math.min(dragStart.day, dragEnd?.day ?? day) : day;
-      const endDay = dragStart ? Math.max(dragStart.day, dragEnd?.day ?? day) : day;
-      setIsDragging(false);
-      setDragStart(null);
-      setDragEnd(null);
-      openCellEditor(member, teamId, startDay, endDay);
-    } else {
-      openCellEditor(member, teamId, day, day);
+    if (!wasDragging) {
+      // Released before the hold registered. Say so rather than silently doing
+      // nothing — a shared toast id means repeat taps replace, not stack.
+      if (isAdmin(userRole) || member.id === currentUserId) {
+        toast('Hold a day to edit', { id: 'schedule-hold-hint' });
+      }
+      return;
     }
+
+    setIsTouchSelecting(false);
+    const startDay = dragStart ? Math.min(dragStart.day, dragEnd?.day ?? day) : day;
+    const endDay = dragStart ? Math.max(dragStart.day, dragEnd?.day ?? day) : day;
+    setIsDragging(false);
+    setDragStart(null);
+    setDragEnd(null);
+    openCellEditor(member, teamId, startDay, endDay);
   };
 
   const handleSave = () => {
@@ -540,6 +575,8 @@ const Schedule: React.FC<ScheduleProps> = ({
           <p className="text-zinc-500 mt-0.5 md:mt-1 text-xs md:text-sm">
             Team availability & shifts for {monthName} {year}.
           </p>
+          {/* Hold-to-edit is not discoverable on its own. */}
+          <p className="md:hidden text-[11px] text-zinc-400 mt-1">Hold a day to add a shift or absence.</p>
         </div>
 
         {/* Wraps on phones: [Me][People][Absence] on the first row, the month
@@ -660,6 +697,7 @@ const Schedule: React.FC<ScheduleProps> = ({
         <div className="bg-white dark:bg-zinc-900 rounded border border-zinc-200 dark:border-zinc-800 flex-1 flex flex-col overflow-hidden shadow-sm relative">
           <div
             ref={gridScrollRef}
+            onScroll={handleGridScroll}
             className={`flex-1 overflow-auto custom-scrollbar relative overscroll-x-contain ${
               isTouchSelecting ? 'touch-none' : ''
             }`}
@@ -714,7 +752,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                     >
                       <div
                         className={`group sticky left-0 z-20 w-28 md:w-64 bg-zinc-100/95 dark:bg-zinc-800/95 backdrop-blur-sm border-r border-zinc-200 dark:border-zinc-800 px-2 md:px-3 py-1.5 flex items-center gap-1.5 cursor-pointer hover:bg-zinc-200/95 dark:hover:bg-zinc-700/95 transition-colors shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] ${isCurrentUserTeam ? 'border-l-2 border-l-blue-400 dark:border-l-blue-500' : ''}`}
-                        onClick={() => toggleTeamCollapse(group.team.id)}
+                        onClick={ifGridIsStill(() => toggleTeamCollapse(group.team.id))}
                       >
                         <ChevronDown
                           size={14}
@@ -752,7 +790,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                           >
                             <div
                               className={`group sticky left-0 z-10 w-28 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-1.5 md:px-2 flex items-center gap-1.5 md:gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 ${isCurrentUser ? 'bg-blue-50 dark:bg-blue-950' : 'bg-white dark:bg-zinc-900'}`}
-                              onClick={() => setSelectedMemberStats(member)}
+                              onClick={ifGridIsStill(() => setSelectedMemberStats(member))}
                             >
                               <Avatar src={member.avatar} alt={member.name} size="sm" />
                               <div className="min-w-0 flex-1">
