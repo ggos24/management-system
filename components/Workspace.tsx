@@ -933,43 +933,35 @@ const Workspace: React.FC<WorkspaceProps> = ({
     usesAclContexts,
   ]);
 
-  // Derived columns to display: If searching, only show columns with tasks; then apply status sort
+  // Every status of the team in the current sort order, regardless of the active filters.
+  // Actions that move a task (bulk “Move to…”) must offer all of them — filtering the
+  // list down to statuses that happen to hold a matching task would make the rest
+  // unreachable while a person/priority/search filter is on.
+  const sortedColumns = useMemo(() => {
+    if (!statusSort) return [...columns];
+    const dir = statusSortDirection === 'asc' ? 1 : -1;
+    return [...columns].sort((a, b) => {
+      switch (statusSort) {
+        case 'name':
+          return dir * a.label.localeCompare(b.label);
+        case 'count': {
+          const countA = filteredTasks.filter((t) => taskInColumn(t, a)).length;
+          const countB = filteredTasks.filter((t) => taskInColumn(t, b)).length;
+          return dir * (countA - countB);
+        }
+        default:
+          return 0;
+      }
+    });
+  }, [columns, filteredTasks, taskInColumn, statusSort, statusSortDirection]);
+
+  // Derived columns to display: If searching, only show columns with tasks
   const displayColumns = useMemo(() => {
     const hasActiveFilter =
       searchQuery || filterPerson !== 'all' || filterPriority !== 'all' || filterPlacements.length > 0;
-    let cols = hasActiveFilter
-      ? columns.filter((col) => filteredTasks.some((t) => taskInColumn(t, col)))
-      : [...columns];
-
-    if (statusSort) {
-      const dir = statusSortDirection === 'asc' ? 1 : -1;
-      cols = [...cols].sort((a, b) => {
-        switch (statusSort) {
-          case 'name':
-            return dir * a.label.localeCompare(b.label);
-          case 'count': {
-            const countA = filteredTasks.filter((t) => taskInColumn(t, a)).length;
-            const countB = filteredTasks.filter((t) => taskInColumn(t, b)).length;
-            return dir * (countA - countB);
-          }
-          default:
-            return 0;
-        }
-      });
-    }
-
-    return cols;
-  }, [
-    columns,
-    filteredTasks,
-    taskInColumn,
-    searchQuery,
-    filterPerson,
-    filterPriority,
-    filterPlacements,
-    statusSort,
-    statusSortDirection,
-  ]);
+    if (!hasActiveFilter) return sortedColumns;
+    return sortedColumns.filter((col) => filteredTasks.some((t) => taskInColumn(t, col)));
+  }, [sortedColumns, filteredTasks, taskInColumn, searchQuery, filterPerson, filterPriority, filterPlacements]);
 
   const memberMap = useMemo(() => new Map(members.map((m) => [m.id, m])), [members]);
   const getMembersByIds = useCallback(
@@ -3211,8 +3203,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
                   <ChevronUp size={12} />
                 </button>
                 {bulkStatusMenuOpen && (
-                  <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-xl py-1 min-w-[180px] text-zinc-900 dark:text-zinc-100">
-                    {displayColumns.map((col) => {
+                  <div className="absolute bottom-full left-0 mb-2 max-h-[60vh] overflow-y-auto bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg shadow-xl py-1 min-w-[180px] text-zinc-900 dark:text-zinc-100">
+                    {sortedColumns.map((col) => {
                       const cat = col.category;
                       const isDone = cat === 'completed';
                       const isArchive = cat === 'ignored';
