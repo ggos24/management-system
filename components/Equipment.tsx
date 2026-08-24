@@ -11,12 +11,11 @@ import { useAuthStore } from '../stores/authStore';
 import { useUiStore } from '../stores/uiStore';
 import { isAdmin } from '../constants';
 import { formatDateEU } from '../lib/utils';
+import { useNow } from '../hooks/useNow';
+import { EQUIPMENT_STATE_BADGE, defaultReturnAt, deriveUnitState, formatWhen, type UnitState } from '../lib/equipment';
 import type { EquipmentCategory, EquipmentCheckout, EquipmentItem, EquipmentStatus, Member } from '../types';
 
 const CATEGORIES: EquipmentCategory[] = ['camera', 'lens', 'audio', 'tripod', 'lighting', 'laptop', 'drone', 'other'];
-
-/** Derived unit state. Availability is computed, never stored on the item. */
-type UnitState = 'available' | 'out' | 'overdue' | 'maintenance' | 'retired' | 'lost';
 
 type FilterKey = 'all' | 'out' | 'overdue' | 'available' | 'repair' | 'inactive';
 
@@ -28,53 +27,6 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'repair', label: 'Needs repair' },
   { key: 'inactive', label: 'Maintenance & retired' },
 ];
-
-const STATE_BADGE: Record<
-  UnitState,
-  { color: 'zinc' | 'emerald' | 'red' | 'blue' | 'amber' | 'purple'; label: string }
-> = {
-  available: { color: 'emerald', label: 'Available' },
-  out: { color: 'blue', label: 'Out' },
-  overdue: { color: 'red', label: 'Overdue' },
-  maintenance: { color: 'amber', label: 'Maintenance' },
-  retired: { color: 'zinc', label: 'Retired' },
-  lost: { color: 'red', label: 'Lost' },
-};
-
-/** Local-time value for a datetime-local input. */
-function toLocalInputValue(date: Date): string {
-  const offset = date.getTimezoneOffset() * 60_000;
-  return new Date(date.getTime() - offset).toISOString().slice(0, 16);
-}
-
-/** Required-with-a-default: one tap to accept, two to change. */
-function defaultReturnAt(): string {
-  const end = new Date();
-  end.setHours(18, 0, 0, 0);
-  if (end.getTime() <= Date.now()) end.setDate(end.getDate() + 1);
-  return toLocalInputValue(end);
-}
-
-/**
- * Overdue is a moving target and the badge has no cron behind it, so the clock
- * lives in state and ticks. Reading Date.now() during render would be impure and
- * would freeze "2h overdue" at whatever the last unrelated render happened to see.
- */
-function useNow(intervalMs = 60_000): number {
-  const [now, setNow] = useState(() => Date.now());
-  React.useEffect(() => {
-    const timer = window.setInterval(() => setNow(Date.now()), intervalMs);
-    return () => window.clearInterval(timer);
-  }, [intervalMs]);
-  return now;
-}
-
-function formatWhen(iso: string | null): string {
-  if (!iso) return '—';
-  const date = new Date(iso);
-  const time = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  return `${formatDateEU(date)} ${time}`;
-}
 
 const Equipment: React.FC = () => {
   const currentUser = useAuthStore((s) => s.currentUser)!;
@@ -141,16 +93,7 @@ const Equipment: React.FC = () => {
     () =>
       equipmentItems.map((item) => {
         const open = openByItem.get(item.id) ?? null;
-        let state: UnitState;
-        if (item.status === 'retired' || item.status === 'lost') {
-          state = item.status;
-        } else if (item.status === 'maintenance') {
-          state = 'maintenance';
-        } else if (open) {
-          state = open.expectedReturnAt && new Date(open.expectedReturnAt).getTime() < now ? 'overdue' : 'out';
-        } else {
-          state = 'available';
-        }
+        const state: UnitState = deriveUnitState(item, open, now);
         return { item, open, state };
       }),
     [equipmentItems, openByItem, now],
@@ -299,7 +242,7 @@ const Equipment: React.FC = () => {
             <tbody>
               {rows.map(({ item, open, state }) => {
                 const holder = open?.holderId ? memberById.get(open.holderId) : undefined;
-                const badge = STATE_BADGE[state];
+                const badge = EQUIPMENT_STATE_BADGE[state];
                 return (
                   <tr
                     key={item.id}

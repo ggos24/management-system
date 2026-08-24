@@ -29,6 +29,7 @@ const Bin = React.lazy(() => import('./components/Bin'));
 const DocsView = React.lazy(() => import('./components/DocsView').then((m) => ({ default: m.DocsView })));
 const Support = React.lazy(() => import('./components/Support'));
 const Equipment = React.lazy(() => import('./components/Equipment'));
+const EquipmentScan = React.lazy(() => import('./components/EquipmentScan'));
 const ToolsView = React.lazy(() => import('./components/ToolsView'));
 const EmailTemplateGenerator = React.lazy(() => import('./components/EmailTemplateGenerator'));
 
@@ -439,6 +440,10 @@ export const router = createBrowserRouter([
               { path: 'schedule', element: <ScheduleRoute /> },
               { path: 'support', element: <Support /> },
               { path: 'equipment', element: <Equipment /> },
+              // Static segment outranks the dynamic one, so /equipment/scan is
+              // the manual-entry screen and /equipment/CAM-012 is a scanned unit.
+              { path: 'equipment/scan', element: <EquipmentScan /> },
+              { path: 'equipment/:assetCode', element: <EquipmentScan /> },
               {
                 path: 'tools',
                 element: (
