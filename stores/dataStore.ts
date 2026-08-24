@@ -26,6 +26,9 @@ import {
   TicketAttachment,
   TaskAccessContext,
   AccessScope,
+  EquipmentItem,
+  EquipmentCheckout,
+  EquipmentVerification,
 } from '../types';
 import * as db from '../lib/database';
 import { formatDateEU, toDateOnly } from '../lib/utils';
@@ -352,6 +355,7 @@ function sendTelegram(
 function buildEntityLink(entityData?: Record<string, any>): string | undefined {
   const origin = window.location.origin;
   if (entityData?.ticketId) return `${origin}/support?ticket=${entityData.ticketId}`;
+  if (entityData?.itemId) return `${origin}/equipment?item=${entityData.itemId}`;
   const teamId = entityData?.contextTeamId || entityData?.teamId;
   const taskId = entityData?.taskId;
   if (!taskId) return undefined;
@@ -360,7 +364,9 @@ function buildEntityLink(entityData?: Record<string, any>): string | undefined {
   return `${origin}/workspace?${params.toString()}`;
 }
 
-const EMAIL_SUBJECTS: Record<NotificationType, string> = {
+// Partial by design: a type with no subject here gets no email at all (see the
+// early return in sendEmail). Equipment events are in-app + Telegram only.
+const EMAIL_SUBJECTS: Partial<Record<NotificationType, string>> = {
   task_assigned: 'Task assigned to you',
   task_status_changed: 'Task status updated',
   task_updated: 'Task updated',
@@ -499,6 +505,11 @@ function notify(recipientId: string, type: NotificationType, message: string, en
 interface DataState {
   tasks: Task[];
   tickets: Ticket[];
+  equipmentItems: EquipmentItem[];
+  // Open checkouts plus any closed one still flagged for repair. The current
+  // holder of a unit is derived from these, never stored on the item.
+  equipmentCheckouts: EquipmentCheckout[];
+  equipmentVerifications: EquipmentVerification[];
   teams: Team[];
   members: Member[];
   absences: Absence[];
@@ -525,6 +536,9 @@ interface DataState {
   setTaskTeamLinks: (links: TaskTeamLink[]) => void;
   setTasks: (tasks: Task[]) => void;
   setTickets: (tickets: Ticket[]) => void;
+  setEquipmentItems: (items: EquipmentItem[]) => void;
+  setEquipmentCheckouts: (checkouts: EquipmentCheckout[]) => void;
+  setEquipmentVerifications: (verifications: EquipmentVerification[]) => void;
   setTeams: (teams: Team[]) => void;
   setMembers: (members: Member[]) => void;
   setAbsences: (absences: Absence[]) => void;
@@ -595,6 +609,22 @@ interface DataState {
   deleteTicket: (id: string) => void;
   addTicketComment: (ticketId: string, content: string) => Promise<TicketComment | null>;
   notifyTicketMention: (recipientIds: string[], actorName: string, ticketTitle: string, ticketId: string) => void;
+
+  // Equipment actions
+  saveEquipmentItem: (item: Partial<EquipmentItem> & { id?: string }) => Promise<EquipmentItem | null>;
+  removeEquipmentItem: (id: string) => void;
+  checkoutEquipment: (input: {
+    itemIds: string[];
+    holderId?: string;
+    purpose?: string;
+    taskId?: string | null;
+    expectedReturnAt: string | null;
+  }) => Promise<boolean>;
+  checkinEquipment: (checkoutId: string, options?: { note?: string; needsRepair?: boolean }) => Promise<boolean>;
+  transferEquipment: (checkoutId: string, newHolderId: string) => Promise<boolean>;
+  markItemVerified: (itemId: string) => Promise<boolean>;
+  markEquipmentLabelsPrinted: (itemIds: string[]) => Promise<void>;
+  loadEquipmentHistory: (itemId: string) => Promise<EquipmentCheckout[]>;
 
   // Absence/Shift actions
   updateAbsence: (absence: Absence) => void;
@@ -689,6 +719,9 @@ interface DataState {
 export const useDataStore = create<DataState>((set, get) => ({
   tasks: [],
   tickets: [],
+  equipmentItems: [],
+  equipmentCheckouts: [],
+  equipmentVerifications: [],
   teams: [],
   members: [],
   absences: [],
@@ -715,6 +748,9 @@ export const useDataStore = create<DataState>((set, get) => ({
   setTaskTeamLinks: (links) => set({ taskTeamLinks: links }),
   setTasks: (tasks) => set({ tasks }),
   setTickets: (tickets) => set({ tickets }),
+  setEquipmentItems: (equipmentItems) => set({ equipmentItems }),
+  setEquipmentCheckouts: (equipmentCheckouts) => set({ equipmentCheckouts }),
+  setEquipmentVerifications: (equipmentVerifications) => set({ equipmentVerifications }),
   setTeams: (teams) => {
     const orders = get().sidebarTeamOrders;
     if (Object.keys(orders).length > 0) {
@@ -812,6 +848,9 @@ export const useDataStore = create<DataState>((set, get) => ({
     set({
       tasks: [],
       tickets: [],
+      equipmentItems: [],
+      equipmentCheckouts: [],
+      equipmentVerifications: [],
       teams: [],
       members: [],
       absences: [],
@@ -1805,8 +1844,24 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   // Member actions
   removeMember: (id, _currentUserId) => {
-    const { members } = get();
+    const { members, equipmentCheckouts, equipmentItems } = get();
     const memberName = members.find((m) => m.id === id)?.name || 'Unknown';
+
+    // Offboarding guard: deleting the profile would SET NULL the custody rows
+    // and leave the gear untracked. Make outstanding equipment visible first —
+    // it is returned, handed over, or the unit is marked lost by an admin.
+    const outstanding = equipmentCheckouts.filter((checkout) => !checkout.checkedInAt && checkout.holderId === id);
+    if (outstanding.length > 0) {
+      const codes = outstanding
+        .map((checkout) => equipmentItems.find((item) => item.id === checkout.itemId)?.assetCode)
+        .filter(Boolean)
+        .join(', ');
+      toast.error(
+        `${memberName} still holds ${outstanding.length} item(s): ${codes}. Return, hand over, or mark them lost first.`,
+      );
+      return;
+    }
+
     const prev = members;
     set({ members: members.filter((m) => m.id !== id) });
     db.deleteMember(id).catch(() => set({ members: prev }));
@@ -2140,6 +2195,221 @@ export const useDataStore = create<DataState>((set, get) => ({
     notifyMany(internalRecipientIds, 'ticket_mention', msg, { ticketId });
   },
 
+  // === Equipment actions ===
+
+  saveEquipmentItem: async (item) => {
+    try {
+      const saved = await db.upsertEquipmentItem(item);
+      const prev = get().equipmentItems;
+      const exists = prev.some((candidate) => candidate.id === saved.id);
+      set({
+        equipmentItems: exists
+          ? prev.map((candidate) => (candidate.id === saved.id ? saved : candidate))
+          : [...prev, saved].sort((a, b) => a.assetCode.localeCompare(b.assetCode)),
+      });
+      logAction(exists ? 'Equipment Updated' : 'Equipment Added', `${saved.assetCode} — ${saved.name}`, 'equipment');
+
+      // Terminal states mean the unit has left circulation. Closing any open
+      // checkout keeps the ledger honest and stops the offboarding guard from
+      // deadlocking on gear that will never physically come back.
+      const stranded = get().equipmentCheckouts.find(
+        (checkout) => checkout.itemId === saved.id && !checkout.checkedInAt,
+      );
+      if (stranded && (saved.status === 'lost' || saved.status === 'retired')) {
+        await get().checkinEquipment(stranded.id, {
+          note: `Marked ${saved.status} by ${getCurrentUserName()} while checked out to ${stranded.holderName}`,
+        });
+      }
+      return saved;
+    } catch (error: any) {
+      // 23505 = duplicate asset_code; the trigger message covers printed-label edits.
+      toast.error(error?.code === '23505' ? 'That asset code is already in use' : 'Failed to save equipment');
+      return null;
+    }
+  },
+
+  removeEquipmentItem: (id) => {
+    const prev = get().equipmentItems;
+    const item = prev.find((candidate) => candidate.id === id);
+    if (!item) return;
+    set({ equipmentItems: prev.filter((candidate) => candidate.id !== id) });
+    db.deleteEquipmentItem(id).then(({ error }) => {
+      if (error) {
+        set({ equipmentItems: prev });
+        toast.error('Failed to delete equipment');
+        return;
+      }
+      logAction('Equipment Deleted', `${item.assetCode} — ${item.name}`, 'equipment');
+    });
+  },
+
+  checkoutEquipment: async (input) => {
+    const actorId = getCurrentUserId();
+    if (!actorId) {
+      toast.error('You must be signed in to take equipment');
+      return false;
+    }
+    const holderId = input.holderId || actorId;
+    try {
+      const created = await db.checkoutEquipment({
+        itemIds: input.itemIds,
+        holderId,
+        recordedBy: actorId,
+        purpose: input.purpose,
+        taskId: input.taskId,
+        expectedReturnAt: input.expectedReturnAt,
+      });
+      set({ equipmentCheckouts: [...created, ...get().equipmentCheckouts] });
+
+      const items = get().equipmentItems;
+      const names = created
+        .map((checkout) => items.find((item) => item.id === checkout.itemId)?.assetCode || '')
+        .filter(Boolean);
+      const summary = names.length === 1 ? names[0] : `${names.length} items (${names.join(', ')})`;
+      logAction('Equipment Taken', `${created[0]?.holderName} took ${summary}`, 'equipment');
+
+      // One message per scan session, never one per item.
+      const actorName = getCurrentUserName();
+      const holderName = created[0]?.holderName || actorName;
+      const adminIds = get()
+        .members.filter((member) => isAdmin(member.role))
+        .map((member) => member.id);
+      notifyMany(adminIds, 'equipment_taken', `${holderName} took ${summary}`, {
+        itemId: created[0]?.itemId,
+        checkoutGroupId: created[0]?.checkoutGroupId,
+      });
+      // An admin issuing on someone's behalf: tell the person they now hold it.
+      if (holderId !== actorId) {
+        notify(holderId, 'equipment_taken', `${actorName} checked out ${summary} to you`, {
+          itemId: created[0]?.itemId,
+        });
+      }
+      return true;
+    } catch (error: any) {
+      toast.error(error?.code === '23505' ? 'Someone just took one of those items' : 'Failed to check out equipment');
+      return false;
+    }
+  },
+
+  checkinEquipment: async (checkoutId, options = {}) => {
+    const actorId = getCurrentUserId();
+    if (!actorId) {
+      toast.error('You must be signed in to return equipment');
+      return false;
+    }
+    const prev = get().equipmentCheckouts;
+    const open = prev.find((checkout) => checkout.id === checkoutId);
+    if (!open) return false;
+    try {
+      const closed = await db.checkinEquipment(checkoutId, {
+        checkedInBy: actorId,
+        note: options.note,
+        needsRepair: options.needsRepair,
+      });
+      // A closed row stays in state only while it still carries a repair flag.
+      set({
+        equipmentCheckouts: closed.needsRepair
+          ? prev.map((checkout) => (checkout.id === checkoutId ? closed : checkout))
+          : prev.filter((checkout) => checkout.id !== checkoutId),
+      });
+
+      const item = get().equipmentItems.find((candidate) => candidate.id === closed.itemId);
+      const label = item ? `${item.assetCode} — ${item.name}` : 'equipment';
+      const actorName = getCurrentUserName();
+      logAction('Equipment Returned', `${actorName} returned ${label}`, 'equipment');
+
+      const repairSuffix = closed.needsRepair ? ' — flagged for repair' : '';
+      const adminIds = get()
+        .members.filter((member) => isAdmin(member.role))
+        .map((member) => member.id);
+      notifyMany(adminIds, 'equipment_returned', `${actorName} returned ${label}${repairSuffix}`, {
+        itemId: closed.itemId,
+      });
+      // Anyone internal may return anyone's gear; the holder finds out rather
+      // than being blocked by a permission wall.
+      if (open.holderId && open.holderId !== actorId) {
+        notify(open.holderId, 'equipment_returned', `${actorName} returned your ${label}${repairSuffix}`, {
+          itemId: closed.itemId,
+        });
+      }
+      return true;
+    } catch {
+      toast.error('Failed to return equipment');
+      return false;
+    }
+  },
+
+  transferEquipment: async (checkoutId, newHolderId) => {
+    const prev = get().equipmentCheckouts;
+    const open = prev.find((checkout) => checkout.id === checkoutId);
+    try {
+      const created = await db.transferEquipment(checkoutId, newHolderId);
+      // The RPC closed the old row and opened a new one in one transaction.
+      set({
+        equipmentCheckouts: [created, ...prev.filter((checkout) => checkout.id !== checkoutId)],
+      });
+
+      const item = get().equipmentItems.find((candidate) => candidate.id === created.itemId);
+      const label = item ? `${item.assetCode} — ${item.name}` : 'equipment';
+      const actorName = getCurrentUserName();
+      logAction('Equipment Transferred', `${actorName} moved ${label} to ${created.holderName}`, 'equipment');
+
+      const adminIds = get()
+        .members.filter((member) => isAdmin(member.role))
+        .map((member) => member.id);
+      notifyMany(adminIds, 'equipment_taken', `${created.holderName} took over ${label}`, { itemId: created.itemId });
+      if (open?.holderId) {
+        notify(open.holderId, 'equipment_returned', `${created.holderName} took over your ${label}`, {
+          itemId: created.itemId,
+        });
+      }
+      if (newHolderId !== getCurrentUserId()) {
+        notify(newHolderId, 'equipment_taken', `${actorName} handed you ${label}`, { itemId: created.itemId });
+      }
+      return true;
+    } catch (error: any) {
+      toast.error(error?.message || 'Failed to transfer equipment');
+      return false;
+    }
+  },
+
+  markItemVerified: async (itemId) => {
+    const actorId = getCurrentUserId();
+    if (!actorId) return false;
+    try {
+      const verification = await db.markItemVerified(itemId, actorId);
+      set({ equipmentVerifications: [verification, ...get().equipmentVerifications] });
+      return true;
+    } catch {
+      toast.error('Failed to record verification');
+      return false;
+    }
+  },
+
+  markEquipmentLabelsPrinted: async (itemIds) => {
+    const prev = get().equipmentItems;
+    try {
+      await db.markEquipmentLabelsPrinted(itemIds);
+      const stamp = new Date().toISOString();
+      const ids = new Set(itemIds);
+      set({
+        equipmentItems: prev.map((item) => (ids.has(item.id) ? { ...item, labelsPrintedAt: stamp } : item)),
+      });
+      logAction('Equipment Labels Printed', `Marked ${itemIds.length} label(s) as printed`, 'equipment');
+    } catch {
+      toast.error('Failed to mark labels as printed');
+    }
+  },
+
+  loadEquipmentHistory: async (itemId) => {
+    try {
+      return await db.fetchEquipmentHistory(itemId);
+    } catch {
+      toast.error('Failed to load custody history');
+      return [];
+    }
+  },
+
   setNotificationPreference: (userId, category, channel, enabled) => {
     const { notificationPreferences } = get();
     const previous = notificationPreferences;
@@ -2233,6 +2503,9 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchAllNotificationPreferences(), // 19
       db.fetchTickets(), // 20
       db.fetchTaskAccessContexts(), // 21
+      db.fetchEquipmentItems(), // 22
+      db.fetchEquipmentCheckouts(), // 23
+      db.fetchRecentEquipmentVerifications(), // 24
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
@@ -2286,6 +2559,9 @@ export const useDataStore = create<DataState>((set, get) => ({
       notificationPreferences: getValue(results[19], [] as NotificationPreference[]),
       tickets: getValue(results[20], [] as Ticket[]),
       taskAccessContexts: getValue(results[21], [] as TaskAccessContext[]),
+      equipmentItems: getValue(results[22], [] as EquipmentItem[]),
+      equipmentCheckouts: getValue(results[23], [] as EquipmentCheckout[]),
+      equipmentVerifications: getValue(results[24], [] as EquipmentVerification[]),
       deletedTasks: [],
     });
 

@@ -56,6 +56,12 @@ export function useRealtimeSync() {
     fetchForCurrentSession(db.fetchTickets, setTickets, { fullOnly: true });
   }, 300);
 
+  const debouncedFetchEquipment = useDebouncedCallback(() => {
+    const { setEquipmentItems, setEquipmentCheckouts } = storeRef.current.getState();
+    fetchForCurrentSession(db.fetchEquipmentItems, setEquipmentItems, { fullOnly: true });
+    fetchForCurrentSession(db.fetchEquipmentCheckouts, setEquipmentCheckouts, { fullOnly: true });
+  }, 300);
+
   const debouncedFetchMembers = useDebouncedCallback(() => {
     const { setMembers } = storeRef.current.getState();
     const scope = useAuthStore.getState().currentUser?.accessScope;
@@ -181,6 +187,12 @@ export function useRealtimeSync() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tickets' }, () => {
         debouncedFetchTickets();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'equipment_items' }, () => {
+        debouncedFetchEquipment();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'equipment_checkouts' }, () => {
+        debouncedFetchEquipment();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
         const currentUser = useAuthStore.getState().currentUser;

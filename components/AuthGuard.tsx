@@ -1,5 +1,5 @@
 import React from 'react';
-import { Outlet, Navigate } from 'react-router-dom';
+import { Outlet, Navigate, useLocation } from 'react-router-dom';
 import { X } from 'lucide-react';
 import LoginPage from './LoginPage';
 import { useAuth } from '../hooks/useAuth';
@@ -8,6 +8,7 @@ import { useAuthStore } from '../stores/authStore';
 
 export const AuthGuard: React.FC = () => {
   const { session } = useAuth();
+  const location = useLocation();
   useRealtimeSync();
 
   const {
@@ -33,9 +34,13 @@ export const AuthGuard: React.FC = () => {
     );
   }
 
-  // Not authenticated → redirect to /login
+  // Not authenticated → redirect to /login, remembering where they were headed.
+  // Carried in the query string rather than router state so it survives a full
+  // reload and the invite/recovery round trip.
   if (!session) {
-    return <Navigate to="/login" replace />;
+    const target = `${location.pathname}${location.search}`;
+    const next = target === '/' || target.startsWith('/login') ? '' : `?next=${encodeURIComponent(target)}`;
+    return <Navigate to={`/login${next}`} replace />;
   }
 
   // Invited user needs to set password

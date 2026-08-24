@@ -125,3 +125,16 @@ export function calculateAbsenceStats(memberId: string, absences: Absence[]) {
 
   return { holidayDays, sickDays, businessDays, daysOff, freeDays, busyDays };
 }
+
+/**
+ * Validate a `?next=` redirect target. Only same-origin, path-only values are
+ * accepted: anything protocol-relative ("//evil.com"), absolute, or backslash
+ * escaped is discarded so a crafted login link cannot bounce a user off-site.
+ */
+export function safeRedirectPath(value: string | null | undefined): string | null {
+  if (!value) return null;
+  if (!value.startsWith('/')) return null;
+  if (value.startsWith('//') || value.startsWith('/\\')) return null;
+  if (value.includes('\\')) return null;
+  return value;
+}

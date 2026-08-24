@@ -16,7 +16,7 @@ import { RouteError } from './components/RouteError';
 import { useAuthStore } from './stores/authStore';
 import { useDataStore } from './stores/dataStore';
 import { useUiStore } from './stores/uiStore';
-import { findTeamByParam } from './lib/utils';
+import { findTeamByParam, safeRedirectPath } from './lib/utils';
 
 import { DocSection } from './types';
 import { isAdmin } from './constants';
@@ -28,6 +28,7 @@ const Schedule = React.lazy(() => import('./components/Schedule'));
 const Bin = React.lazy(() => import('./components/Bin'));
 const DocsView = React.lazy(() => import('./components/DocsView').then((m) => ({ default: m.DocsView })));
 const Support = React.lazy(() => import('./components/Support'));
+const Equipment = React.lazy(() => import('./components/Equipment'));
 const ToolsView = React.lazy(() => import('./components/ToolsView'));
 const EmailTemplateGenerator = React.lazy(() => import('./components/EmailTemplateGenerator'));
 
@@ -396,10 +397,12 @@ const BinRoute: React.FC = () => {
 const LoginRoute: React.FC = () => {
   const session = useAuthStore((s) => s.session);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const location = useLocation();
 
   // Only redirect if fully authenticated (session + profile loaded)
   if (session && currentUser) {
-    return <Navigate to="/workspace" replace />;
+    const next = safeRedirectPath(new URLSearchParams(location.search).get('next'));
+    return <Navigate to={next ?? '/workspace'} replace />;
   }
 
   return (
@@ -435,6 +438,7 @@ export const router = createBrowserRouter([
               { path: 'dashboard', element: <DashboardRoute /> },
               { path: 'schedule', element: <ScheduleRoute /> },
               { path: 'support', element: <Support /> },
+              { path: 'equipment', element: <Equipment /> },
               {
                 path: 'tools',
                 element: (

@@ -13,6 +13,7 @@ import {
   BookOpen,
   LifeBuoy,
   Wrench,
+  Package,
   X,
 } from 'lucide-react';
 import { Team, UserRole } from '../types';
@@ -37,6 +38,7 @@ interface SidebarProps {
   taskCounts?: Record<string, number>;
   pendingAbsenceCount?: number;
   openTicketCount?: number;
+  overdueEquipmentCount?: number;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -56,6 +58,7 @@ const Sidebar: React.FC<SidebarProps> = ({
   taskCounts = {},
   pendingAbsenceCount = 0,
   openTicketCount = 0,
+  overdueEquipmentCount = 0,
 }) => {
   // Icon rendering uses the shared IconComponent
   const isRelatedOnly = useAuthStore((s) => s.currentUser?.accessScope === 'related_only');
@@ -321,6 +324,27 @@ const Sidebar: React.FC<SidebarProps> = ({
                   </span>
                 </button>
               )}
+              <button
+                onClick={() => onChangeView('equipment')}
+                className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${
+                  currentView === 'equipment'
+                    ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                    : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800/50'
+                } ${isCollapsed ? 'justify-center px-0' : ''}`}
+                title="Equipment"
+              >
+                <Package size={18} />
+                <span
+                  className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
+                >
+                  Equipment
+                </span>
+                {!isCollapsed && overdueEquipmentCount > 0 && (
+                  <span className="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                    {overdueEquipmentCount}
+                  </span>
+                )}
+              </button>
               <button
                 onClick={() => onChangeView('support')}
                 className={`w-full flex items-center gap-3 text-sm font-medium transition-colors px-3 py-3 md:py-2 rounded-md focus-visible:ring-2 focus-visible:ring-zinc-400 focus-visible:ring-offset-1 ${

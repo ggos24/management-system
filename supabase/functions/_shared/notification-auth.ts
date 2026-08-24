@@ -20,6 +20,9 @@ const CATEGORY_BY_TYPE: Record<string, string> = {
   ticket_assigned: 'support',
   ticket_mention: 'support',
   ticket_reply: 'support',
+  equipment_taken: 'equipment',
+  equipment_returned: 'equipment',
+  equipment_overdue: 'equipment',
 };
 
 const RELATED_ACTIONABLE_TASK_TYPES = new Set([

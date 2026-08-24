@@ -44,6 +44,7 @@ const AppLayout: React.FC = () => {
   const {
     tasks,
     tickets,
+    equipmentCheckouts,
     teams,
     teamStatuses,
     teamTypes,
@@ -55,6 +56,7 @@ const AppLayout: React.FC = () => {
     useShallow((s) => ({
       tasks: s.tasks,
       tickets: s.tickets,
+      equipmentCheckouts: s.equipmentCheckouts,
       teams: s.teams,
       teamStatuses: s.teamStatuses,
       teamTypes: s.teamTypes,
@@ -88,6 +90,7 @@ const AppLayout: React.FC = () => {
     if (location.pathname === '/workspace') return 'my-workspace';
     if (location.pathname === '/schedule') return 'schedule';
     if (location.pathname === '/support') return 'support';
+    if (location.pathname.startsWith('/equipment')) return 'equipment';
     if (location.pathname.startsWith('/tools')) return 'tools';
     if (location.pathname === '/bin') return 'bin';
     if (location.pathname.startsWith('/docs/help')) return 'docs-help';
@@ -162,6 +165,14 @@ const AppLayout: React.FC = () => {
     return isAdmin(currentUser.role) ? active.length : active.filter((t) => t.reporterId === currentUser.id).length;
   }, [tickets, currentUser]);
 
+  const overdueEquipmentCount = useMemo(() => {
+    const now = Date.now();
+    return equipmentCheckouts.filter(
+      (checkout) =>
+        !checkout.checkedInAt && checkout.expectedReturnAt && new Date(checkout.expectedReturnAt).getTime() < now,
+    ).length;
+  }, [equipmentCheckouts]);
+
   const openTaskModal = (taskOrPreset?: Partial<Task>) => {
     if (currentUser.accessScope === 'related_only' && !taskOrPreset?.id) return;
     const defaultTeamId =
@@ -213,6 +224,7 @@ const AppLayout: React.FC = () => {
             else if (view === 'dashboard') viewTransitionNavigate('/dashboard');
             else if (view === 'schedule') viewTransitionNavigate('/schedule');
             else if (view === 'support') viewTransitionNavigate('/support');
+            else if (view === 'equipment') viewTransitionNavigate('/equipment');
             else if (view === 'tools') viewTransitionNavigate('/tools');
             else if (view === 'bin') viewTransitionNavigate('/bin');
             else if (view === 'docs-help') viewTransitionNavigate('/docs/help');
@@ -234,6 +246,7 @@ const AppLayout: React.FC = () => {
           setIsMobileOpen={setMobileSidebarOpen}
           pendingAbsenceCount={pendingAbsenceCount}
           openTicketCount={openTicketCount}
+          overdueEquipmentCount={overdueEquipmentCount}
         />
 
         <div className="flex-1 flex flex-col min-w-0 transition-all duration-300">

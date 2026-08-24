@@ -28,6 +28,9 @@ import {
   TicketStatus,
   TicketAttachment,
   TaskAccessContext,
+  EquipmentItem,
+  EquipmentCheckout,
+  EquipmentVerification,
 } from '../types';
 import { toDateOnly } from './utils';
 
@@ -1974,4 +1977,209 @@ export async function updateTicketComment(commentId: string, content: string): P
 export async function deleteTicketComment(commentId: string) {
   const { error } = await supabase.from('ticket_comments').delete().eq('id', commentId);
   return { error };
+}
+
+// === Equipment ===
+
+function mapEquipmentItem(row: any): EquipmentItem {
+  return {
+    id: row.id,
+    assetCode: row.asset_code,
+    name: row.name,
+    category: row.category,
+    serialNumber: row.serial_number || '',
+    notes: row.notes || '',
+    status: row.status || 'active',
+    labelsPrintedAt: row.labels_printed_at ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapEquipmentCheckout(row: any): EquipmentCheckout {
+  return {
+    id: row.id,
+    itemId: row.item_id,
+    holderId: row.holder_id ?? null,
+    holderName: row.holder_name || '',
+    checkoutGroupId: row.checkout_group_id ?? null,
+    recordedBy: row.recorded_by ?? null,
+    purpose: row.purpose || '',
+    taskId: row.task_id ?? null,
+    checkedOutAt: row.checked_out_at,
+    expectedReturnAt: row.expected_return_at ?? null,
+    checkedInAt: row.checked_in_at ?? null,
+    checkedInBy: row.checked_in_by ?? null,
+    checkinNote: row.checkin_note || '',
+    needsRepair: row.needs_repair ?? false,
+  };
+}
+
+function mapEquipmentVerification(row: any): EquipmentVerification {
+  return {
+    id: row.id,
+    itemId: row.item_id,
+    verifiedBy: row.verified_by ?? null,
+    verifiedAt: row.verified_at,
+  };
+}
+
+export async function fetchEquipmentItems(): Promise<EquipmentItem[]> {
+  const { data, error } = await supabase.from('equipment_items').select('*').order('asset_code');
+  if (error) throw error;
+  return (data || []).map(mapEquipmentItem);
+}
+
+/**
+ * Everything the registry needs to render current state: every open checkout
+ * (the current holder is derived from these) plus any closed one still flagged
+ * for repair, so a returned-but-broken unit keeps its flag until an admin acts.
+ */
+export async function fetchEquipmentCheckouts(): Promise<EquipmentCheckout[]> {
+  const { data, error } = await supabase
+    .from('equipment_checkouts')
+    .select('*')
+    .or('checked_in_at.is.null,needs_repair.is.true')
+    .order('checked_out_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapEquipmentCheckout);
+}
+
+/** Full custody history for one unit, newest first. */
+export async function fetchEquipmentHistory(itemId: string): Promise<EquipmentCheckout[]> {
+  const { data, error } = await supabase
+    .from('equipment_checkouts')
+    .select('*')
+    .eq('item_id', itemId)
+    .order('checked_out_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapEquipmentCheckout);
+}
+
+/**
+ * Recent audit evidence only. Anything older than the window is stale by
+ * definition, so there is no reason to pull the whole append-only history.
+ */
+export async function fetchRecentEquipmentVerifications(sinceDays = 90): Promise<EquipmentVerification[]> {
+  const since = new Date(Date.now() - sinceDays * 86_400_000).toISOString();
+  const { data, error } = await supabase
+    .from('equipment_verifications')
+    .select('*')
+    .gte('verified_at', since)
+    .order('verified_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapEquipmentVerification);
+}
+
+export async function upsertEquipmentItem(item: Partial<EquipmentItem> & { id?: string }): Promise<EquipmentItem> {
+  const payload: Record<string, any> = {
+    asset_code: item.assetCode,
+    name: item.name,
+    category: item.category,
+    serial_number: item.serialNumber || null,
+    notes: item.notes || null,
+    status: item.status || 'active',
+  };
+  if (item.id) payload.id = item.id;
+  const { data, error } = await supabase.from('equipment_items').upsert(payload).select().single();
+  if (error) throw error;
+  return mapEquipmentItem(data);
+}
+
+export async function deleteEquipmentItem(id: string) {
+  const { error } = await supabase.from('equipment_items').delete().eq('id', id);
+  return { error };
+}
+
+/**
+ * Stamped only after a physical print is confirmed — never on preview. Freezing
+ * asset_code is the point: printed stickers encode it.
+ */
+export async function markEquipmentLabelsPrinted(itemIds: string[]): Promise<void> {
+  if (itemIds.length === 0) return;
+  const { error } = await supabase
+    .from('equipment_items')
+    .update({ labels_printed_at: new Date().toISOString() })
+    .in('id', itemIds);
+  if (error) throw error;
+}
+
+/** Clearing the stamp is the deliberate first step of an intentional reprint. */
+export async function clearEquipmentLabelsPrinted(itemId: string): Promise<void> {
+  const { error } = await supabase.from('equipment_items').update({ labels_printed_at: null }).eq('id', itemId);
+  if (error) throw error;
+}
+
+export interface CheckoutInput {
+  itemIds: string[];
+  holderId: string;
+  recordedBy: string;
+  purpose?: string;
+  taskId?: string | null;
+  expectedReturnAt: string | null;
+  checkoutGroupId?: string | null;
+}
+
+/** One scan session becomes N rows under a single group id. */
+export async function checkoutEquipment(input: CheckoutInput): Promise<EquipmentCheckout[]> {
+  const groupId = input.checkoutGroupId ?? crypto.randomUUID();
+  const rows = input.itemIds.map((itemId) => ({
+    item_id: itemId,
+    holder_id: input.holderId,
+    // Placeholder: a BEFORE INSERT trigger derives the real snapshot from holder_id.
+    holder_name: '',
+    checkout_group_id: groupId,
+    recorded_by: input.recordedBy,
+    purpose: input.purpose || null,
+    task_id: input.taskId || null,
+    expected_return_at: input.expectedReturnAt,
+  }));
+  const { data, error } = await supabase.from('equipment_checkouts').insert(rows).select();
+  if (error) throw error;
+  return (data || []).map(mapEquipmentCheckout);
+}
+
+export async function checkinEquipment(
+  checkoutId: string,
+  options: { checkedInBy: string; note?: string; needsRepair?: boolean },
+): Promise<EquipmentCheckout> {
+  const { data, error } = await supabase
+    .from('equipment_checkouts')
+    .update({
+      checked_in_at: new Date().toISOString(),
+      checked_in_by: options.checkedInBy,
+      checkin_note: options.note || null,
+      needs_repair: options.needsRepair ?? false,
+    })
+    .eq('id', checkoutId)
+    .is('checked_in_at', null)
+    .select()
+    .single();
+  if (error) throw error;
+  return mapEquipmentCheckout(data);
+}
+
+/**
+ * Hand-to-hand on location. Closing and reopening must be atomic: a lost race
+ * would leave the gear in someone's hands while the registry says shelf.
+ */
+export async function transferEquipment(checkoutId: string, newHolderId: string): Promise<EquipmentCheckout> {
+  const { data, error } = await supabase.rpc('transfer_equipment', {
+    p_checkout_id: checkoutId,
+    p_new_holder_id: newHolderId,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error('Transfer returned no checkout');
+  return mapEquipmentCheckout(row);
+}
+
+export async function markItemVerified(itemId: string, verifiedBy: string): Promise<EquipmentVerification> {
+  const { data, error } = await supabase
+    .from('equipment_verifications')
+    .insert({ item_id: itemId, verified_by: verifiedBy })
+    .select()
+    .single();
+  if (error) throw error;
+  return mapEquipmentVerification(data);
 }

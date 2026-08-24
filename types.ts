@@ -196,6 +196,47 @@ export interface TicketComment {
   userAvatar?: string;
 }
 
+export type EquipmentCategory = 'camera' | 'lens' | 'audio' | 'tripod' | 'lighting' | 'laptop' | 'drone' | 'other';
+export type EquipmentStatus = 'active' | 'maintenance' | 'retired' | 'lost';
+
+export interface EquipmentItem {
+  id: string;
+  assetCode: string;
+  name: string;
+  category: EquipmentCategory;
+  serialNumber: string;
+  notes: string;
+  status: EquipmentStatus;
+  labelsPrintedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface EquipmentCheckout {
+  id: string;
+  itemId: string;
+  holderId: string | null;
+  // Snapshot taken at checkout; outlives the holder's profile.
+  holderName: string;
+  checkoutGroupId: string | null;
+  recordedBy: string | null;
+  purpose: string;
+  taskId: string | null;
+  checkedOutAt: string;
+  expectedReturnAt: string | null;
+  checkedInAt: string | null;
+  checkedInBy: string | null;
+  checkinNote: string;
+  needsRepair: boolean;
+}
+
+export interface EquipmentVerification {
+  id: string;
+  itemId: string;
+  verifiedBy: string | null;
+  verifiedAt: string;
+}
+
 export type DocSection = 'help' | 'knowledge-base';
 
 export interface Doc {
@@ -258,7 +299,10 @@ export type NotificationType =
   | 'ticket_status_changed'
   | 'ticket_assigned'
   | 'ticket_mention'
-  | 'ticket_reply';
+  | 'ticket_reply'
+  | 'equipment_taken'
+  | 'equipment_returned'
+  | 'equipment_overdue';
 
 export interface Notification {
   id: string;
@@ -271,7 +315,14 @@ export interface Notification {
   createdAt: string;
 }
 
-export type NotificationCategory = 'tasks' | 'deadlines' | 'mentions' | 'schedule' | 'members' | 'support';
+export type NotificationCategory =
+  | 'tasks'
+  | 'deadlines'
+  | 'mentions'
+  | 'schedule'
+  | 'members'
+  | 'support'
+  | 'equipment';
 export type NotificationChannel = 'in_app' | 'telegram' | 'email';
 
 export const NOTIFICATION_CATEGORY: Record<NotificationType, NotificationCategory> = {
@@ -292,6 +343,9 @@ export const NOTIFICATION_CATEGORY: Record<NotificationType, NotificationCategor
   ticket_assigned: 'support',
   ticket_mention: 'support',
   ticket_reply: 'support',
+  equipment_taken: 'equipment',
+  equipment_returned: 'equipment',
+  equipment_overdue: 'equipment',
 };
 
 export interface NotificationPreference {
