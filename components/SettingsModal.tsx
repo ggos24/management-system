@@ -85,6 +85,13 @@ export function getNotificationCategoryRows(
         ? 'Absence requests, decisions, and schedule edits'
         : 'Decisions on your absence requests',
     },
+    {
+      category: 'equipment',
+      label: 'Equipment',
+      description: showAdminCategories
+        ? 'Gear taken and returned, plus a daily overdue digest'
+        : 'Gear returned on your behalf, and your overdue items',
+    },
     ...(showAdminCategories
       ? ([{ category: 'members', label: 'Members', description: 'New member invitations' }] as const)
       : []),

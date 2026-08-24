@@ -15,6 +15,8 @@ import {
   Trash2,
   AlarmClock,
   LifeBuoy,
+  Package,
+  PackageX,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { IconButton, Divider } from './ui';
@@ -53,6 +55,11 @@ function getNotificationIcon(type: NotificationType) {
     case 'ticket_assigned':
     case 'ticket_reply':
       return <LifeBuoy size={14} className="shrink-0" />;
+    case 'equipment_taken':
+    case 'equipment_returned':
+      return <Package size={14} className="shrink-0" />;
+    case 'equipment_overdue':
+      return <PackageX size={14} className="shrink-0" />;
     default:
       return <Bell size={14} className="shrink-0" />;
   }
