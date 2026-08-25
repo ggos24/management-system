@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
-import { X } from 'lucide-react';
+import { X, Send } from 'lucide-react';
 import LoginPage from './LoginPage';
 import { useAuth } from '../hooks/useAuth';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
@@ -19,6 +19,7 @@ export const AuthGuard: React.FC = () => {
     setSession,
     setIsLoading,
     setNeedsPasswordSetup,
+    telegramGate,
     logout,
   } = useAuthStore();
 
@@ -29,6 +30,29 @@ export const AuthGuard: React.FC = () => {
         <div className="text-center">
           <img src="/logo.svg" alt="Logo" className="w-12 h-12 rounded-lg mx-auto mb-4 animate-pulse" />
           <p className="text-sm text-zinc-500">Loading...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // A Telegram Mini App user we could not resolve to a profile. Sending them to
+  // the password form is a dead end — the whole reason they are here is that
+  // they do not use the web app.
+  if (telegramGate) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black p-4">
+        <div className="text-center max-w-sm">
+          <div className="w-12 h-12 bg-zinc-900 dark:bg-white rounded-lg mx-auto mb-4 flex items-center justify-center">
+            <Send size={22} className="text-white dark:text-black" />
+          </div>
+          <h1 className="text-xl font-bold text-zinc-900 dark:text-white mb-2">
+            {telegramGate === 'not_linked' ? 'Telegram not linked' : 'No access'}
+          </h1>
+          <p className="text-sm text-zinc-500">
+            {telegramGate === 'not_linked'
+              ? 'This Telegram account is not connected to a UNITIES profile yet. Ask an admin to send you a link code, then open this app again.'
+              : 'Your profile does not have access to the equipment tool. Ask an admin if you think this is wrong.'}
+          </p>
         </div>
       </div>
     );

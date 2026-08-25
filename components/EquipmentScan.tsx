@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { Package, ArrowLeft, Wrench, ChevronDown, ChevronUp } from 'lucide-react';
+import { Package, ArrowLeft, Wrench, ChevronDown, ChevronUp, ScanLine, X } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { CustomSelect } from './CustomSelect';
 import { Badge, Button, Input } from './ui';
@@ -16,7 +16,23 @@ import {
   formatWhen,
   normaliseAssetCode,
 } from '../lib/equipment';
+import { isScannerAvailable, readStartParam, scanQrCodes } from '../lib/telegram';
 import type { EquipmentCheckout, EquipmentItem } from '../types';
+
+/** Telegram's scanner is absent on Desktop, Web and pre-6.4 clients. */
+function useScanner(): boolean {
+  const [available, setAvailable] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    isScannerAvailable().then((ok) => {
+      if (!cancelled) setAvailable(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return available;
+}
 
 /**
  * The field surface: one unit, one decision, as few taps as possible.
@@ -43,7 +59,18 @@ const EquipmentScan: React.FC = () => {
       })),
     );
 
+  const scannerAvailable = useScanner();
   const code = rawCode ? normaliseAssetCode(decodeURIComponent(rawCode)) : null;
+
+  // Telegram opens the configured Mini App URL (/equipment/scan) and delivers the
+  // scanned sticker separately, as ?startapp=. Hop to that unit so a sticker scan
+  // lands on the item rather than on the manual-entry form.
+  useEffect(() => {
+    if (code) return;
+    const fromStart = readStartParam();
+    const parsed = fromStart ? extractAssetCode(fromStart) : null;
+    if (parsed) navigate(`/equipment/${parsed}`, { replace: true });
+  }, [code, navigate]);
   const item = code ? equipmentItems.find((candidate) => candidate.assetCode === code) : undefined;
   const open = item ? (equipmentCheckouts.find((c) => c.itemId === item.id && !c.checkedInAt) ?? null) : null;
 
@@ -53,7 +80,18 @@ const EquipmentScan: React.FC = () => {
   );
 
   if (!code) {
-    return <CodeEntry myOpen={myOpen} items={equipmentItems} onOpen={(next) => navigate(`/equipment/${next}`)} />;
+    return (
+      <CodeEntry
+        myOpen={myOpen}
+        items={equipmentItems}
+        checkouts={equipmentCheckouts}
+        scannerAvailable={scannerAvailable}
+        onOpen={(next) => navigate(`/equipment/${next}`)}
+        onTakeAll={(itemIds) =>
+          checkoutEquipment({ itemIds, expectedReturnAt: new Date(defaultReturnAt()).toISOString() })
+        }
+      />
+    );
   }
 
   if (!item) {
@@ -149,19 +187,95 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 const CodeEntry: React.FC<{
   myOpen: EquipmentCheckout[];
   items: EquipmentItem[];
+  checkouts: EquipmentCheckout[];
+  scannerAvailable: boolean;
   onOpen: (code: string) => void;
-}> = ({ myOpen, items, onOpen }) => {
+  onTakeAll: (itemIds: string[]) => Promise<boolean>;
+}> = ({ myOpen, items, checkouts, scannerAvailable, onOpen, onTakeAll }) => {
   const [value, setValue] = useState('');
+  const [basket, setBasket] = useState<string[]>([]);
+  const [busy, setBusy] = useState(false);
   // Accepts a bare code or a pasted t.me deep link.
   const parsed = extractAssetCode(value);
+
+  const takenItemIds = useMemo(
+    () => new Set(checkouts.filter((c) => !c.checkedInAt).map((c) => c.itemId)),
+    [checkouts],
+  );
+  const basketItems = basket
+    .map((code) => items.find((item) => item.assetCode === code))
+    .filter((item): item is EquipmentItem => Boolean(item));
+
+  /**
+   * Continuous scanning: the popup stays open (the callback returns false) so a
+   * crew can walk the shelf in one pass. Eight separate scan-tap-confirm cycles
+   * is the reason people abandon systems like this.
+   */
+  const startScanning = () => {
+    void scanQrCodes((raw) => {
+      const code = extractAssetCode(raw);
+      if (!code) return false;
+      const item = items.find((candidate) => candidate.assetCode === code);
+      // Silently ignore anything already out or unknown — stopping the scanner to
+      // explain would break the rhythm of walking down a shelf.
+      if (!item || takenItemIds.has(item.id) || item.status !== 'active') return false;
+      setBasket((previous) => (previous.includes(code) ? previous : [...previous, code]));
+      return false;
+    });
+  };
 
   return (
     <Shell>
       <div className="space-y-6">
         <div>
-          <h1 className="text-lg font-semibold text-zinc-900 dark:text-white">Enter asset code</h1>
-          <p className="text-sm text-zinc-500 mt-1">The code printed under the QR on the sticker, e.g. CAM-012.</p>
+          <h1 className="text-lg font-semibold text-zinc-900 dark:text-white">Take or return gear</h1>
+          <p className="text-sm text-zinc-500 mt-1">Scan a sticker, or type the code printed under the QR.</p>
         </div>
+
+        {scannerAvailable && (
+          <Button onClick={startScanning} className="w-full py-4 text-base">
+            <ScanLine size={18} className="mr-2" />
+            Scan stickers
+          </Button>
+        )}
+
+        {basketItems.length > 0 && (
+          <div className="rounded-xl border border-zinc-200 dark:border-zinc-800 p-3 space-y-2">
+            <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">
+              Scanned ({basketItems.length})
+            </p>
+            <div className="space-y-1">
+              {basketItems.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="min-w-0 truncate">
+                    <span className="font-mono text-xs text-zinc-500 mr-2">{item.assetCode}</span>
+                    {item.name}
+                  </span>
+                  <button
+                    onClick={() => setBasket((previous) => previous.filter((code) => code !== item.assetCode))}
+                    aria-label={`Remove ${item.assetCode}`}
+                    className="shrink-0 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                  >
+                    <X size={14} />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <Button
+              className="w-full py-3"
+              disabled={busy}
+              onClick={async () => {
+                setBusy(true);
+                const ok = await onTakeAll(basketItems.map((item) => item.id));
+                setBusy(false);
+                if (ok) setBasket([]);
+              }}
+            >
+              Take all {basketItems.length}
+            </Button>
+            <p className="text-[11px] text-zinc-400 text-center">Due back today 18:00 — change it per unit after.</p>
+          </div>
+        )}
 
         <form
           onSubmit={(e) => {
@@ -180,7 +294,7 @@ const CodeEntry: React.FC<{
             className="text-center font-mono text-lg py-3"
             aria-label="Asset code"
           />
-          <Button type="submit" disabled={!parsed} className="w-full py-3">
+          <Button type="submit" variant="ghost" disabled={!parsed} className="w-full py-3">
             Open unit
           </Button>
         </form>

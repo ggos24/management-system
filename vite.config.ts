@@ -39,7 +39,13 @@ export default defineConfig({
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
         navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api\//],
+        navigateFallbackDenylist: [
+          /^\/api\//,
+          // The Mini App must never boot from a stale precached shell: with
+          // skipWaiting the page still renders, just with old behaviour and no
+          // error. It needs the network anyway, so always fetch it fresh.
+          /^\/equipment\//,
+        ],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
         skipWaiting: true,

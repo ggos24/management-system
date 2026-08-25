@@ -4,6 +4,47 @@ import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 import { useUiStore } from '../stores/uiStore';
 import { skewSecondsFromToken } from '../lib/clockSkew';
+import { initTelegramChrome, isTelegramWebview, readInitData } from '../lib/telegram';
+
+/**
+ * Inside a Telegram Mini App there is no stored session and no password flow to
+ * fall back on — Telegram hands us a freshly signed initData on every open, and
+ * equipment-auth trades it for the user's own Supabase session.
+ *
+ * This has to run BEFORE the app concludes it is logged out, otherwise AuthGuard
+ * redirects to /login and the Mini App dead-ends on a form its user cannot fill.
+ *
+ * The exchange happens once, at open. initData is not refreshed while the app
+ * stays open, so a crew scanning for twenty minutes is holding a stale payload
+ * by design — the minted session then lives on the normal refresh cycle, and a
+ * re-exchange only ever happens on the next open. Never wire this to a 401.
+ */
+async function exchangeTelegramSession(): Promise<void> {
+  const initData = readInitData();
+  if (!initData) return;
+
+  void initTelegramChrome();
+
+  try {
+    const { data, error } = await supabase.functions.invoke('equipment-auth', { body: { initData } });
+    if (error) {
+      console.error('equipment-auth invoke failed', error);
+      return;
+    }
+    if (data?.status === 'ok' && data.session?.access_token) {
+      await supabase.auth.setSession({
+        access_token: data.session.access_token,
+        refresh_token: data.session.refresh_token,
+      });
+      return;
+    }
+    if (data?.status === 'not_linked' || data?.status === 'no_access') {
+      useAuthStore.getState().setTelegramGate(data.status);
+    }
+  } catch (error) {
+    console.error('equipment-auth exchange failed', error);
+  }
+}
 
 export function useAuth() {
   const session = useAuthStore((s) => s.session);
@@ -34,7 +75,17 @@ export function useAuth() {
       }
     };
 
-    supabase.auth.getSession().then(({ data: { session: current }, error }) => {
+    const boot = async () => {
+      if (isTelegramWebview()) {
+        const { data } = await supabase.auth.getSession();
+        // A session already in webview storage is reused; only a cold open pays
+        // for the exchange.
+        if (!data.session) await exchangeTelegramSession();
+      }
+      return supabase.auth.getSession();
+    };
+
+    boot().then(({ data: { session: current }, error }) => {
       if (error) {
         // Corrupted or invalid stored session — clear local state, force fresh login.
         const state = useAuthStore.getState();

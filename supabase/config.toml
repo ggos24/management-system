@@ -364,6 +364,19 @@ deno_version = 2
 # [edge_runtime.secrets]
 # secret_key = "env(SECRET_VALUE)"
 
+# Per-function overrides. Without these, `supabase functions deploy` with no
+# arguments deploys everything at the default verify_jwt = true — which would
+# silently kill the Telegram webhook, since Telegram sends no JWT. Both of these
+# authenticate their callers themselves.
+[functions.telegram-webhook]
+# Verified instead by the X-Telegram-Bot-Api-Secret-Token header.
+verify_jwt = false
+
+[functions.equipment-auth]
+# The caller has no Supabase JWT yet — obtaining one is what it does. The
+# Telegram initData HMAC is the credential.
+verify_jwt = false
+
 [analytics]
 enabled = true
 port = 54327

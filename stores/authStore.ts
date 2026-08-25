@@ -19,18 +19,27 @@ export interface AuthSessionSnapshot {
   accessScope: Member['accessScope'] | null;
 }
 
+/**
+ * Why a Telegram user can be turned away: the Mini App identifies a Telegram
+ * account, and mapping it to a profile needs a telegram_links row. There is no
+ * password path to offer them, so these states get their own screen.
+ */
+export type TelegramGateState = 'not_linked' | 'no_access';
+
 interface AuthState {
   session: Session | null;
   currentUser: Member | null;
   isLoading: boolean;
   profileError: string | null;
   needsPasswordSetup: boolean;
+  telegramGate: TelegramGateState | null;
 
   setSession: (session: Session | null) => void;
   setCurrentUser: (user: Member | null) => void;
   setIsLoading: (loading: boolean) => void;
   setProfileError: (error: string | null) => void;
   setNeedsPasswordSetup: (needs: boolean) => void;
+  setTelegramGate: (gate: TelegramGateState | null) => void;
   initData: (authUserId: string) => Promise<void>;
   reloadData: () => Promise<void>;
   clearSessionState: () => void;
@@ -48,12 +57,14 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const type = hashParams.get('type') || queryParams.get('type');
     return type === 'invite' || type === 'recovery';
   })(),
+  telegramGate: null,
 
   setSession: (session) => set({ session }),
   setCurrentUser: (user) => set({ currentUser: user }),
   setIsLoading: (loading) => set({ isLoading: loading }),
   setProfileError: (error) => set({ profileError: error }),
   setNeedsPasswordSetup: (needs) => set({ needsPasswordSetup: needs }),
+  setTelegramGate: (telegramGate) => set({ telegramGate }),
 
   initData: (authUserId: string) => {
     if (initPromise && initUserId === authUserId) return initPromise;
