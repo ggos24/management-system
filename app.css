@@ -392,3 +392,29 @@ body {
 .rte-content [data-checklist] [data-checklist][data-checked]::before {
   content: none;
 }
+
+/* Label printing: the browser prints the whole app shell otherwise. Hide
+   everything, then bring back just the sheet. Labels must not straddle a page
+   break — half a QR code is unscannable. */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  .equipment-label-sheet,
+  .equipment-label-sheet * {
+    visibility: visible;
+  }
+  .equipment-label-sheet {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    gap: 4mm;
+  }
+  .equipment-label {
+    break-inside: avoid;
+    page-break-inside: avoid;
+    border-color: #d4d4d8 !important;
+    background: #fff !important;
+  }
+}

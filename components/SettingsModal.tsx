@@ -38,6 +38,7 @@ import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { isEditorOrAbove, isAdmin } from '../constants';
 import { noAutofillProps } from '../lib/formAutofill';
+import { TELEGRAM_BOT_USERNAME } from '../lib/equipment';
 import type { AccessScope, LogEntry, Member, NotificationCategory, NotificationChannel, UserRole } from '../types';
 
 type BadgeColor = 'zinc' | 'emerald' | 'red' | 'blue' | 'amber' | 'purple';
@@ -587,7 +588,7 @@ export const SettingsModal: React.FC = () => {
               ) : telegramCode ? (
                 <div className="space-y-3 pt-1">
                   <a
-                    href={`https://t.me/managment_system_bot?start=${telegramCode}`}
+                    href={`https://t.me/${TELEGRAM_BOT_USERNAME}?start=${telegramCode}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="w-full py-2 bg-[#0088cc] hover:bg-[#0077b5] text-white text-sm font-medium rounded transition-colors flex items-center justify-center gap-2"
@@ -833,7 +834,7 @@ export const SettingsModal: React.FC = () => {
                               </button>
                               {issuedCodes[m.id] && (
                                 <a
-                                  href={`https://t.me/managment_system_bot?start=${issuedCodes[m.id]}`}
+                                  href={`https://t.me/${TELEGRAM_BOT_USERNAME}?start=${issuedCodes[m.id]}`}
                                   target="_blank"
                                   rel="noopener noreferrer"
                                   className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"

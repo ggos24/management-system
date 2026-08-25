@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Package, Plus, AlertTriangle, Wrench, ArrowRightLeft, Undo2, Printer } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
+const EquipmentLabels = React.lazy(() => import('./EquipmentLabels').then((m) => ({ default: m.EquipmentLabels })));
 import { CustomSelect } from './CustomSelect';
 import { Badge, Button, Input, FormField, IconButton } from './ui';
 import { useDataStore } from '../stores/dataStore';
@@ -67,6 +68,7 @@ const Equipment: React.FC = () => {
   const [checkoutFor, setCheckoutFor] = useState<string[] | null>(null);
   const [checkinFor, setCheckinFor] = useState<EquipmentCheckout | null>(null);
   const [transferFor, setTransferFor] = useState<EquipmentCheckout | null>(null);
+  const [printing, setPrinting] = useState<EquipmentItem[] | null>(null);
 
   const detailItemId = searchParams.get('item');
 
@@ -180,14 +182,10 @@ const Equipment: React.FC = () => {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => {
-                      void markEquipmentLabelsPrinted(selectedIds);
-                      setSelectedIds([]);
-                    }}
-                    title="Confirm the labels came out of the printer; this freezes their asset codes"
+                    onClick={() => setPrinting(equipmentItems.filter((item) => selectedIds.includes(item.id)))}
                   >
                     <Printer size={14} className="mr-1.5" />
-                    Mark printed
+                    Labels ({selectedIds.length})
                   </Button>
                 )}
                 <Button size="sm" onClick={() => setEditing({ category: 'camera', status: 'active' })}>
@@ -391,6 +389,19 @@ const Equipment: React.FC = () => {
             if (ok) setCheckinFor(null);
           }}
         />
+      )}
+
+      {printing && (
+        <React.Suspense fallback={null}>
+          <EquipmentLabels
+            items={printing}
+            onClose={() => setPrinting(null)}
+            onMarkPrinted={async (itemIds) => {
+              await markEquipmentLabelsPrinted(itemIds);
+              setSelectedIds([]);
+            }}
+          />
+        </React.Suspense>
       )}
 
       {transferFor && (

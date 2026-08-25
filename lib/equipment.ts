@@ -65,3 +65,15 @@ export function extractAssetCode(scanned: string): string | null {
   const candidate = normaliseAssetCode(fromUrl ? decodeURIComponent(fromUrl[1]) : text);
   return ASSET_CODE_RE.test(candidate) ? candidate : null;
 }
+
+/** The bot that hosts the Main Mini App the stickers point at. */
+export const TELEGRAM_BOT_USERNAME = 'managment_system_bot';
+
+/**
+ * What a sticker's QR encodes. The Main Mini App takes ?startapp= directly on
+ * the bot username — no short-name path segment — which keeps the payload short
+ * and the QR sparse enough to scan off a small, scuffed label.
+ */
+export function buildStickerUrl(assetCode: string): string {
+  return `https://t.me/${TELEGRAM_BOT_USERNAME}?startapp=${encodeURIComponent(assetCode)}`;
+}
