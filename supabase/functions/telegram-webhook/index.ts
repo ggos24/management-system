@@ -2,12 +2,30 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
 const TELEGRAM_API = 'https://api.telegram.org/bot';
 
-async function sendTelegramMessage(botToken: string, chatId: number, text: string) {
+async function sendTelegramMessage(botToken: string, chatId: number, text: string, replyMarkup?: unknown) {
   await fetch(`${TELEGRAM_API}${botToken}/sendMessage`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ chat_id: chatId, text, parse_mode: 'HTML' }),
+    body: JSON.stringify({
+      chat_id: chatId,
+      text,
+      parse_mode: 'HTML',
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    }),
   });
+}
+
+/**
+ * A one-tap launcher for the equipment Mini App.
+ *
+ * Without this the only route in is the bot's profile page, which is three
+ * taps and not somewhere anyone thinks to look while standing at a shelf.
+ * web_app buttons open the Mini App in place, inside the chat.
+ */
+function equipmentLauncher(appOrigin: string) {
+  return {
+    inline_keyboard: [[{ text: '📦 Open equipment', web_app: { url: `${appOrigin}/equipment/scan` } }]],
+  };
 }
 
 Deno.serve(async (req) => {
@@ -43,6 +61,32 @@ Deno.serve(async (req) => {
 
     const chatId = message.chat.id;
     const text = message.text.trim();
+    const appOrigin = Deno.env.get('PUBLIC_APP_ORIGIN') ?? 'https://unities.pro';
+
+    // Launch shortcuts. Only useful once linked — an unlinked chat opening the
+    // Mini App would just meet the "not linked" wall, so say so here instead.
+    if (text === '/gear' || text === '/equipment') {
+      const { data: linked } = await adminClient
+        .from('telegram_links')
+        .select('id')
+        .eq('chat_id', chatId)
+        .maybeSingle();
+      if (!linked) {
+        await sendTelegramMessage(
+          botToken,
+          chatId,
+          '🔗 This chat is not linked to a UNITIES profile yet. Ask an admin for a link code, then send <code>/start YOUR_CODE</code>.',
+        );
+        return new Response('OK', { status: 200 });
+      }
+      await sendTelegramMessage(
+        botToken,
+        chatId,
+        '📦 <b>Equipment</b>\n\nScan a sticker, take or return gear.',
+        equipmentLauncher(appOrigin),
+      );
+      return new Response('OK', { status: 200 });
+    }
 
     // Handle /start CODE
     if (text.startsWith('/start ')) {
@@ -95,7 +139,8 @@ Deno.serve(async (req) => {
       await sendTelegramMessage(
         botToken,
         chatId,
-        '✅ <b>Linked!</b> You will now receive notifications here.\n\nUse /unlink to disconnect.',
+        '✅ <b>Linked!</b> You will now receive notifications here.\n\nUse /gear to open equipment, /unlink to disconnect.',
+        equipmentLauncher(appOrigin),
       );
       return new Response('OK', { status: 200 });
     }
@@ -120,10 +165,25 @@ Deno.serve(async (req) => {
 
     // Handle /start without code
     if (text === '/start') {
+      const { data: linked } = await adminClient
+        .from('telegram_links')
+        .select('id')
+        .eq('chat_id', chatId)
+        .maybeSingle();
+      if (linked) {
+        // Already linked: the useful thing is a way in, not setup instructions.
+        await sendTelegramMessage(
+          botToken,
+          chatId,
+          '👋 <b>You are linked.</b>\n\nUse /gear any time to open equipment.',
+          equipmentLauncher(appOrigin),
+        );
+        return new Response('OK', { status: 200 });
+      }
       await sendTelegramMessage(
         botToken,
         chatId,
-        '👋 <b>Welcome!</b>\n\nTo link your account, go to Settings → Notifications in the app and click "Generate Code". Then send:\n\n<code>/start YOUR_CODE</code>',
+        '👋 <b>Welcome!</b>\n\nTo link your account, ask an admin for a link code (or generate one in Settings → Notifications), then send:\n\n<code>/start YOUR_CODE</code>',
       );
       return new Response('OK', { status: 200 });
     }
@@ -132,7 +192,7 @@ Deno.serve(async (req) => {
     await sendTelegramMessage(
       botToken,
       chatId,
-      'Available commands:\n/start CODE — Link your account\n/unlink — Disconnect notifications',
+      'Available commands:\n/gear — Open equipment\n/start CODE — Link your account\n/unlink — Disconnect notifications',
     );
     return new Response('OK', { status: 200 });
   } catch (err) {
