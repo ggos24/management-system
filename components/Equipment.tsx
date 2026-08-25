@@ -13,6 +13,7 @@ import {
   ClipboardCheck,
   Download,
   Copy,
+  Search,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Avatar } from './Avatar';
@@ -22,7 +23,6 @@ import { CustomSelect } from './CustomSelect';
 import { Badge, Button, Input, FormField, IconButton } from './ui';
 import { useDataStore } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
-import { useUiStore } from '../stores/uiStore';
 import { isAdmin } from '../constants';
 import { formatDateEU } from '../lib/utils';
 import { useNow } from '../hooks/useNow';
@@ -50,12 +50,11 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'available', label: 'Available' },
   { key: 'repair', label: 'Needs repair' },
   { key: 'stale', label: 'Not verified' },
-  { key: 'inactive', label: 'Maintenance & retired' },
+  { key: 'inactive', label: 'Out of circulation' },
 ];
 
 const Equipment: React.FC = () => {
   const currentUser = useAuthStore((s) => s.currentUser)!;
-  const searchQuery = useUiStore((s) => s.searchQuery);
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
 
@@ -90,6 +89,11 @@ const Equipment: React.FC = () => {
   const admin = isAdmin(currentUser.role);
   const now = useNow();
   const [filter, setFilter] = useState<FilterKey>('all');
+  // Local, not the header's global search: that box only renders on task views,
+  // so a query typed there would silently filter this page with nothing on
+  // screen to explain why or clear it.
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState<'all' | EquipmentCategory>('all');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editing, setEditing] = useState<Partial<EquipmentItem> | null>(null);
   const [checkoutFor, setCheckoutFor] = useState<string[] | null>(null);
@@ -140,11 +144,12 @@ const Equipment: React.FC = () => {
   );
 
   const rows = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
+    const query = search.trim().toLowerCase();
     return allRows.filter(({ item, state }) => {
       if (query && !`${item.assetCode} ${item.name} ${item.serialNumber}`.toLowerCase().includes(query)) {
         return false;
       }
+      if (category !== 'all' && item.category !== category) return false;
       switch (filter) {
         case 'out':
           return state === 'out' || state === 'overdue';
@@ -165,10 +170,17 @@ const Equipment: React.FC = () => {
           return true;
       }
     });
-  }, [allRows, repairFlagged, lastVerified, filter, searchQuery, now]);
+  }, [allRows, repairFlagged, lastVerified, filter, search, category, now]);
 
   // Header badge counts every overdue unit, not just the ones passing the filter.
   const overdueCount = useMemo(() => allRows.filter((row) => row.state === 'overdue').length, [allRows]);
+
+  const filtersActive = filter !== 'all' || category !== 'all' || search.trim().length > 0;
+  const resetFilters = () => {
+    setFilter('all');
+    setCategory('all');
+    setSearch('');
+  };
 
   const detailItem = detailItemId ? equipmentItems.find((item) => item.id === detailItemId) : undefined;
 
@@ -250,20 +262,53 @@ const Equipment: React.FC = () => {
           </div>
         </div>
 
-        <div className="flex items-center gap-1 mt-3 overflow-x-auto">
-          {FILTERS.map((entry) => (
-            <button
-              key={entry.key}
-              onClick={() => setFilter(entry.key)}
-              className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
-                filter === entry.key
-                  ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
-                  : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white'
-              }`}
-            >
-              {entry.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2 mt-3">
+          <div className="relative w-56">
+            <Search
+              size={14}
+              className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none"
+            />
+            <Input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Code, name or serial…"
+              aria-label="Search equipment"
+              className="pl-8 py-1.5 text-xs"
+            />
+          </div>
+
+          <div className="w-40">
+            <CustomSelect
+              options={[{ value: 'all', label: 'All categories' }, ...CATEGORIES.map((c) => ({ value: c, label: c }))]}
+              value={category}
+              onChange={(value) => setCategory(value as 'all' | EquipmentCategory)}
+              compact
+            />
+          </div>
+
+          <div className="flex items-center gap-1 overflow-x-auto">
+            {FILTERS.map((entry) => (
+              <button
+                key={entry.key}
+                onClick={() => setFilter(entry.key)}
+                className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap transition-colors ${
+                  filter === entry.key
+                    ? 'bg-zinc-200/70 dark:bg-zinc-800 text-zinc-900 dark:text-white'
+                    : 'text-zinc-500 hover:text-black dark:text-zinc-400 dark:hover:text-white'
+                }`}
+              >
+                {entry.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Filters are easy to forget you left on; the count says what you are
+              actually looking at. */}
+          {filtersActive && (
+            <span className="ml-auto text-xs text-zinc-400 whitespace-nowrap">
+              {rows.length} of {allRows.length}
+            </span>
+          )}
         </div>
       </div>
 
@@ -272,8 +317,13 @@ const Equipment: React.FC = () => {
           <div className="h-full flex flex-col items-center justify-center text-center px-6">
             <Package size={32} className="text-zinc-300 dark:text-zinc-700 mb-3" />
             <p className="text-sm text-zinc-500">
-              {equipmentItems.length === 0 ? 'No equipment registered yet.' : 'Nothing matches this filter.'}
+              {equipmentItems.length === 0 ? 'No equipment registered yet.' : 'Nothing matches these filters.'}
             </p>
+            {filtersActive && (
+              <Button variant="ghost" size="sm" className="mt-3" onClick={resetFilters}>
+                Clear filters
+              </Button>
+            )}
           </div>
         ) : (
           <table className="w-full text-sm">
