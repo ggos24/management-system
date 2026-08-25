@@ -29,15 +29,55 @@ export function toLocalInputValue(date: Date): string {
   return new Date(date.getTime() - offset).toISOString().slice(0, 16);
 }
 
+/** End of the working day, N days out. */
+export function workdayEnd(daysAhead: number, hour = 18): Date {
+  const end = new Date();
+  end.setDate(end.getDate() + daysAhead);
+  end.setHours(hour, 0, 0, 0);
+  return end;
+}
+
+/** After the working day is over, "today 18:00" is no longer an offer. */
+export function isPastWorkdayEnd(hour = 18): boolean {
+  return workdayEnd(0, hour).getTime() <= Date.now();
+}
+
 /**
  * Required-with-a-default: one tap to accept, two to change, so the field feels
  * optional while overdue detection always has something to work with.
  */
 export function defaultReturnAt(): string {
-  const end = new Date();
-  end.setHours(18, 0, 0, 0);
-  if (end.getTime() <= Date.now()) end.setDate(end.getDate() + 1);
-  return toLocalInputValue(end);
+  return toLocalInputValue(workdayEnd(isPastWorkdayEnd() ? 1 : 0));
+}
+
+export type DuePreset = 'today' | 'tomorrow' | 'custom' | 'longterm';
+
+export interface TakeForm {
+  preset: DuePreset;
+  customAt: string;
+  purpose: string;
+}
+
+export function initialTakeForm(): TakeForm {
+  return {
+    preset: isPastWorkdayEnd() ? 'tomorrow' : 'today',
+    customAt: defaultReturnAt(),
+    purpose: '',
+  };
+}
+
+/** Resolve the form to what the checkout actually stores. */
+export function resolveExpectedReturn(form: TakeForm): string | null {
+  switch (form.preset) {
+    case 'longterm':
+      return null;
+    case 'today':
+      return workdayEnd(0).toISOString();
+    case 'tomorrow':
+      return workdayEnd(1).toISOString();
+    default:
+      return form.customAt ? new Date(form.customAt).toISOString() : null;
+  }
 }
 
 export function formatWhen(iso: string | null): string {

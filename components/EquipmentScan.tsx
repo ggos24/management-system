@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { Package, ArrowLeft, Wrench, ChevronDown, ChevronUp, ScanLine, X } from 'lucide-react';
+import { Package, ArrowLeft, Wrench, ScanLine, X } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { CustomSelect } from './CustomSelect';
 import { toast } from 'sonner';
@@ -11,11 +11,15 @@ import { useAuthStore } from '../stores/authStore';
 import { useNow } from '../hooks/useNow';
 import {
   EQUIPMENT_STATE_BADGE,
-  defaultReturnAt,
   deriveUnitState,
   extractAssetCode,
   formatWhen,
+  initialTakeForm,
+  isPastWorkdayEnd,
   normaliseAssetCode,
+  resolveExpectedReturn,
+  type DuePreset,
+  type TakeForm,
 } from '../lib/equipment';
 import { hapticFeedback, isTelegramWebview, readStartParam, scanQrCodes, scannerSupport } from '../lib/telegram';
 import type { EquipmentCheckout, EquipmentItem } from '../types';
@@ -92,9 +96,7 @@ const EquipmentScan: React.FC = () => {
         checkouts={equipmentCheckouts}
         scanner={scanner}
         onOpen={(next) => navigate(`/equipment/${next}`)}
-        onTakeAll={(itemIds) =>
-          checkoutEquipment({ itemIds, expectedReturnAt: new Date(defaultReturnAt()).toISOString() })
-        }
+        onTakeAll={(itemIds, input) => checkoutEquipment({ itemIds, ...input })}
       />
     );
   }
@@ -208,16 +210,83 @@ const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
 
 // --- Manual entry + a shortcut to return what you already hold ---
 
+/**
+ * Due date and note, in the shape a phone wants.
+ *
+ * The date is required — overdue detection has nothing to work with otherwise —
+ * so it is preselected and visible rather than hidden behind a disclosure.
+ * Presets beat a wheel picker for the two cases that cover almost everything
+ * (back tonight, back tomorrow); "Pick" is there for the rest. Once the working
+ * day is over, "Today" stops being offered instead of silently meaning
+ * yesterday.
+ */
+const TakeControls: React.FC<{ form: TakeForm; onChange: (next: TakeForm) => void }> = ({ form, onChange }) => {
+  const presets: { key: DuePreset; label: string }[] = [
+    ...(isPastWorkdayEnd() ? [] : [{ key: 'today' as const, label: 'Today 18:00' }]),
+    { key: 'tomorrow', label: 'Tomorrow 18:00' },
+    { key: 'custom', label: 'Pick…' },
+    { key: 'longterm', label: 'Long-term' },
+  ];
+
+  return (
+    <div className="space-y-2">
+      <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500">Due back</p>
+      <div className="flex flex-wrap gap-1.5">
+        {presets.map((preset) => {
+          const active = form.preset === preset.key;
+          return (
+            <button
+              key={preset.key}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onChange({ ...form, preset: preset.key })}
+              className={`px-3 py-2 rounded-lg text-xs font-medium transition-colors ${
+                active
+                  ? 'bg-zinc-900 text-white dark:bg-white dark:text-black'
+                  : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'
+              }`}
+            >
+              {preset.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {form.preset === 'custom' && (
+        <Input
+          type="datetime-local"
+          value={form.customAt}
+          onChange={(e) => onChange({ ...form, customAt: e.target.value })}
+          aria-label="Due back"
+        />
+      )}
+      {form.preset === 'longterm' && (
+        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+          No due date — this unit will never be flagged overdue.
+        </p>
+      )}
+
+      <Input
+        value={form.purpose}
+        onChange={(e) => onChange({ ...form, purpose: e.target.value })}
+        placeholder="Shoot or note (optional)"
+        aria-label="Shoot or note"
+      />
+    </div>
+  );
+};
+
 const CodeEntry: React.FC<{
   myOpen: EquipmentCheckout[];
   items: EquipmentItem[];
   checkouts: EquipmentCheckout[];
   scanner: { available: boolean; reason: string; platform: string };
   onOpen: (code: string) => void;
-  onTakeAll: (itemIds: string[]) => Promise<boolean>;
+  onTakeAll: (itemIds: string[], input: { expectedReturnAt: string | null; purpose?: string }) => Promise<boolean>;
 }> = ({ myOpen, items, checkouts, scanner, onOpen, onTakeAll }) => {
   const [value, setValue] = useState('');
   const [basket, setBasket] = useState<string[]>([]);
+  const [form, setForm] = useState<TakeForm>(initialTakeForm);
   const [busy, setBusy] = useState(false);
   // Accepts a bare code or a pasted t.me deep link.
   const parsed = extractAssetCode(value);
@@ -310,19 +379,28 @@ const CodeEntry: React.FC<{
                 </div>
               ))}
             </div>
+            <TakeControls form={form} onChange={setForm} />
             <Button
               className="w-full py-3"
-              disabled={busy}
+              disabled={busy || (form.preset === 'custom' && !form.customAt)}
               onClick={async () => {
                 setBusy(true);
-                const ok = await onTakeAll(basketItems.map((item) => item.id));
+                const ok = await onTakeAll(
+                  basketItems.map((item) => item.id),
+                  {
+                    expectedReturnAt: resolveExpectedReturn(form),
+                    purpose: form.purpose.trim() || undefined,
+                  },
+                );
                 setBusy(false);
-                if (ok) setBasket([]);
+                if (ok) {
+                  setBasket([]);
+                  setForm(initialTakeForm());
+                }
               }}
             >
               Take all {basketItems.length}
             </Button>
-            <p className="text-[11px] text-zinc-400 text-center">Due back today 18:00 — change it per unit after.</p>
           </div>
         )}
 
@@ -384,58 +462,26 @@ const CodeEntry: React.FC<{
 const TakePanel: React.FC<{
   onTake: (input: { purpose?: string; expectedReturnAt: string | null }) => Promise<boolean>;
 }> = ({ onTake }) => {
-  const [expanded, setExpanded] = useState(false);
-  const [returnAt, setReturnAt] = useState(defaultReturnAt);
-  const [purpose, setPurpose] = useState('');
-  const [longTerm, setLongTerm] = useState(false);
+  const [form, setForm] = useState<TakeForm>(initialTakeForm);
   const [busy, setBusy] = useState(false);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
+      <TakeControls form={form} onChange={setForm} />
       <Button
         className="w-full py-4 text-base"
-        disabled={busy}
+        disabled={busy || (form.preset === 'custom' && !form.customAt)}
         onClick={async () => {
           setBusy(true);
           await onTake({
-            purpose: purpose.trim() || undefined,
-            expectedReturnAt: longTerm ? null : new Date(returnAt).toISOString(),
+            purpose: form.purpose.trim() || undefined,
+            expectedReturnAt: resolveExpectedReturn(form),
           });
           setBusy(false);
         }}
       >
         Take it
       </Button>
-
-      <button
-        onClick={() => setExpanded((previous) => !previous)}
-        className="w-full flex items-center justify-center gap-1 text-xs text-zinc-500 py-1"
-      >
-        {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
-        {expanded ? 'Hide details' : 'Due back today 18:00 · change'}
-      </button>
-
-      {expanded && (
-        <div className="space-y-3 rounded-xl border border-zinc-200 dark:border-zinc-800 p-3">
-          <Input
-            type="datetime-local"
-            value={returnAt}
-            disabled={longTerm}
-            onChange={(e) => setReturnAt(e.target.value)}
-            aria-label="Due back"
-          />
-          <label className="flex items-center gap-2 text-xs text-zinc-500">
-            <input type="checkbox" checked={longTerm} onChange={(e) => setLongTerm(e.target.checked)} />
-            Long-term assignment (never overdue)
-          </label>
-          <Input
-            value={purpose}
-            onChange={(e) => setPurpose(e.target.value)}
-            placeholder="Shoot or assignment (optional)"
-            aria-label="Purpose"
-          />
-        </div>
-      )}
     </div>
   );
 };
