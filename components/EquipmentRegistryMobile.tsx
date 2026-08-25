@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { ChevronRight, ClipboardCheck, Package } from 'lucide-react';
@@ -7,6 +7,7 @@ import { Badge, Button, Input } from './ui';
 import { useDataStore } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
 import { useNow } from '../hooks/useNow';
+import { hapticFeedback } from '../lib/telegram';
 import { EQUIPMENT_STATE_BADGE, deriveUnitState, formatWhen } from '../lib/equipment';
 import type { EquipmentCheckout, EquipmentItem } from '../types';
 
@@ -68,6 +69,18 @@ const EquipmentRegistryMobile: React.FC = () => {
   const now = useNow();
   const [query, setQuery] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
+  // Return sits a thumb's width from a tappable row, so it arms first and
+  // commits second. Cheaper than a modal, and the label change is its own
+  // explanation.
+  const [armedId, setArmedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!armedId) return;
+    // Disarm on its own: a stray tap should not leave a live "Confirm" waiting
+    // for the next stray tap.
+    const timer = window.setTimeout(() => setArmedId(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [armedId]);
 
   const { equipmentItems, equipmentCheckouts, members, checkinEquipment } = useDataStore(
     useShallow((s) => ({
@@ -137,17 +150,27 @@ const EquipmentRegistryMobile: React.FC = () => {
                 trailing={
                   <Button
                     size="sm"
+                    variant={armedId === item.id ? 'primary' : 'ghost'}
                     disabled={busyId === item.id}
+                    aria-label={
+                      armedId === item.id ? `Confirm returning ${item.assetCode}` : `Return ${item.assetCode}`
+                    }
                     onClick={(e) => {
                       // The row itself opens the card (notes, repair flag,
                       // hand-over); this button is the no-questions fast path.
                       e.stopPropagation();
+                      if (armedId !== item.id) {
+                        void hapticFeedback('warning');
+                        setArmedId(item.id);
+                        return;
+                      }
+                      setArmedId(null);
                       setBusyId(item.id);
                       void checkinEquipment(open!.id, {}).finally(() => setBusyId(null));
                     }}
-                    className="shrink-0"
+                    className={`shrink-0 ${armedId === item.id ? '' : 'border border-zinc-200 dark:border-zinc-700 rounded-lg'}`}
                   >
-                    Return
+                    {armedId === item.id ? 'Confirm' : 'Return'}
                   </Button>
                 }
               />
