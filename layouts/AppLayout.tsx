@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Outlet, useParams, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useParams, useNavigate, useLocation, Navigate, NavLink } from 'react-router-dom';
 import { Toaster } from 'sonner';
 import { useShallow } from 'zustand/react/shallow';
 import Sidebar from '../components/Sidebar';
@@ -29,6 +29,7 @@ import { useUiStore } from '../stores/uiStore';
 import { Task } from '../types';
 import { teamSlug, findTeamByParam } from '../lib/utils';
 import { isAdmin } from '../constants';
+import { isTelegramWebview } from '../lib/telegram';
 
 const AppLayout: React.FC = () => {
   useTaskDeepLink();
@@ -157,6 +158,9 @@ const AppLayout: React.FC = () => {
     return counts;
   }, [currentUser, taskAccessContexts, taskTeamLinks, tasks, teamProperties, teamStatuses]);
 
+  // Detected once: Telegram stamps the fragment at open and never changes it.
+  const inTelegram = useMemo(() => isTelegramWebview(), []);
+
   const pendingAbsenceCount = useMemo(() => absences.filter((a) => a.status === 'pending').length, [absences]);
 
   // Open support tickets: admins see all active; everyone else sees their own active tickets.
@@ -208,6 +212,59 @@ const AppLayout: React.FC = () => {
     await useAuthStore.getState().logout();
     navigate('/login', { replace: true });
   };
+
+  // Inside Telegram the Mini App is the equipment tool, not the workspace. The
+  // sidebar and header offer navigation that makes no sense in a phone webview,
+  // and following it strands the user in an app with no way back to the scanner.
+  if (inTelegram) {
+    if (!location.pathname.startsWith('/equipment')) {
+      return <Navigate to="/equipment/scan" replace />;
+    }
+    return (
+      <ErrorBoundary>
+        <div
+          className={`flex flex-col h-dvh overflow-hidden bg-white dark:bg-black text-zinc-900 dark:text-zinc-100 safe-t ${isDarkMode ? 'dark' : ''}`}
+        >
+          <nav className="flex-shrink-0 flex border-b border-zinc-200 dark:border-zinc-800">
+            {[
+              { to: '/equipment/scan', label: 'Scan' },
+              { to: '/equipment', label: 'Registry' },
+            ].map((tab) => (
+              <NavLink
+                key={tab.to}
+                to={tab.to}
+                end={tab.to === '/equipment'}
+                className={({ isActive }) =>
+                  `flex-1 text-center py-3 text-sm font-medium transition-colors ${
+                    isActive
+                      ? 'text-zinc-900 dark:text-white border-b-2 border-zinc-900 dark:border-white'
+                      : 'text-zinc-500'
+                  }`
+                }
+              >
+                {tab.label}
+              </NavLink>
+            ))}
+          </nav>
+          <OfflineBanner />
+          <main className="flex-1 overflow-hidden relative">
+            <React.Suspense
+              fallback={
+                <div className="flex items-center justify-center h-full">
+                  <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-zinc-400" />
+                </div>
+              }
+            >
+              <div className="h-full">
+                <Outlet context={{ openTaskModal, currentView }} />
+              </div>
+            </React.Suspense>
+          </main>
+          <Toaster position="top-center" richColors />
+        </div>
+      </ErrorBoundary>
+    );
+  }
 
   return (
     <ErrorBoundary>

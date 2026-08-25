@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { Package, ArrowLeft, Wrench, ChevronDown, ChevronUp, ScanLine, X } from 'lucide-react';
 import { Avatar } from './Avatar';
@@ -16,7 +16,7 @@ import {
   formatWhen,
   normaliseAssetCode,
 } from '../lib/equipment';
-import { isScannerAvailable, readStartParam, scanQrCodes } from '../lib/telegram';
+import { isScannerAvailable, isTelegramWebview, readStartParam, scanQrCodes } from '../lib/telegram';
 import type { EquipmentCheckout, EquipmentItem } from '../types';
 
 /** Telegram's scanner is absent on Desktop, Web and pre-6.4 clients. */
@@ -166,16 +166,35 @@ const EquipmentScan: React.FC = () => {
 
 const Shell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const navigate = useNavigate();
+  const location = useLocation();
+  // The Mini App has tabs of its own; a second back control there just competes
+  // with them. In a browser, the useful escape from a unit card is another scan,
+  // not the registry.
+  const inTelegram = isTelegramWebview();
+  const onUnitCard = location.pathname !== '/equipment/scan';
+  const back = onUnitCard ? { to: '/equipment/scan', label: 'Scan another' } : { to: '/equipment', label: 'Registry' };
+
   return (
     <div className="h-full overflow-y-auto">
       <div className="max-w-md mx-auto px-4 py-5 safe-b">
-        <button
-          onClick={() => navigate('/equipment')}
-          className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white mb-4"
-        >
-          <ArrowLeft size={16} />
-          Registry
-        </button>
+        {!inTelegram && (
+          <button
+            onClick={() => navigate(back.to)}
+            className="flex items-center gap-1.5 text-sm text-zinc-500 hover:text-zinc-900 dark:hover:text-white mb-4"
+          >
+            <ArrowLeft size={16} />
+            {back.label}
+          </button>
+        )}
+        {inTelegram && onUnitCard && (
+          <button
+            onClick={() => navigate('/equipment/scan')}
+            className="flex items-center gap-1.5 text-sm text-zinc-500 mb-4"
+          >
+            <ArrowLeft size={16} />
+            Scan another
+          </button>
+        )}
         {children}
       </div>
     </div>

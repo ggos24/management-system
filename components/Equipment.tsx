@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { Package, Plus, AlertTriangle, Wrench, ArrowRightLeft, Undo2, Printer } from 'lucide-react';
+import { Package, Plus, AlertTriangle, Wrench, ArrowRightLeft, Undo2, Printer, ScanLine } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
 const EquipmentLabels = React.lazy(() => import('./EquipmentLabels').then((m) => ({ default: m.EquipmentLabels })));
@@ -33,6 +33,7 @@ const Equipment: React.FC = () => {
   const currentUser = useAuthStore((s) => s.currentUser)!;
   const searchQuery = useUiStore((s) => s.searchQuery);
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
 
   const {
     equipmentItems,
@@ -171,6 +172,12 @@ const Equipment: React.FC = () => {
             )}
           </h1>
           <div className="flex items-center gap-2">
+            {/* Always reachable: this is the way back to the field flow from the
+                registry, on a phone or at a desk. */}
+            <Button size="sm" variant="ghost" onClick={() => navigate('/equipment/scan')}>
+              <ScanLine size={14} className="mr-1.5" />
+              Scan
+            </Button>
             {selectableSelection.length > 0 && (
               <Button size="sm" variant="ghost" onClick={() => setCheckoutFor(selectableSelection)}>
                 Check out {selectableSelection.length}
