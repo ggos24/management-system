@@ -28,6 +28,7 @@ import {
   uploadAvatar,
   fetchTelegramLink,
   upsertTelegramLinkCode,
+  adminGenerateTelegramLinkCode,
   deleteTelegramLink,
   TelegramLink,
 } from '../lib/database';
@@ -290,6 +291,8 @@ export const SettingsModal: React.FC = () => {
   const [telegramLink, setTelegramLink] = useState<TelegramLink | null>(null);
   const [telegramLoading, setTelegramLoading] = useState(false);
   const [telegramCode, setTelegramCode] = useState<string | null>(null);
+  // Code an admin just issued for another member, keyed by profile id.
+  const [issuedCodes, setIssuedCodes] = useState<Record<string, string>>({});
 
   const loadTelegramLink = useCallback(async () => {
     if (!currentUser) return;
@@ -808,6 +811,35 @@ export const SettingsModal: React.FC = () => {
                                   dropdownMinWidth={110}
                                   className="w-auto"
                                 />
+                              )}
+                              {/* Most people never open Settings, so they can never
+                                  link Telegram themselves — and without a link the
+                                  Mini App cannot map them to a profile at all. */}
+                              <button
+                                type="button"
+                                aria-label={`Telegram link code for ${m.name}`}
+                                onClick={async () => {
+                                  try {
+                                    const code = await adminGenerateTelegramLinkCode(m.id);
+                                    setIssuedCodes((previous) => ({ ...previous, [m.id]: code }));
+                                  } catch {
+                                    toast.error('Could not issue a link code');
+                                  }
+                                }}
+                                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                              >
+                                <Send size={13} />
+                                {issuedCodes[m.id] ? issuedCodes[m.id] : 'Link code'}
+                              </button>
+                              {issuedCodes[m.id] && (
+                                <a
+                                  href={`https://t.me/managment_system_bot?start=${issuedCodes[m.id]}`}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                >
+                                  Send link
+                                </a>
                               )}
                               {/* Was a bare zinc-400 label that read as disabled text and
                                   gave a tap target under 20px tall on a phone. */}

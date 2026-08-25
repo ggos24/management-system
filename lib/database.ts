@@ -1374,6 +1374,22 @@ export async function upsertTelegramLinkCode(profileId: string, code: string): P
   return mapTelegramLink(data);
 }
 
+/**
+ * Issue a link code on someone else's behalf.
+ *
+ * telegram_links RLS is self-scoped, so this goes through a SECURITY DEFINER
+ * function that re-checks admin rights server-side. It also clears any existing
+ * chat_id, which is what makes it double as the re-link path when somebody
+ * changes Telegram accounts — the webhook refuses /start CODE while a chat is
+ * still attached.
+ */
+export async function adminGenerateTelegramLinkCode(profileId: string): Promise<string> {
+  const { data, error } = await supabase.rpc('admin_generate_telegram_link_code', { p_profile_id: profileId });
+  if (error) throw error;
+  if (typeof data !== 'string' || !data) throw new Error('No link code returned');
+  return data;
+}
+
 export async function deleteTelegramLink(profileId: string) {
   const { error } = await supabase.from('telegram_links').delete().eq('profile_id', profileId);
   return { error };
