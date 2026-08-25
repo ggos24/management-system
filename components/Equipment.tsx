@@ -11,7 +11,10 @@ import {
   Printer,
   ScanLine,
   ClipboardCheck,
+  Download,
+  Copy,
 } from 'lucide-react';
+import { toast } from 'sonner';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
 const EquipmentLabels = React.lazy(() => import('./EquipmentLabels').then((m) => ({ default: m.EquipmentLabels })));
@@ -23,7 +26,14 @@ import { useUiStore } from '../stores/uiStore';
 import { isAdmin } from '../constants';
 import { formatDateEU } from '../lib/utils';
 import { useNow } from '../hooks/useNow';
-import { EQUIPMENT_STATE_BADGE, defaultReturnAt, deriveUnitState, formatWhen, type UnitState } from '../lib/equipment';
+import {
+  EQUIPMENT_STATE_BADGE,
+  buildStickerUrl,
+  defaultReturnAt,
+  deriveUnitState,
+  formatWhen,
+  type UnitState,
+} from '../lib/equipment';
 import type { EquipmentCategory, EquipmentCheckout, EquipmentItem, EquipmentStatus, Member } from '../types';
 
 const CATEGORIES: EquipmentCategory[] = ['camera', 'lens', 'audio', 'tripod', 'lighting', 'laptop', 'drone', 'other'];
@@ -382,6 +392,7 @@ const Equipment: React.FC = () => {
           admin={admin}
           onClose={closeDetail}
           onEdit={() => setEditing(detailItem)}
+          onPrint={admin ? () => setPrinting([detailItem]) : undefined}
           loadHistory={loadEquipmentHistory}
         />
       )}
@@ -466,6 +477,124 @@ const Equipment: React.FC = () => {
 
 // --- Item detail + custody history ---
 
+/**
+ * Renders and hands out this unit's sticker artwork.
+ *
+ * The downloadable PNG is the composed label — QR plus the printed code and
+ * name — not the bare code matrix, because that is what actually goes on a
+ * sticker, into a runbook, or to whoever prints one replacement label.
+ */
+async function composeLabelPng(item: EquipmentItem): Promise<string> {
+  const QRCode = await import('qrcode');
+  const qrData = await QRCode.toDataURL(buildStickerUrl(item.assetCode), {
+    errorCorrectionLevel: 'Q',
+    margin: 1,
+    width: 1024,
+  });
+  const image = new Image();
+  await new Promise<void>((resolve, reject) => {
+    image.onload = () => resolve();
+    image.onerror = () => reject(new Error('QR render failed'));
+    image.src = qrData;
+  });
+
+  const size = 1024;
+  const pad = 48;
+  const textBlock = 230;
+  const canvas = document.createElement('canvas');
+  canvas.width = size + pad * 2;
+  canvas.height = size + pad + textBlock;
+  const ctx = canvas.getContext('2d')!;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, pad, pad, size, size);
+  ctx.fillStyle = '#000000';
+  ctx.textAlign = 'center';
+  ctx.font = 'bold 100px ui-monospace, SFMono-Regular, Menlo, monospace';
+  ctx.fillText(item.assetCode, canvas.width / 2, size + pad + 115);
+  ctx.font = '48px system-ui, -apple-system, sans-serif';
+  ctx.fillText(item.name.slice(0, 44), canvas.width / 2, size + pad + 190);
+  return canvas.toDataURL('image/png');
+}
+
+const QrBlock: React.FC<{ item: EquipmentItem; onPrint?: () => void }> = ({ item, onPrint }) => {
+  const [preview, setPreview] = useState<string | null>(null);
+  const stickerUrl = buildStickerUrl(item.assetCode);
+
+  React.useEffect(() => {
+    let cancelled = false;
+    import('qrcode')
+      .then((QRCode) => QRCode.toDataURL(stickerUrl, { errorCorrectionLevel: 'Q', margin: 1, width: 256 }))
+      .then((url) => {
+        if (!cancelled) setPreview(url);
+      })
+      .catch(() => {
+        if (!cancelled) setPreview(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [stickerUrl]);
+
+  return (
+    <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 flex items-center gap-4">
+      {/* QR modules must stay dark-on-light even in dark mode — scanners expect it. */}
+      <div className="w-24 h-24 shrink-0 rounded bg-white p-1 border border-zinc-100 dark:border-zinc-700">
+        {preview ? (
+          <img src={preview} alt={`QR for ${item.assetCode}`} className="w-full h-full" />
+        ) : (
+          <div className="w-full h-full animate-pulse bg-zinc-100 rounded" />
+        )}
+      </div>
+      <div className="min-w-0 flex-1 space-y-2">
+        <p className="text-xs text-zinc-500 truncate font-mono">{stickerUrl}</p>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            disabled={!preview}
+            onClick={async () => {
+              try {
+                const png = await composeLabelPng(item);
+                const link = document.createElement('a');
+                link.href = png;
+                link.download = `${item.assetCode}.png`;
+                link.click();
+              } catch {
+                toast.error('Could not build the label image');
+              }
+            }}
+          >
+            <Download size={14} className="mr-1.5" />
+            PNG
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={async () => {
+              try {
+                await navigator.clipboard.writeText(stickerUrl);
+                toast.success('Link copied');
+              } catch {
+                toast.error('Could not copy');
+              }
+            }}
+          >
+            <Copy size={14} className="mr-1.5" />
+            Copy link
+          </Button>
+          {onPrint && (
+            <Button size="sm" variant="ghost" onClick={onPrint}>
+              <Printer size={14} className="mr-1.5" />
+              Print label
+            </Button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 interface ItemDetailModalProps {
   item: EquipmentItem;
   open: EquipmentCheckout | null;
@@ -473,6 +602,7 @@ interface ItemDetailModalProps {
   admin: boolean;
   onClose: () => void;
   onEdit: () => void;
+  onPrint?: () => void;
   loadHistory: (itemId: string) => Promise<EquipmentCheckout[]>;
 }
 
@@ -483,6 +613,7 @@ const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
   admin,
   onClose,
   onEdit,
+  onPrint,
   loadHistory,
 }) => {
   const [history, setHistory] = useState<EquipmentCheckout[] | null>(null);
@@ -520,6 +651,8 @@ const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
           <Detail label="Labels" value={item.labelsPrintedAt ? formatDateEU(item.labelsPrintedAt) : 'Not printed'} />
           <Detail label="Last seen" value={lastVerifiedAt ? formatDateEU(lastVerifiedAt) : 'Never verified'} />
         </div>
+
+        <QrBlock item={item} onPrint={onPrint} />
 
         {item.notes && <p className="text-sm text-zinc-600 dark:text-zinc-400">{item.notes}</p>}
 
