@@ -26,30 +26,43 @@ declare global {
 
 const SDK_URL = 'https://telegram.org/js/telegram-web-app.js';
 
-const LAUNCH_KEYS = ['tgWebAppData', 'tgWebAppVersion', 'tgWebAppPlatform', 'tgWebAppStartParam'] as const;
 const LAUNCH_CACHE_KEY = 'tg-launch-params';
+// The official SDK's own fallback store. When the script loads after the hash
+// is gone, it reads this key — so feeding it is what makes the SDK initialise
+// with the REAL version and platform instead of its "6.0"/"unknown" defaults.
+// Without that, showScanQrPopup fails the SDK's internal version check and
+// throws on a perfectly current phone.
+const SDK_INIT_PARAMS_KEY = '__telegram__initParams';
+
+/** Every tgWebApp* field of a launch fragment, decoded. Exported for tests. */
+export function parseLaunchFragment(hash: string): Record<string, string> {
+  const params = new URLSearchParams(hash.replace(/^#/, ''));
+  const found: Record<string, string> = {};
+  for (const [key, value] of params.entries()) {
+    if (key.startsWith('tgWebApp')) found[key] = value;
+  }
+  return found;
+}
 
 /**
  * Telegram delivers the launch parameters — initData, platform, Bot API version
- * — in the URL fragment, and its SDK reads them when the script loads. The
+ * — in the URL fragment, and its SDK reads them when the script executes. The
  * script loads asynchronously, and by then the router may have replaced the URL
- * and taken the fragment with it. The SDK then silently falls back to version
- * "6.0" and platform "unknown", which reads as an ancient Telegram.
+ * and taken the fragment with it.
  *
- * So snapshot them at module load, before anything can navigate, and keep a copy
- * in sessionStorage for subsequent in-app navigations.
+ * So snapshot the fragment at module load, before anything can navigate, and
+ * hand the SDK its copy through the fallback key it already knows to check.
  */
 function captureLaunchParams(): Record<string, string> {
   if (typeof window === 'undefined') return {};
-  const fromHash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  const found: Record<string, string> = {};
-  for (const key of LAUNCH_KEYS) {
-    const value = fromHash.get(key);
-    if (value) found[key] = value;
-  }
+  const found = parseLaunchFragment(window.location.hash);
   if (Object.keys(found).length > 0) {
     try {
       window.sessionStorage.setItem(LAUNCH_CACHE_KEY, JSON.stringify(found));
+      const existingRaw = window.sessionStorage.getItem(SDK_INIT_PARAMS_KEY);
+      const existing = existingRaw ? JSON.parse(existingRaw) : {};
+      // Fresh launch wins over anything stale from a previous open.
+      window.sessionStorage.setItem(SDK_INIT_PARAMS_KEY, JSON.stringify({ ...existing, ...found }));
     } catch {
       // Private-mode storage refusal is not fatal; the in-memory copy still works.
     }
@@ -93,6 +106,12 @@ export function loadTelegramSdk(): Promise<TelegramWebApp | null> {
     document.head.appendChild(script);
   });
   return sdkPromise;
+}
+
+// Inside Telegram, start fetching the SDK immediately at boot rather than on
+// first use — the sooner it executes, the less state it has to reconstruct.
+if (typeof window !== 'undefined' && launchParams.tgWebAppData) {
+  void loadTelegramSdk();
 }
 
 /** The raw, signed payload. Never trust initDataUnsafe for anything but display. */
