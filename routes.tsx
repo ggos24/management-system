@@ -17,6 +17,7 @@ import { useAuthStore } from './stores/authStore';
 import { useDataStore } from './stores/dataStore';
 import { useUiStore } from './stores/uiStore';
 import { findTeamByParam, safeRedirectPath } from './lib/utils';
+import { isTelegramWebview } from './lib/telegram';
 
 import { DocSection } from './types';
 import { isAdmin } from './constants';
@@ -29,6 +30,7 @@ const Bin = React.lazy(() => import('./components/Bin'));
 const DocsView = React.lazy(() => import('./components/DocsView').then((m) => ({ default: m.DocsView })));
 const Support = React.lazy(() => import('./components/Support'));
 const Equipment = React.lazy(() => import('./components/Equipment'));
+const EquipmentRegistryMobile = React.lazy(() => import('./components/EquipmentRegistryMobile'));
 const EquipmentScan = React.lazy(() => import('./components/EquipmentScan'));
 const EquipmentAudit = React.lazy(() => import('./components/EquipmentAudit'));
 const ToolsView = React.lazy(() => import('./components/ToolsView'));
@@ -356,6 +358,8 @@ const DocsRoute: React.FC<{ section: DocSection }> = ({ section }) => {
   );
 };
 
+const EquipmentRoute: React.FC = () => (isTelegramWebview() ? <EquipmentRegistryMobile /> : <Equipment />);
+
 // Admin-only gate for the Tools section
 const AdminGuard: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -440,7 +444,11 @@ export const router = createBrowserRouter([
               { path: 'dashboard', element: <DashboardRoute /> },
               { path: 'schedule', element: <ScheduleRoute /> },
               { path: 'support', element: <Support /> },
-              { path: 'equipment', element: <Equipment /> },
+              // Same route, two shapes: the desktop table answers a manager's
+              // questions; inside Telegram the registry is three phone-sized
+              // lists (with you / available / with others). Branching here keeps
+              // both components hook-clean and separately code-split.
+              { path: 'equipment', element: <EquipmentRoute /> },
               // Static segment outranks the dynamic one, so /equipment/scan is
               // the manual-entry screen and /equipment/CAM-012 is a scanned unit.
               { path: 'equipment/scan', element: <EquipmentScan /> },
