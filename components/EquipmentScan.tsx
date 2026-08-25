@@ -17,7 +17,7 @@ import {
   formatWhen,
   normaliseAssetCode,
 } from '../lib/equipment';
-import { isTelegramWebview, readStartParam, scanQrCodes, scannerSupport } from '../lib/telegram';
+import { hapticFeedback, isTelegramWebview, readStartParam, scanQrCodes, scannerSupport } from '../lib/telegram';
 import type { EquipmentCheckout, EquipmentItem } from '../types';
 
 /**
@@ -231,20 +231,33 @@ const CodeEntry: React.FC<{
     .filter((item): item is EquipmentItem => Boolean(item));
 
   /**
-   * Continuous scanning: the popup stays open (the callback returns false) so a
-   * crew can walk the shelf in one pass. Eight separate scan-tap-confirm cycles
-   * is the reason people abandon systems like this.
+   * Every accepted scan CLOSES the popup. The first field test proved why: the
+   * camera covers the whole screen, so a basket growing behind it reads as
+   * "nothing happened". Closing lands you on the updated basket, the button
+   * turns into "Scan next", and bulk checkout stays two taps per extra item —
+   * scan, see it counted, scan again.
    */
   const startScanning = () => {
     void scanQrCodes((raw) => {
       const code = extractAssetCode(raw);
+      // Not one of our stickers — keep hunting, the frame just wasn't right yet.
       if (!code) return false;
       const item = items.find((candidate) => candidate.assetCode === code);
-      // Silently ignore anything already out or unknown — stopping the scanner to
-      // explain would break the rhythm of walking down a shelf.
-      if (!item || takenItemIds.has(item.id) || item.status !== 'active') return false;
+      if (!item) {
+        void hapticFeedback('error');
+        toast.error(`${code} is not in the registry`);
+        return true;
+      }
+      if (takenItemIds.has(item.id) || item.status !== 'active') {
+        // Scanning a unit that cannot be taken means the person wants THAT unit
+        // — almost always to return it. Open its card instead of ignoring them.
+        void hapticFeedback('success');
+        onOpen(item.assetCode);
+        return true;
+      }
+      void hapticFeedback('success');
       setBasket((previous) => (previous.includes(code) ? previous : [...previous, code]));
-      return false;
+      return true;
     }).then((started) => {
       // Some clients throw instead of no-opping; say so rather than looking dead.
       if (!started) toast.error('Scanner unavailable here — type the code instead');
@@ -262,7 +275,7 @@ const CodeEntry: React.FC<{
         {scanner.available ? (
           <Button onClick={startScanning} className="w-full py-4 text-base">
             <ScanLine size={18} className="mr-2" />
-            Scan stickers
+            {basketItems.length > 0 ? 'Scan next' : 'Scan stickers'}
           </Button>
         ) : (
           scanner.reason && (

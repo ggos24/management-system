@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { Badge, Button, Input } from './ui';
 import { useDataStore } from '../stores/dataStore';
 import { extractAssetCode, normaliseAssetCode } from '../lib/equipment';
-import { isTelegramWebview, scanQrCodes, scannerSupport } from '../lib/telegram';
+import { hapticFeedback, isTelegramWebview, scanQrCodes, scannerSupport } from '../lib/telegram';
 import type { EquipmentItem } from '../types';
 
 /**
@@ -55,9 +55,21 @@ const EquipmentAudit: React.FC = () => {
     return map;
   }, [equipmentCheckouts]);
 
+  // Dedupe lives in a ref, not state: the scanner fires qrTextReceived
+  // continuously while the camera is on a code, and the popup's callback holds a
+  // stale closure over `seen` — state-based dedupe would buzz and re-insert on
+  // every frame.
+  const seenRef = React.useRef<Set<string>>(new Set());
+
   const record = async (code: string): Promise<void> => {
     const item = equipmentItems.find((candidate) => candidate.assetCode === code);
     if (!item) return;
+    if (seenRef.current.has(code)) return;
+    seenRef.current.add(code);
+    // The audit popup deliberately STAYS open — closing it per unit would make a
+    // hundred-unit shelf walk unbearable — so the haptic tick is the only
+    // immediate confirmation each sticker registered.
+    void hapticFeedback('success');
     setSeen((previous) => (previous.includes(code) ? previous : [code, ...previous]));
     await markItemVerified(item.id);
   };
@@ -68,7 +80,7 @@ const EquipmentAudit: React.FC = () => {
       // Keep the popup open: the point is to walk a shelf in one pass.
       if (code) void record(code);
       return false;
-    }, 'Scan every sticker on the shelf').then((started) => {
+    }, 'Scan every sticker — a buzz means it counted').then((started) => {
       if (!started) toast.error('Scanner unavailable here — type codes instead');
     });
   };

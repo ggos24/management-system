@@ -212,6 +212,13 @@ export async function scanQrCodes(
   }
 }
 
+/** Tactile confirmation — the scan popup covers the screen, so sound-off phones
+ * need SOMETHING immediate that says "got it" or "no". */
+export async function hapticFeedback(type: 'error' | 'success' | 'warning'): Promise<void> {
+  const app = await loadTelegramSdk();
+  app?.HapticFeedback?.notificationOccurred?.(type);
+}
+
 export async function closeScanner(): Promise<void> {
   const app = await loadTelegramSdk();
   app?.closeScanQrPopup?.();
