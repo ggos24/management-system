@@ -23,7 +23,7 @@ import type { EquipmentItem } from '../types';
  */
 const EquipmentAudit: React.FC = () => {
   const navigate = useNavigate();
-  const [scanner, setScanner] = useState({ available: false, reason: '' });
+  const [scanner, setScanner] = useState({ available: false, reason: '', platform: '' });
   const [seen, setSeen] = useState<string[]>([]);
   const [value, setValue] = useState('');
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -39,8 +39,8 @@ const EquipmentAudit: React.FC = () => {
 
   React.useEffect(() => {
     let cancelled = false;
-    scannerSupport().then(({ available, reason }) => {
-      if (!cancelled) setScanner({ available, reason });
+    scannerSupport().then(({ available, reason, platform }) => {
+      if (!cancelled) setScanner({ available, reason, platform });
     });
     return () => {
       cancelled = true;
@@ -104,7 +104,10 @@ const EquipmentAudit: React.FC = () => {
             Scan shelf
           </Button>
         ) : (
-          <p className="text-xs text-zinc-500">{scanner.reason || 'No scanner here — type codes below instead.'}</p>
+          <p className="text-xs text-zinc-500">
+            {scanner.reason || 'No scanner here — type codes below instead.'}
+            {scanner.platform && <span className="text-zinc-400"> (detected: {scanner.platform})</span>}
+          </p>
         )}
 
         <form

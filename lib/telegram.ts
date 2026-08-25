@@ -26,6 +26,44 @@ declare global {
 
 const SDK_URL = 'https://telegram.org/js/telegram-web-app.js';
 
+const LAUNCH_KEYS = ['tgWebAppData', 'tgWebAppVersion', 'tgWebAppPlatform', 'tgWebAppStartParam'] as const;
+const LAUNCH_CACHE_KEY = 'tg-launch-params';
+
+/**
+ * Telegram delivers the launch parameters — initData, platform, Bot API version
+ * — in the URL fragment, and its SDK reads them when the script loads. The
+ * script loads asynchronously, and by then the router may have replaced the URL
+ * and taken the fragment with it. The SDK then silently falls back to version
+ * "6.0" and platform "unknown", which reads as an ancient Telegram.
+ *
+ * So snapshot them at module load, before anything can navigate, and keep a copy
+ * in sessionStorage for subsequent in-app navigations.
+ */
+function captureLaunchParams(): Record<string, string> {
+  if (typeof window === 'undefined') return {};
+  const fromHash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+  const found: Record<string, string> = {};
+  for (const key of LAUNCH_KEYS) {
+    const value = fromHash.get(key);
+    if (value) found[key] = value;
+  }
+  if (Object.keys(found).length > 0) {
+    try {
+      window.sessionStorage.setItem(LAUNCH_CACHE_KEY, JSON.stringify(found));
+    } catch {
+      // Private-mode storage refusal is not fatal; the in-memory copy still works.
+    }
+    return found;
+  }
+  try {
+    return JSON.parse(window.sessionStorage.getItem(LAUNCH_CACHE_KEY) ?? '{}');
+  } catch {
+    return {};
+  }
+}
+
+const launchParams = captureLaunchParams();
+
 /**
  * Detectable before the SDK loads: Telegram appends tgWebAppData to the fragment
  * when it opens the page, which is also where initData lives.
@@ -33,6 +71,7 @@ const SDK_URL = 'https://telegram.org/js/telegram-web-app.js';
 export function isTelegramWebview(): boolean {
   if (typeof window === 'undefined') return false;
   if (window.Telegram?.WebApp?.initData) return true;
+  if (launchParams.tgWebAppData) return true;
   return window.location.hash.includes('tgWebAppData=');
 }
 
@@ -61,8 +100,7 @@ export function readInitData(): string | null {
   if (typeof window === 'undefined') return null;
   const fromSdk = window.Telegram?.WebApp?.initData;
   if (fromSdk) return fromSdk;
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
-  return hash.get('tgWebAppData');
+  return launchParams.tgWebAppData ?? null;
 }
 
 /** The value behind ?startapp= — for us, the scanned asset code. */
@@ -70,9 +108,8 @@ export function readStartParam(): string | null {
   if (typeof window === 'undefined') return null;
   const fromSdk = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
   if (fromSdk) return fromSdk;
-  const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
   const search = new URLSearchParams(window.location.search);
-  return hash.get('tgWebAppStartParam') ?? search.get('tgWebAppStartParam');
+  return launchParams.tgWebAppStartParam ?? search.get('tgWebAppStartParam');
 }
 
 export async function initTelegramChrome(): Promise<void> {
@@ -92,18 +129,41 @@ export async function initTelegramChrome(): Promise<void> {
  */
 const SCANNER_PLATFORMS = new Set(['android', 'android_x', 'ios']);
 
+/** Compare dotted Bot API versions ("6.4" vs "8.0") numerically, not as strings. */
+export function versionAtLeast(version: string, minimum: string): boolean {
+  const parse = (value: string) => value.split('.').map((part) => Number.parseInt(part, 10) || 0);
+  const actual = parse(version);
+  const wanted = parse(minimum);
+  for (let i = 0; i < Math.max(actual.length, wanted.length); i++) {
+    const a = actual[i] ?? 0;
+    const b = wanted[i] ?? 0;
+    if (a !== b) return a > b;
+  }
+  return true;
+}
+
 export async function scannerSupport(): Promise<{ available: boolean; platform: string; reason: string }> {
   const app = await loadTelegramSdk();
-  if (!app) return { available: false, platform: 'browser', reason: 'Not running inside Telegram' };
-  const platform = app.platform ?? 'unknown';
-  if (!app.showScanQrPopup) {
-    return { available: false, platform, reason: 'This Telegram build has no scanner' };
+  if (!app && !launchParams.tgWebAppData) {
+    return { available: false, platform: 'browser', reason: 'Not running inside Telegram' };
   }
-  if (typeof app.isVersionAtLeast === 'function' && !app.isVersionAtLeast('6.4')) {
+
+  // Prefer the snapshot: the SDK may have loaded after the fragment was gone and
+  // fallen back to its "6.0" / "unknown" defaults.
+  const platform = launchParams.tgWebAppPlatform || app?.platform || 'unknown';
+  const version = launchParams.tgWebAppVersion || app?.version || '';
+
+  if (platform !== 'unknown' && !SCANNER_PLATFORMS.has(platform)) {
+    return { available: false, platform, reason: 'Telegram on desktop cannot scan — use a phone or type the code' };
+  }
+  // Only block on a version we could actually read. An unknown version means our
+  // detection failed, not that the client is old — offer the button and let the
+  // call itself fail loudly if the platform really cannot do it.
+  if (version && !versionAtLeast(version, '6.4')) {
     return { available: false, platform, reason: 'Update Telegram to scan codes' };
   }
-  if (!SCANNER_PLATFORMS.has(platform)) {
-    return { available: false, platform, reason: 'Telegram on desktop cannot scan — use a phone or type the code' };
+  if (!app?.showScanQrPopup) {
+    return { available: false, platform, reason: 'This Telegram build has no scanner' };
   }
   return { available: true, platform, reason: '' };
 }

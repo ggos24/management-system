@@ -25,12 +25,12 @@ import type { EquipmentCheckout, EquipmentItem } from '../types';
  * still defines the method there, so we keep the reason around to explain the
  * missing button rather than leaving a dead end.
  */
-function useScanner(): { available: boolean; reason: string } {
-  const [support, setSupport] = useState({ available: false, reason: '' });
+function useScanner(): { available: boolean; reason: string; platform: string } {
+  const [support, setSupport] = useState({ available: false, reason: '', platform: '' });
   useEffect(() => {
     let cancelled = false;
-    scannerSupport().then(({ available, reason }) => {
-      if (!cancelled) setSupport({ available, reason });
+    scannerSupport().then(({ available, reason, platform }) => {
+      if (!cancelled) setSupport({ available, reason, platform });
     });
     return () => {
       cancelled = true;
@@ -212,7 +212,7 @@ const CodeEntry: React.FC<{
   myOpen: EquipmentCheckout[];
   items: EquipmentItem[];
   checkouts: EquipmentCheckout[];
-  scanner: { available: boolean; reason: string };
+  scanner: { available: boolean; reason: string; platform: string };
   onOpen: (code: string) => void;
   onTakeAll: (itemIds: string[]) => Promise<boolean>;
 }> = ({ myOpen, items, checkouts, scanner, onOpen, onTakeAll }) => {
@@ -265,7 +265,14 @@ const CodeEntry: React.FC<{
             Scan stickers
           </Button>
         ) : (
-          scanner.reason && <p className="text-xs text-zinc-500 text-center">{scanner.reason}</p>
+          scanner.reason && (
+            <div className="text-center">
+              <p className="text-xs text-zinc-500">{scanner.reason}</p>
+              {/* Detected platform, so a report of "it still does not work" can
+                  be diagnosed without guessing. */}
+              <p className="text-[10px] text-zinc-400 mt-0.5">detected: {scanner.platform}</p>
+            </div>
+          )
         )}
 
         {basketItems.length > 0 && (
