@@ -4,6 +4,7 @@ import { useShallow } from 'zustand/react/shallow';
 import { Package, ArrowLeft, Wrench, ChevronDown, ChevronUp, ScanLine, X } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { CustomSelect } from './CustomSelect';
+import { toast } from 'sonner';
 import { Badge, Button, Input } from './ui';
 import { useDataStore } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
@@ -16,22 +17,26 @@ import {
   formatWhen,
   normaliseAssetCode,
 } from '../lib/equipment';
-import { isScannerAvailable, isTelegramWebview, readStartParam, scanQrCodes } from '../lib/telegram';
+import { isTelegramWebview, readStartParam, scanQrCodes, scannerSupport } from '../lib/telegram';
 import type { EquipmentCheckout, EquipmentItem } from '../types';
 
-/** Telegram's scanner is absent on Desktop, Web and pre-6.4 clients. */
-function useScanner(): boolean {
-  const [available, setAvailable] = useState(false);
+/**
+ * Telegram's scanner is absent on Desktop, Web and pre-6.4 clients — and the SDK
+ * still defines the method there, so we keep the reason around to explain the
+ * missing button rather than leaving a dead end.
+ */
+function useScanner(): { available: boolean; reason: string } {
+  const [support, setSupport] = useState({ available: false, reason: '' });
   useEffect(() => {
     let cancelled = false;
-    isScannerAvailable().then((ok) => {
-      if (!cancelled) setAvailable(ok);
+    scannerSupport().then(({ available, reason }) => {
+      if (!cancelled) setSupport({ available, reason });
     });
     return () => {
       cancelled = true;
     };
   }, []);
-  return available;
+  return support;
 }
 
 /**
@@ -59,7 +64,7 @@ const EquipmentScan: React.FC = () => {
       })),
     );
 
-  const scannerAvailable = useScanner();
+  const scanner = useScanner();
   const code = rawCode ? normaliseAssetCode(decodeURIComponent(rawCode)) : null;
 
   // Telegram opens the configured Mini App URL (/equipment/scan) and delivers the
@@ -85,7 +90,7 @@ const EquipmentScan: React.FC = () => {
         myOpen={myOpen}
         items={equipmentItems}
         checkouts={equipmentCheckouts}
-        scannerAvailable={scannerAvailable}
+        scanner={scanner}
         onOpen={(next) => navigate(`/equipment/${next}`)}
         onTakeAll={(itemIds) =>
           checkoutEquipment({ itemIds, expectedReturnAt: new Date(defaultReturnAt()).toISOString() })
@@ -207,10 +212,10 @@ const CodeEntry: React.FC<{
   myOpen: EquipmentCheckout[];
   items: EquipmentItem[];
   checkouts: EquipmentCheckout[];
-  scannerAvailable: boolean;
+  scanner: { available: boolean; reason: string };
   onOpen: (code: string) => void;
   onTakeAll: (itemIds: string[]) => Promise<boolean>;
-}> = ({ myOpen, items, checkouts, scannerAvailable, onOpen, onTakeAll }) => {
+}> = ({ myOpen, items, checkouts, scanner, onOpen, onTakeAll }) => {
   const [value, setValue] = useState('');
   const [basket, setBasket] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
@@ -240,6 +245,9 @@ const CodeEntry: React.FC<{
       if (!item || takenItemIds.has(item.id) || item.status !== 'active') return false;
       setBasket((previous) => (previous.includes(code) ? previous : [...previous, code]));
       return false;
+    }).then((started) => {
+      // Some clients throw instead of no-opping; say so rather than looking dead.
+      if (!started) toast.error('Scanner unavailable here — type the code instead');
     });
   };
 
@@ -251,11 +259,13 @@ const CodeEntry: React.FC<{
           <p className="text-sm text-zinc-500 mt-1">Scan a sticker, or type the code printed under the QR.</p>
         </div>
 
-        {scannerAvailable && (
+        {scanner.available ? (
           <Button onClick={startScanning} className="w-full py-4 text-base">
             <ScanLine size={18} className="mr-2" />
             Scan stickers
           </Button>
+        ) : (
+          scanner.reason && <p className="text-xs text-zinc-500 text-center">{scanner.reason}</p>
         )}
 
         {basketItems.length > 0 && (

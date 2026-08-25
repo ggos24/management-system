@@ -11,6 +11,8 @@ interface TelegramWebApp {
   ready: () => void;
   expand: () => void;
   version: string;
+  platform?: string;
+  isVersionAtLeast?: (version: string) => boolean;
   showScanQrPopup?: (params: { text?: string }, callback: (text: string) => boolean) => void;
   closeScanQrPopup?: () => void;
   HapticFeedback?: { notificationOccurred?: (type: 'error' | 'success' | 'warning') => void };
@@ -81,22 +83,54 @@ export async function initTelegramChrome(): Promise<void> {
 }
 
 /**
- * Telegram's native scanner. Absent on Desktop and Web, and on clients older
- * than Bot API 6.4 — callers must keep manual entry available regardless.
+ * Telegram's native scanner.
+ *
+ * The method is DEFINED on every platform's SDK object, so checking that it
+ * exists tells you nothing — Desktop and Web define it and then throw
+ * WebAppMethodUnsupported when called. That renders a button that visibly does
+ * nothing. Gate on the platform and the Bot API version instead.
  */
-export async function isScannerAvailable(): Promise<boolean> {
+const SCANNER_PLATFORMS = new Set(['android', 'android_x', 'ios']);
+
+export async function scannerSupport(): Promise<{ available: boolean; platform: string; reason: string }> {
   const app = await loadTelegramSdk();
-  return Boolean(app?.showScanQrPopup);
+  if (!app) return { available: false, platform: 'browser', reason: 'Not running inside Telegram' };
+  const platform = app.platform ?? 'unknown';
+  if (!app.showScanQrPopup) {
+    return { available: false, platform, reason: 'This Telegram build has no scanner' };
+  }
+  if (typeof app.isVersionAtLeast === 'function' && !app.isVersionAtLeast('6.4')) {
+    return { available: false, platform, reason: 'Update Telegram to scan codes' };
+  }
+  if (!SCANNER_PLATFORMS.has(platform)) {
+    return { available: false, platform, reason: 'Telegram on desktop cannot scan — use a phone or type the code' };
+  }
+  return { available: true, platform, reason: '' };
+}
+
+export async function isScannerAvailable(): Promise<boolean> {
+  return (await scannerSupport()).available;
 }
 
 /**
  * Continuous scanning: the popup stays open until `onCode` returns true, so a
  * crew can walk a shelf without reopening it per item.
  */
-export async function scanQrCodes(onCode: (raw: string) => boolean, text = 'Scan an equipment sticker'): Promise<void> {
+export async function scanQrCodes(
+  onCode: (raw: string) => boolean,
+  text = 'Scan an equipment sticker',
+): Promise<boolean> {
   const app = await loadTelegramSdk();
-  if (!app?.showScanQrPopup) return;
-  app.showScanQrPopup({ text }, (raw) => onCode(raw));
+  if (!app?.showScanQrPopup) return false;
+  try {
+    app.showScanQrPopup({ text }, (raw) => onCode(raw));
+    return true;
+  } catch (error) {
+    // Unsupported platforms throw rather than no-op; swallowing it is what makes
+    // the button look broken.
+    console.error('showScanQrPopup failed', error);
+    return false;
+  }
 }
 
 export async function closeScanner(): Promise<void> {

@@ -1,7 +1,17 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { Package, Plus, AlertTriangle, Wrench, ArrowRightLeft, Undo2, Printer, ScanLine } from 'lucide-react';
+import {
+  Package,
+  Plus,
+  AlertTriangle,
+  Wrench,
+  ArrowRightLeft,
+  Undo2,
+  Printer,
+  ScanLine,
+  ClipboardCheck,
+} from 'lucide-react';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
 const EquipmentLabels = React.lazy(() => import('./EquipmentLabels').then((m) => ({ default: m.EquipmentLabels })));
@@ -18,7 +28,10 @@ import type { EquipmentCategory, EquipmentCheckout, EquipmentItem, EquipmentStat
 
 const CATEGORIES: EquipmentCategory[] = ['camera', 'lens', 'audio', 'tripod', 'lighting', 'laptop', 'drone', 'other'];
 
-type FilterKey = 'all' | 'out' | 'overdue' | 'available' | 'repair' | 'inactive';
+type FilterKey = 'all' | 'out' | 'overdue' | 'available' | 'repair' | 'stale' | 'inactive';
+
+/** A unit nobody has laid eyes on for this long is worth a look. */
+const STALE_AFTER_DAYS = 30;
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
@@ -26,6 +39,7 @@ const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'overdue', label: 'Overdue' },
   { key: 'available', label: 'Available' },
   { key: 'repair', label: 'Needs repair' },
+  { key: 'stale', label: 'Not verified' },
   { key: 'inactive', label: 'Maintenance & retired' },
 ];
 
@@ -38,6 +52,7 @@ const Equipment: React.FC = () => {
   const {
     equipmentItems,
     equipmentCheckouts,
+    equipmentVerifications,
     members,
     saveEquipmentItem,
     removeEquipmentItem,
@@ -50,6 +65,7 @@ const Equipment: React.FC = () => {
     useShallow((s) => ({
       equipmentItems: s.equipmentItems,
       equipmentCheckouts: s.equipmentCheckouts,
+      equipmentVerifications: s.equipmentVerifications,
       members: s.members,
       saveEquipmentItem: s.saveEquipmentItem,
       removeEquipmentItem: s.removeEquipmentItem,
@@ -92,6 +108,17 @@ const Equipment: React.FC = () => {
 
   const memberById = useMemo(() => new Map(members.map((member) => [member.id, member])), [members]);
 
+  // Latest sighting per unit. The store only carries a recent window of
+  // verifications — anything older is stale by definition anyway.
+  const lastVerified = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const row of equipmentVerifications) {
+      const current = map.get(row.itemId);
+      if (!current || row.verifiedAt > current) map.set(row.itemId, row.verifiedAt);
+    }
+    return map;
+  }, [equipmentVerifications]);
+
   const allRows = useMemo(
     () =>
       equipmentItems.map((item) => {
@@ -117,13 +144,18 @@ const Equipment: React.FC = () => {
           return state === 'available';
         case 'repair':
           return repairFlagged.has(item.id);
+        case 'stale': {
+          const seen = lastVerified.get(item.id);
+          if (!seen) return true;
+          return now - new Date(seen).getTime() > STALE_AFTER_DAYS * 86_400_000;
+        }
         case 'inactive':
           return state === 'maintenance' || state === 'retired' || state === 'lost';
         default:
           return true;
       }
     });
-  }, [allRows, repairFlagged, filter, searchQuery]);
+  }, [allRows, repairFlagged, lastVerified, filter, searchQuery, now]);
 
   // Header badge counts every overdue unit, not just the ones passing the filter.
   const overdueCount = useMemo(() => allRows.filter((row) => row.state === 'overdue').length, [allRows]);
@@ -177,6 +209,10 @@ const Equipment: React.FC = () => {
             <Button size="sm" variant="ghost" onClick={() => navigate('/equipment/scan')}>
               <ScanLine size={14} className="mr-1.5" />
               Scan
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => navigate('/equipment/audit')}>
+              <ClipboardCheck size={14} className="mr-1.5" />
+              Audit
             </Button>
             {selectableSelection.length > 0 && (
               <Button size="sm" variant="ghost" onClick={() => setCheckoutFor(selectableSelection)}>
@@ -342,6 +378,7 @@ const Equipment: React.FC = () => {
         <ItemDetailModal
           item={detailItem}
           open={openByItem.get(detailItem.id) ?? null}
+          lastVerifiedAt={lastVerified.get(detailItem.id) ?? null}
           admin={admin}
           onClose={closeDetail}
           onEdit={() => setEditing(detailItem)}
@@ -432,13 +469,22 @@ const Equipment: React.FC = () => {
 interface ItemDetailModalProps {
   item: EquipmentItem;
   open: EquipmentCheckout | null;
+  lastVerifiedAt: string | null;
   admin: boolean;
   onClose: () => void;
   onEdit: () => void;
   loadHistory: (itemId: string) => Promise<EquipmentCheckout[]>;
 }
 
-const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, open, admin, onClose, onEdit, loadHistory }) => {
+const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
+  item,
+  open,
+  lastVerifiedAt,
+  admin,
+  onClose,
+  onEdit,
+  loadHistory,
+}) => {
   const [history, setHistory] = useState<EquipmentCheckout[] | null>(null);
 
   // Fetched on demand: the store only carries open + repair-flagged checkouts.
@@ -472,6 +518,7 @@ const ItemDetailModal: React.FC<ItemDetailModalProps> = ({ item, open, admin, on
           <Detail label="Status" value={item.status} />
           <Detail label="Serial" value={item.serialNumber || '—'} />
           <Detail label="Labels" value={item.labelsPrintedAt ? formatDateEU(item.labelsPrintedAt) : 'Not printed'} />
+          <Detail label="Last seen" value={lastVerifiedAt ? formatDateEU(lastVerifiedAt) : 'Never verified'} />
         </div>
 
         {item.notes && <p className="text-sm text-zinc-600 dark:text-zinc-400">{item.notes}</p>}
