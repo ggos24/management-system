@@ -130,6 +130,12 @@ const EquipmentLabels: React.FC = () => {
   const totalModules = Object.values(rendered)[0]?.totalModules ?? 45;
   const moduleMm = qrMm / totalModules;
   const moduleVerdict = moduleMm >= MODULE_MM_COMFORTABLE ? 'good' : moduleMm >= MODULE_MM_MIN ? 'tight' : 'bad';
+  // The two sizes worth knowing at the CURRENT settings. Dropping error
+  // correction from Q to M removes a version step (45 → 41 modules across), so
+  // both bounds shrink with it — that is the one way to a smaller sticker that
+  // costs no module size.
+  const floorMm = Math.ceil(totalModules * MODULE_MM_MIN);
+  const comfortMm = Math.ceil(totalModules * MODULE_MM_COMFORTABLE);
 
   const ready = chosen.length > 0 && Object.keys(rendered).length === chosen.length;
 
@@ -247,6 +253,10 @@ const EquipmentLabels: React.FC = () => {
               <div>
                 <p className="text-xs font-semibold uppercase tracking-wider text-zinc-500 mb-1.5">Error correction</p>
                 <CustomSelect options={EC_OPTIONS} value={ec} onChange={setEc} />
+                <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                  M is one QR version smaller than Q — the same scan quality in ~9% less width. Q survives scratches
+                  better; on laminated stock the laminate does that job.
+                </p>
               </div>
 
               <div>
@@ -280,6 +290,24 @@ const EquipmentLabels: React.FC = () => {
                     {moduleVerdict === 'bad' && ' — too small, phones will struggle'}
                     {moduleVerdict === 'tight' && ' — works, but leaves no margin for wear'}
                   </span>
+                </div>
+                <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-zinc-400">
+                  <span>At these settings:</span>
+                  <button
+                    type="button"
+                    onClick={() => setQrMm(floorMm)}
+                    className="underline decoration-dotted hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    min {floorMm} mm
+                  </button>
+                  <span>·</span>
+                  <button
+                    type="button"
+                    onClick={() => setQrMm(comfortMm)}
+                    className="underline decoration-dotted hover:text-zinc-600 dark:hover:text-zinc-300"
+                  >
+                    comfortable {comfortMm} mm
+                  </button>
                 </div>
               </div>
 
