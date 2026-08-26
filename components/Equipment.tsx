@@ -18,7 +18,6 @@ import {
 import { toast } from 'sonner';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
-const EquipmentLabels = React.lazy(() => import('./EquipmentLabels').then((m) => ({ default: m.EquipmentLabels })));
 import { CustomSelect } from './CustomSelect';
 import { Badge, Button, Input, FormField, IconButton } from './ui';
 import { useDataStore } from '../stores/dataStore';
@@ -68,7 +67,6 @@ const Equipment: React.FC = () => {
     checkoutEquipment,
     checkinEquipment,
     transferEquipment,
-    markEquipmentLabelsPrinted,
     loadEquipmentHistory,
   } = useDataStore(
     useShallow((s) => ({
@@ -81,7 +79,6 @@ const Equipment: React.FC = () => {
       checkoutEquipment: s.checkoutEquipment,
       checkinEquipment: s.checkinEquipment,
       transferEquipment: s.transferEquipment,
-      markEquipmentLabelsPrinted: s.markEquipmentLabelsPrinted,
       loadEquipmentHistory: s.loadEquipmentHistory,
     })),
   );
@@ -99,7 +96,6 @@ const Equipment: React.FC = () => {
   const [checkoutFor, setCheckoutFor] = useState<string[] | null>(null);
   const [checkinFor, setCheckinFor] = useState<EquipmentCheckout | null>(null);
   const [transferFor, setTransferFor] = useState<EquipmentCheckout | null>(null);
-  const [printing, setPrinting] = useState<EquipmentItem[] | null>(null);
 
   const detailItemId = searchParams.get('item');
 
@@ -236,6 +232,12 @@ const Equipment: React.FC = () => {
               <ClipboardCheck size={14} className="mr-1.5" />
               Audit
             </Button>
+            {admin && (
+              <Button size="sm" variant="ghost" onClick={() => navigate('/equipment/labels')}>
+                <Printer size={14} className="mr-1.5" />
+                Labels
+              </Button>
+            )}
             {selectableSelection.length > 0 && (
               <Button size="sm" variant="ghost" onClick={() => setCheckoutFor(selectableSelection)}>
                 Check out {selectableSelection.length}
@@ -247,7 +249,7 @@ const Equipment: React.FC = () => {
                   <Button
                     size="sm"
                     variant="ghost"
-                    onClick={() => setPrinting(equipmentItems.filter((item) => selectedIds.includes(item.id)))}
+                    onClick={() => navigate(`/equipment/labels?items=${selectedIds.join(',')}`)}
                   >
                     <Printer size={14} className="mr-1.5" />
                     Labels ({selectedIds.length})
@@ -442,7 +444,7 @@ const Equipment: React.FC = () => {
           admin={admin}
           onClose={closeDetail}
           onEdit={() => setEditing(detailItem)}
-          onPrint={admin ? () => setPrinting([detailItem]) : undefined}
+          onPrint={admin ? () => navigate(`/equipment/labels?items=${detailItem.id}`) : undefined}
           loadHistory={loadEquipmentHistory}
         />
       )}
@@ -494,19 +496,6 @@ const Equipment: React.FC = () => {
             if (ok) setCheckinFor(null);
           }}
         />
-      )}
-
-      {printing && (
-        <React.Suspense fallback={null}>
-          <EquipmentLabels
-            items={printing}
-            onClose={() => setPrinting(null)}
-            onMarkPrinted={async (itemIds) => {
-              await markEquipmentLabelsPrinted(itemIds);
-              setSelectedIds([]);
-            }}
-          />
-        </React.Suspense>
       )}
 
       {transferFor && (

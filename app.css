@@ -393,10 +393,68 @@ body {
   content: none;
 }
 
-/* Label printing: the browser prints the whole app shell otherwise. Hide
-   everything, then bring back just the sheet. Labels must not straddle a page
-   break — half a QR code is unscannable. */
+/* Label printing.
+   The browser prints the whole app shell otherwise: hide everything, then bring
+   back just the sheet. A label must never straddle a page break — half a QR
+   code is unscannable — and the text block must not crowd the code, since the
+   quiet zone baked into the image is what makes it read at all. */
+.equipment-label-ruler {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  margin-bottom: 4mm;
+  font-size: 8pt;
+  color: #52525b;
+}
+.equipment-label-ruler > div {
+  height: 3mm;
+  border: 0.3mm solid #18181b;
+  border-top: none;
+}
+.equipment-label-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2mm;
+}
+.equipment-label {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+  padding: 1.5mm;
+  overflow: hidden;
+  background: #fff;
+  border: 0.2mm dashed #d4d4d8;
+  box-sizing: border-box;
+}
+.equipment-label-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.equipment-label-code {
+  /* The manual fallback for a dead or half-covered sticker, so it is sized to
+     be read at arm's length: ~4mm cap height. Our scheme is letters-then-digits,
+     so 0/O and 1/I cannot be confused by position. */
+  font-size: 14pt;
+  font-weight: 700;
+  line-height: 1.05;
+  color: #000;
+  letter-spacing: 0.02em;
+}
+.equipment-label-name {
+  font-size: 7pt;
+  line-height: 1.15;
+  color: #3f3f46;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
 @media print {
+  @page {
+    margin: 8mm;
+  }
   body * {
     visibility: hidden;
   }
@@ -409,12 +467,11 @@ body {
     top: 0;
     left: 0;
     width: 100%;
-    gap: 4mm;
   }
   .equipment-label {
     break-inside: avoid;
     page-break-inside: avoid;
-    border-color: #d4d4d8 !important;
-    background: #fff !important;
+    /* Cut lines are a screen aid; on the real stock the die-cut is the edge. */
+    border: none !important;
   }
 }

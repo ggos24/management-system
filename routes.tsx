@@ -33,6 +33,7 @@ const Equipment = React.lazy(() => import('./components/Equipment'));
 const EquipmentRegistryMobile = React.lazy(() => import('./components/EquipmentRegistryMobile'));
 const EquipmentScan = React.lazy(() => import('./components/EquipmentScan'));
 const EquipmentAudit = React.lazy(() => import('./components/EquipmentAudit'));
+const EquipmentLabels = React.lazy(() => import('./components/EquipmentLabels'));
 const ToolsView = React.lazy(() => import('./components/ToolsView'));
 const EmailTemplateGenerator = React.lazy(() => import('./components/EmailTemplateGenerator'));
 
@@ -453,6 +454,7 @@ export const router = createBrowserRouter([
               // the manual-entry screen and /equipment/CAM-012 is a scanned unit.
               { path: 'equipment/scan', element: <EquipmentScan /> },
               { path: 'equipment/audit', element: <EquipmentAudit /> },
+              { path: 'equipment/labels', element: <EquipmentLabels /> },
               { path: 'equipment/:assetCode', element: <EquipmentScan /> },
               {
                 path: 'tools',
