@@ -45,6 +45,11 @@ export default defineConfig({
           // skipWaiting the page still renders, just with old behaviour and no
           // error. It needs the network anyway, so always fetch it fresh.
           /^\/equipment\//,
+          // Sticker redirects live server-side in vercel.json. If the service
+          // worker answers this navigation with the cached shell, the request
+          // never reaches the server and the QR opens the site instead of
+          // Telegram — which is exactly how it failed in the field.
+          /^\/e\//i,
         ],
         cleanupOutdatedCaches: true,
         clientsClaim: true,
