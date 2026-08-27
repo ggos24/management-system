@@ -6,7 +6,7 @@ import { Button, Input, Badge } from './ui';
 import { CustomSelect } from './CustomSelect';
 import { useDataStore } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
-import { buildStickerUrl } from '../lib/equipment';
+import { stickerQrPayload } from '../lib/equipment';
 import { isAdmin } from '../constants';
 
 /**
@@ -104,7 +104,7 @@ const EquipmentLabels: React.FC = () => {
       .then(async (QRCode) => {
         const next: Record<string, Rendered> = {};
         for (const item of chosen) {
-          const url = buildStickerUrl(item.assetCode);
+          const url = stickerQrPayload(item.assetCode);
           const spec = QRCode.create(url, { errorCorrectionLevel: ec as 'M' | 'Q' | 'H' });
           next[item.id] = {
             totalModules: spec.modules.size + QUIET_ZONE_MODULES * 2,

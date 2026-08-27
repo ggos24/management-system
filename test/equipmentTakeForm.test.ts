@@ -34,3 +34,30 @@ describe('take form defaults', () => {
     expect(workdayEnd(1).getDate()).toBe(26);
   });
 });
+
+// The sticker payload is uppercase on purpose: every character then sits in the
+// QR alphanumeric charset, which is a denser encoding than bytes and drops the
+// code a full version. The scanner must accept both the printed uppercase form
+// and the lowercase one humans type or share.
+describe('short sticker URLs', () => {
+  it('parses the printed uppercase payload', async () => {
+    const { extractAssetCode, stickerQrPayload } = await import('../lib/equipment');
+    expect(extractAssetCode(stickerQrPayload('CAM-012'))).toBe('CAM-012');
+    expect(extractAssetCode('HTTPS://UNITIES.PRO/E/TST-003')).toBe('TST-003');
+  });
+
+  it('parses the human-shared lowercase link and the legacy t.me form', async () => {
+    const { extractAssetCode } = await import('../lib/equipment');
+    expect(extractAssetCode('https://unities.pro/e/cam-012')).toBe('CAM-012');
+    expect(extractAssetCode('https://t.me/managment_system_bot?startapp=CAM-012')).toBe('CAM-012');
+    expect(extractAssetCode('cam-012')).toBe('CAM-012');
+  });
+
+  it('stays within QR version 2 at level Q', async () => {
+    const { stickerQrPayload } = await import('../lib/equipment');
+    const QRCode = await import('qrcode');
+    const spec = QRCode.create(stickerQrPayload('CAM-012'), { errorCorrectionLevel: 'Q' });
+    expect(spec.version).toBeLessThanOrEqual(2);
+    expect(spec.modules.size).toBe(25);
+  });
+});

@@ -27,7 +27,8 @@ import { formatDateEU } from '../lib/utils';
 import { useNow } from '../hooks/useNow';
 import {
   EQUIPMENT_STATE_BADGE,
-  buildStickerUrl,
+  stickerLink,
+  stickerQrPayload,
   defaultReturnAt,
   deriveUnitState,
   formatWhen,
@@ -525,9 +526,11 @@ const Equipment: React.FC = () => {
  */
 async function composeLabelPng(item: EquipmentItem): Promise<string> {
   const QRCode = await import('qrcode');
-  const qrData = await QRCode.toDataURL(buildStickerUrl(item.assetCode), {
+  const qrData = await QRCode.toDataURL(stickerQrPayload(item.assetCode), {
     errorCorrectionLevel: 'Q',
-    margin: 1,
+    // Full 4-module quiet zone — cramping it is the classic reason a code reads
+    // on one phone and not the next.
+    margin: 4,
     width: 1024,
   });
   const image = new Image();
@@ -558,12 +561,14 @@ async function composeLabelPng(item: EquipmentItem): Promise<string> {
 
 const QrBlock: React.FC<{ item: EquipmentItem; onPrint?: () => void }> = ({ item, onPrint }) => {
   const [preview, setPreview] = useState<string | null>(null);
-  const stickerUrl = buildStickerUrl(item.assetCode);
+  const stickerUrl = stickerLink(item.assetCode);
 
   React.useEffect(() => {
     let cancelled = false;
     import('qrcode')
-      .then((QRCode) => QRCode.toDataURL(stickerUrl, { errorCorrectionLevel: 'Q', margin: 1, width: 256 }))
+      .then((QRCode) =>
+        QRCode.toDataURL(stickerQrPayload(item.assetCode), { errorCorrectionLevel: 'Q', margin: 4, width: 256 }),
+      )
       .then((url) => {
         if (!cancelled) setPreview(url);
       })
@@ -573,7 +578,7 @@ const QrBlock: React.FC<{ item: EquipmentItem; onPrint?: () => void }> = ({ item
     return () => {
       cancelled = true;
     };
-  }, [stickerUrl]);
+  }, [item.assetCode]);
 
   return (
     <div className="rounded-lg border border-zinc-200 dark:border-zinc-800 p-3 flex items-center gap-4">

@@ -101,8 +101,10 @@ export function normaliseAssetCode(raw: string): string {
  */
 export function extractAssetCode(scanned: string): string | null {
   const text = scanned.trim();
-  const fromUrl = text.match(/[?&]startapp=([^&\s]+)/i);
-  const candidate = normaliseAssetCode(fromUrl ? decodeURIComponent(fromUrl[1]) : text);
+  const fromShort = text.match(/unities\.pro\/e\/([A-Za-z0-9-]+)/i);
+  const fromStartapp = text.match(/[?&]startapp=([^&\s]+)/i);
+  const raw = fromShort ? fromShort[1] : fromStartapp ? decodeURIComponent(fromStartapp[1]) : text;
+  const candidate = normaliseAssetCode(raw);
   return ASSET_CODE_RE.test(candidate) ? candidate : null;
 }
 
@@ -110,10 +112,31 @@ export function extractAssetCode(scanned: string): string | null {
 export const TELEGRAM_BOT_USERNAME = 'managment_system_bot';
 
 /**
- * What a sticker's QR encodes. The Main Mini App takes ?startapp= directly on
- * the bot username — no short-name path segment — which keeps the payload short
- * and the QR sparse enough to scan off a small, scuffed label.
+ * What a sticker's QR encodes: a short redirect on our own domain, IN CAPITALS.
+ *
+ * Two deliberate choices stack here. The short host drops the payload from 50
+ * to 29 characters, which is one full QR version. The capitals put every
+ * character inside the QR alphanumeric charset, which is a denser encoding
+ * than bytes — another version down. Together: 25×25 modules instead of 37×37,
+ * a QR a quarter smaller at identical per-module quality, and the M-vs-Q
+ * trade-off disappears because both fit the same version at this length.
+ *
+ * Capitals are safe because URL schemes and hosts are case-insensitive by
+ * spec, and the /E/ path is ours — vercel.json redirects both cases to the
+ * t.me deep link. The redirect adds no real fragility: it is a static edge
+ * rule on the same domain the Mini App itself is served from, so if it is
+ * down, the app is down anyway.
  */
+export function stickerQrPayload(assetCode: string): string {
+  return `HTTPS://UNITIES.PRO/E/${assetCode.toUpperCase()}`;
+}
+
+/** The same link in a shape meant for human eyes — copy buttons, captions. */
+export function stickerLink(assetCode: string): string {
+  return `https://unities.pro/e/${assetCode.toUpperCase()}`;
+}
+
+/** @deprecated retained for the Telegram deep link itself, e.g. bot buttons. */
 export function buildStickerUrl(assetCode: string): string {
   return `https://t.me/${TELEGRAM_BOT_USERNAME}?startapp=${encodeURIComponent(assetCode)}`;
 }

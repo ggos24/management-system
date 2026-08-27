@@ -67,5 +67,17 @@
         }
       ]
     }
+  ],
+  "redirects": [
+    {
+      "source": "/e/:code",
+      "destination": "https://t.me/managment_system_bot?startapp=:code",
+      "permanent": false
+    },
+    {
+      "source": "/E/:code",
+      "destination": "https://t.me/managment_system_bot?startapp=:code",
+      "permanent": false
+    }
   ]
 }
