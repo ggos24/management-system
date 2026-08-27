@@ -112,31 +112,29 @@ export function extractAssetCode(scanned: string): string | null {
 export const TELEGRAM_BOT_USERNAME = 'managment_system_bot';
 
 /**
- * What a sticker's QR encodes: a short redirect on our own domain, IN CAPITALS.
+ * What a sticker's QR encodes: the t.me deep link, DIRECTLY.
  *
- * Two deliberate choices stack here. The short host drops the payload from 50
- * to 29 characters, which is one full QR version. The capitals put every
- * character inside the QR alphanumeric charset, which is a denser encoding
- * than bytes — another version down. Together: 25×25 modules instead of 37×37,
- * a QR a quarter smaller at identical per-module quality, and the M-vs-Q
- * trade-off disappears because both fit the same version at this length.
+ * A short redirect on our own domain was tried and reverted. On paper it
+ * dropped the QR from 37×37 to 25×25 modules; in the field it routed every
+ * scan through the browser first — camera → Safari → 307 → t.me — and that
+ * chain is exactly where interstitial pages and the PWA service worker live.
+ * The direct t.me link opens Telegram straight from the camera, no hops, and
+ * is the form that was verified working on a real phone. A quarter-smaller
+ * sticker is not worth a flow that sometimes lands on a web page.
  *
- * Capitals are safe because URL schemes and hosts are case-insensitive by
- * spec, and the /E/ path is ours — vercel.json redirects both cases to the
- * t.me deep link. The redirect adds no real fragility: it is a static edge
- * rule on the same domain the Mini App itself is served from, so if it is
- * down, the app is down anyway.
+ * Size consequence, honestly: at level Q this is 45 modules across including
+ * the quiet zone — 23 mm minimum, 27 mm comfortable. Level M is one version
+ * smaller (41 across) if a tighter label is needed.
  */
 export function stickerQrPayload(assetCode: string): string {
-  return `HTTPS://UNITIES.PRO/E/${assetCode.toUpperCase()}`;
+  return buildStickerUrl(assetCode);
 }
 
-/** The same link in a shape meant for human eyes — copy buttons, captions. */
+/** The same link in the shape meant for human eyes — copy buttons, captions. */
 export function stickerLink(assetCode: string): string {
-  return `https://unities.pro/e/${assetCode.toUpperCase()}`;
+  return buildStickerUrl(assetCode);
 }
 
-/** @deprecated retained for the Telegram deep link itself, e.g. bot buttons. */
 export function buildStickerUrl(assetCode: string): string {
   return `https://t.me/${TELEGRAM_BOT_USERNAME}?startapp=${encodeURIComponent(assetCode)}`;
 }

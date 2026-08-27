@@ -40,9 +40,8 @@ describe('take form defaults', () => {
 // code a full version. The scanner must accept both the printed uppercase form
 // and the lowercase one humans type or share.
 describe('short sticker URLs', () => {
-  it('parses the printed uppercase payload', async () => {
-    const { extractAssetCode, stickerQrPayload } = await import('../lib/equipment');
-    expect(extractAssetCode(stickerQrPayload('CAM-012'))).toBe('CAM-012');
+  it('still parses short-domain links that were shared before the revert', async () => {
+    const { extractAssetCode } = await import('../lib/equipment');
     expect(extractAssetCode('HTTPS://UNITIES.PRO/E/TST-003')).toBe('TST-003');
   });
 
@@ -53,11 +52,9 @@ describe('short sticker URLs', () => {
     expect(extractAssetCode('cam-012')).toBe('CAM-012');
   });
 
-  it('stays within QR version 2 at level Q', async () => {
-    const { stickerQrPayload } = await import('../lib/equipment');
-    const QRCode = await import('qrcode');
-    const spec = QRCode.create(stickerQrPayload('CAM-012'), { errorCorrectionLevel: 'Q' });
-    expect(spec.version).toBeLessThanOrEqual(2);
-    expect(spec.modules.size).toBe(25);
+  it('encodes the t.me deep link directly — no redirect hop for the camera to trip on', async () => {
+    const { stickerQrPayload, extractAssetCode } = await import('../lib/equipment');
+    expect(stickerQrPayload('CAM-012')).toBe('https://t.me/managment_system_bot?startapp=CAM-012');
+    expect(extractAssetCode(stickerQrPayload('CAM-012'))).toBe('CAM-012');
   });
 });
