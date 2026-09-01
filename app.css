@@ -475,3 +475,102 @@ body {
     border: none !important;
   }
 }
+
+/* Calibration sheet. Unlike production labels, cut guides are wanted in print
+   here — these get scissored out and stuck on real gear — and each sample keeps
+   its spec caption so the results are readable an hour later. */
+.tsheet-header {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5mm;
+  margin-bottom: 5mm;
+  font-size: 8pt;
+  color: #3f3f46;
+  max-width: 170mm;
+}
+.tsheet-ruler {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+  margin-top: 1mm;
+}
+.tsheet-ruler > div {
+  height: 3mm;
+  border: 0.3mm solid #18181b;
+  border-top: none;
+}
+.tsheet h3 {
+  font-size: 8.5pt;
+  font-weight: 700;
+  color: #18181b;
+  margin: 4mm 0 2mm;
+}
+.tsheet-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4mm;
+  align-items: flex-start;
+}
+.tsheet-sample {
+  display: flex;
+  flex-direction: column;
+  gap: 1mm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+.tsheet-card {
+  display: flex;
+  align-items: center;
+  gap: 2mm;
+  padding: 1.5mm;
+  background: #fff;
+  border: 0.2mm dashed #a1a1aa;
+}
+.tsheet-card-stacked {
+  flex-direction: column;
+  align-items: center;
+  gap: 1mm;
+}
+.tsheet-card-code-only {
+  padding: 3mm 4mm;
+}
+.tsheet-code {
+  font-size: 12pt;
+  font-weight: 700;
+  line-height: 1.05;
+  color: #000;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.tsheet-card-code-only .tsheet-code {
+  font-size: 16pt;
+}
+.tsheet-spec {
+  display: flex;
+  flex-direction: column;
+  font-size: 6pt;
+  line-height: 1.25;
+  color: #52525b;
+}
+.tsheet-ok {
+  color: #15803d;
+}
+.tsheet-tight {
+  color: #b45309;
+}
+.tsheet-bad {
+  color: #b91c1c;
+}
+.tsheet-note {
+  font-size: 7pt;
+  color: #52525b;
+  margin-top: 1.5mm;
+  max-width: 170mm;
+}
+
+@media print {
+  /* Cut guides stay: this sheet is meant to be scissored apart. */
+  .tsheet .tsheet-card {
+    border: 0.2mm dashed #a1a1aa !important;
+  }
+}
