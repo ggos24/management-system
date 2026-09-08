@@ -1,12 +1,25 @@
-import React, { useRef, useEffect, useCallback, useState } from 'react';
+import React, { useRef, useEffect, useCallback, useLayoutEffect, useMemo, useState } from 'react';
+import { createPortal } from 'react-dom';
 import DOMPurify from 'dompurify';
 import { Bold, Italic, List, ListOrdered, CheckSquare, Link as LinkIcon, Strikethrough } from 'lucide-react';
+import { Avatar } from './Avatar';
+import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
+import { DESCRIPTION_MENTION_ATTR, getMentionToken } from '../lib/mentions';
+
+/** A person the "@" picker can offer. */
+export interface MentionCandidate {
+  id: string;
+  name: string;
+  avatar?: string;
+}
 
 interface RichTextEditorProps {
   value: string;
   onChange: (html: string) => void;
   placeholder?: string;
   minHeight?: string;
+  /** People the "@" picker offers. Omit, or pass an empty list, to disable mentions. */
+  mentionMembers?: MentionCandidate[];
 }
 
 /** Marks a checklist row. State lives in `data-checked` so it survives serialization. */
@@ -49,7 +62,23 @@ const NON_ROW_HOSTS = /^(?:UL|OL|LI|H1|H2|H3|H4|H5|H6)$/;
 // text-decoration is included because `data-checked` is the only representation of "done": a
 // pasted line-through would otherwise strike a row permanently, with no way to clear it.
 const STRIP_STYLE_PROPS =
-  /(?:^|;)\s*(?:color|background-color|background|font-family|font-size|text-decoration|text-decoration-line)\s*:[^;]*/gi;
+  /(?:^|;)\s*(?:color|background-color|background|font-family|font-size|letter-spacing|text-decoration|text-decoration-line)\s*:[^;]*/gi;
+
+/**
+ * Drop the palette and type stack from inline styles, keeping the rest. Pasted markup drags
+ * the source's along, and `insertHTML` stamps the caret's own computed values onto whatever
+ * it inserts — both belong to the editor, not to the content.
+ */
+function stripAuthoredStyles(root: ParentNode): void {
+  for (const el of Array.from(root.querySelectorAll('[style]'))) {
+    const cleaned = (el.getAttribute('style') || '')
+      .replace(STRIP_STYLE_PROPS, '')
+      .replace(/^\s*;+\s*/, '')
+      .trim();
+    if (cleaned) el.setAttribute('style', cleaned);
+    else el.removeAttribute('style');
+  }
+}
 
 /**
  * The original checklist embedded a live `<input type="checkbox">`, whose ticked state
@@ -105,15 +134,7 @@ function sanitizeHtml(html: string): string {
   const clean = DOMPurify.sanitize(upgradeLegacyChecklists(html), { ALLOWED_TAGS, ALLOWED_ATTR });
   const doc = new DOMParser().parseFromString(clean, 'text/html');
 
-  // Pasted markup drags along the source's palette and type stack; the editor owns those.
-  for (const el of Array.from(doc.body.querySelectorAll('[style]'))) {
-    const cleaned = (el.getAttribute('style') || '')
-      .replace(STRIP_STYLE_PROPS, '')
-      .replace(/^\s*;+\s*/, '')
-      .trim();
-    if (cleaned) el.setAttribute('style', cleaned);
-    else el.removeAttribute('style');
-  }
+  stripAuthoredStyles(doc.body);
 
   for (const anchor of Array.from(doc.body.querySelectorAll('a[href]'))) {
     anchor.setAttribute('target', '_blank');
@@ -190,6 +211,37 @@ function sameToolbarState(a: ToolbarState, b: ToolbarState): boolean {
   );
 }
 
+/**
+ * "@" plus the name typed after it, at the very end of the text before the caret. The leading
+ * boundary keeps an email address from opening the picker mid-word, and excluding "@" from the
+ * query stops a second "@" from extending the first one's search.
+ */
+const MENTION_TRIGGER = /(?:^|[\s\u00a0([{])@([^\s\u00a0@]*)$/;
+
+/** The mention a node ends with, descending through trailing wrappers. */
+function chipEndingAt(node: Node | null): HTMLElement | null {
+  let current: Node | null = node;
+  while (current && current.nodeType === Node.ELEMENT_NODE) {
+    const element = current as HTMLElement;
+    if (element.hasAttribute(DESCRIPTION_MENTION_ATTR)) return element;
+    current = element.lastChild;
+  }
+  return null;
+}
+
+/** The span of text the picker will replace: "@query" inside one text node. */
+interface MentionAnchor {
+  node: Node;
+  start: number;
+  end: number;
+}
+
+interface MentionState {
+  query: string;
+  /** Viewport rect of the "@…" being typed, captured once so the list holds still. */
+  rect: { left: number; top: number; height: number };
+}
+
 const IS_APPLE = typeof navigator !== 'undefined' && /Mac|iPhone|iPad|iPod/.test(navigator.userAgent);
 const MOD = IS_APPLE ? '⌘' : 'Ctrl+';
 const SHIFT = IS_APPLE ? '⇧' : 'Shift+';
@@ -220,10 +272,19 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   onChange,
   placeholder = 'Start typing...',
   minHeight = '120px',
+  mentionMembers,
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const isInternalChange = useRef(false);
   const [toolbarState, setToolbarState] = useState<ToolbarState>(EMPTY_TOOLBAR_STATE);
+  // The picker is anchored to the "@" itself rather than to the editor box: in a description
+  // several paragraphs long, a dropdown pinned to the frame can land nowhere near the caret.
+  const [mention, setMention] = useState<MentionState | null>(null);
+  const [mentionIndex, setMentionIndex] = useState(0);
+  const mentionAnchorRef = useRef<MentionAnchor | null>(null);
+  const mentionProxyRef = useRef<HTMLDivElement>(null);
+  const mentionListRef = useRef<HTMLDivElement>(null);
+  const mentionsEnabled = !!mentionMembers?.length;
 
   useEffect(() => {
     if (!editorRef.current || isInternalChange.current) {
@@ -305,6 +366,181 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     }
   };
 
+  // --- @mentions ---
+
+  const closeMention = useCallback(() => {
+    mentionAnchorRef.current = null;
+    setMention(null);
+    setMentionIndex(0);
+  }, []);
+
+  /** The "@query" immediately before a collapsed caret inside this editor, if there is one. */
+  const readMentionTrigger = useCallback(() => {
+    const el = editorRef.current;
+    const sel = window.getSelection();
+    if (!el || !sel?.isCollapsed || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    const node = range.startContainer;
+    if (node.nodeType !== Node.TEXT_NODE || !el.contains(node)) return null;
+    const match = MENTION_TRIGGER.exec((node.textContent ?? '').slice(0, range.startOffset));
+    if (!match) return null;
+    const start = range.startOffset - match[1].length - 1;
+    // Measure the "@…" rather than the collapsed caret: a caret range reports a zero rect in
+    // some engines, and the "@" is the anchor that stays put while the name is typed.
+    const probe = document.createRange();
+    probe.setStart(node, start);
+    probe.setEnd(node, range.startOffset);
+    const box = probe.getBoundingClientRect();
+    return {
+      anchor: { node, start, end: range.startOffset },
+      query: match[1].toLowerCase(),
+      rect: { left: box.left, top: box.top, height: box.height },
+    };
+  }, []);
+
+  /**
+   * `allowOpen` is false for caret moves: clicking behind an "@" already in the text should
+   * leave the picker shut, the way it does in the comment box.
+   */
+  const refreshMention = useCallback(
+    (allowOpen: boolean) => {
+      if (!mentionsEnabled) return;
+      const trigger = readMentionTrigger();
+      if (!trigger) {
+        mentionAnchorRef.current = null;
+        setMention(null);
+        return;
+      }
+      mentionAnchorRef.current = trigger.anchor;
+      setMention((prev) => (prev || allowOpen ? { query: trigger.query, rect: prev?.rect ?? trigger.rect } : null));
+      setMentionIndex(0);
+    },
+    [mentionsEnabled, readMentionTrigger],
+  );
+
+  const mentionMatches = useMemo(() => {
+    if (!mention || !mentionMembers) return [];
+    return mentionMembers.filter((m) => m.name.toLowerCase().includes(mention.query)).slice(0, 6);
+  }, [mention, mentionMembers]);
+
+  const insertMention = (member: MentionCandidate) => {
+    const el = editorRef.current;
+    const target = mentionAnchorRef.current;
+    if (!el || !target || !el.contains(target.node)) {
+      closeMention();
+      return;
+    }
+    const range = document.createRange();
+    range.setStart(target.node, target.start);
+    range.setEnd(target.node, target.end);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(range);
+
+    // Built as a node so the name and the ID are escaped for us, then handed to execCommand
+    // so the insertion joins the browser's own undo stack like every other edit here.
+    const chip = document.createElement('span');
+    chip.setAttribute(DESCRIPTION_MENTION_ATTR, member.id);
+    chip.textContent = getMentionToken(member);
+    el.focus();
+    // A plain trailing space collapses at the end of a block, leaving the caret with nowhere
+    // to sit outside the chip — and the next keystroke then extends the mention itself.
+    document.execCommand('insertHTML', false, `${chip.outerHTML}&nbsp;`);
+    stripAuthoredStyles(el);
+    closeMention();
+    handleInput();
+  };
+
+  // Caret moves can only close the picker, never open it, so this can ride the same
+  // document-level event the toolbar uses.
+  useEffect(() => {
+    if (!mentionsEnabled) return;
+    const onSelectionChange = () => refreshMention(false);
+    document.addEventListener('selectionchange', onSelectionChange);
+    return () => document.removeEventListener('selectionchange', onSelectionChange);
+  }, [mentionsEnabled, refreshMention]);
+
+  useEffect(() => {
+    if (!mention) return;
+    const onPointerDown = (e: MouseEvent) => {
+      if (!mentionListRef.current?.contains(e.target as Node)) closeMention();
+    };
+    document.addEventListener('mousedown', onPointerDown);
+    return () => document.removeEventListener('mousedown', onPointerDown);
+  }, [mention, closeMention]);
+
+  // Keep the highlighted row in view when arrowing past the visible slice of the list.
+  useLayoutEffect(() => {
+    mentionListRef.current
+      ?.querySelector(`[data-mention-index="${mentionIndex}"]`)
+      ?.scrollIntoView({ block: 'nearest' });
+  }, [mentionIndex]);
+
+  const mentionPosition = useViewportPortalPosition({
+    isOpen: !!mention && mentionMatches.length > 0,
+    triggerRef: mentionProxyRef,
+    fixedWidth: 224,
+    estimatedHeight: 220,
+  });
+
+  /**
+   * The mention the caret is inside of, or the one it sits directly behind. A chip is ordinary
+   * editable text, so without this Backspace would eat it a letter at a time and leave a
+   * half-word still carrying the profile ID.
+   */
+  const mentionChipAtCaret = (): HTMLElement | null => {
+    const el = editorRef.current;
+    const sel = window.getSelection();
+    if (!el || !sel?.isCollapsed || !sel.rangeCount) return null;
+    const range = sel.getRangeAt(0);
+    if (!el.contains(range.startContainer)) return null;
+
+    const from =
+      range.startContainer.nodeType === Node.ELEMENT_NODE
+        ? (range.startContainer as Element)
+        : range.startContainer.parentElement;
+    const inside = from?.closest<HTMLElement>(`[${DESCRIPTION_MENTION_ATTR}]`);
+    if (inside && el.contains(inside)) return inside;
+
+    // Whatever sits immediately before the caret. `insertHTML` leaves the trailing space in a
+    // wrapper of its own, so the chip is often an uncle rather than a previous sibling —
+    // climb out of every element the caret starts in before looking left.
+    let node: Node | null = range.startContainer;
+    if (node.nodeType === Node.TEXT_NODE) {
+      if (range.startOffset > 0) return null; // there is text to delete first
+    } else if (range.startOffset > 0) {
+      return chipEndingAt(node.childNodes[range.startOffset - 1]);
+    }
+    while (node && node !== el) {
+      if (node.previousSibling) return chipEndingAt(node.previousSibling);
+      node = node.parentNode;
+    }
+    return null;
+  };
+
+  /** True when the key was consumed by the open picker. */
+  const handleMentionKeyDown = (e: React.KeyboardEvent): boolean => {
+    if (!mention) return false;
+    if (e.key === 'Escape') {
+      closeMention();
+      return true;
+    }
+    if (mentionMatches.length === 0) return false;
+    if (e.key === 'ArrowDown') {
+      setMentionIndex((i) => (i + 1) % mentionMatches.length);
+      return true;
+    }
+    if (e.key === 'ArrowUp') {
+      setMentionIndex((i) => (i - 1 + mentionMatches.length) % mentionMatches.length);
+      return true;
+    }
+    if (e.key === 'Enter' || e.key === 'Tab') {
+      insertMention(mentionMatches[Math.min(mentionIndex, mentionMatches.length - 1)]);
+      return true;
+    }
+    return false;
+  };
+
   const handlePaste = (e: React.ClipboardEvent) => {
     e.preventDefault();
     const rawHtml = e.clipboardData.getData('text/html');
@@ -382,6 +618,11 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    // Before everything else: while the picker is open it owns Enter, Tab and the arrows.
+    if (handleMentionKeyDown(e)) {
+      e.preventDefault();
+      return;
+    }
     // Bold/italic/underline get shortcuts from the browser; strikethrough does not.
     // Match the physical key: e.key is 'х' on a Cyrillic layout, which never equals 'x'.
     if ((e.metaKey || e.ctrlKey) && e.shiftKey && (e.code === 'KeyX' || e.key.toLowerCase() === 'x')) {
@@ -398,6 +639,13 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     // Backspace at the very start of a row leaves the checklist, keeping the text — the
     // discoverable way out for anyone who does not think to press the toolbar button.
     if (e.key === 'Backspace') {
+      const chip = mentionChipAtCaret();
+      if (chip) {
+        e.preventDefault();
+        chip.remove();
+        handleInput();
+        return;
+      }
       const row = currentChecklistRow();
       if (row && atRowStart(row)) {
         e.preventDefault();
@@ -633,7 +881,10 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
         <div
           ref={editorRef}
           contentEditable
-          onInput={handleInput}
+          onInput={() => {
+            handleInput();
+            refreshMention(true);
+          }}
           onPaste={handlePaste}
           onKeyDown={handleKeyDown}
           onMouseUp={readToolbarState}
@@ -642,7 +893,58 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
           className="rte-content w-full p-3 bg-transparent outline-none text-sm text-zinc-900 dark:text-white resize-y [&_h2]:text-xl [&_h2]:font-bold [&_h2]:my-2 [&_h3]:text-lg [&_h3]:font-semibold [&_h3]:my-1 [&_a]:text-blue-500 [&_a]:underline [&_ul]:list-disc [&_ul]:ml-4 [&_ol]:list-decimal [&_ol]:ml-4"
           style={{ minHeight }}
         />
+        {/* A zero-width stand-in for the caret: the portal positioning hook measures a real
+            element, and the "@" has none of its own until the mention is inserted. */}
+        {mention && (
+          <div
+            aria-hidden
+            ref={mentionProxyRef}
+            className="pointer-events-none fixed"
+            style={{ left: mention.rect.left, top: mention.rect.top, width: 1, height: mention.rect.height }}
+          />
+        )}
       </div>
+      {mention &&
+        mentionMatches.length > 0 &&
+        mentionPosition &&
+        createPortal(
+          <div
+            ref={mentionListRef}
+            role="listbox"
+            aria-label="Mention someone"
+            // Keep the caret where it is: a mousedown that moved focus would drop the
+            // selection this picker is about to replace.
+            onMouseDown={(e) => e.preventDefault()}
+            style={{
+              position: 'fixed',
+              top: mentionPosition.top,
+              left: mentionPosition.left,
+              width: mentionPosition.width,
+              maxHeight: mentionPosition.maxHeight,
+              transform: mentionPosition.flipUp ? 'translateY(-100%)' : undefined,
+            }}
+            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] overflow-y-auto py-1"
+          >
+            {mentionMatches.map((member, i) => (
+              <button
+                key={member.id}
+                type="button"
+                role="option"
+                aria-selected={i === mentionIndex}
+                data-mention-index={i}
+                onMouseEnter={() => setMentionIndex(i)}
+                onClick={() => insertMention(member)}
+                className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs ${
+                  i === mentionIndex ? 'bg-zinc-100 dark:bg-zinc-800' : ''
+                }`}
+              >
+                <Avatar src={member.avatar} alt={member.name} size="sm" />
+                <span className="truncate text-zinc-900 dark:text-white">{member.name}</span>
+              </button>
+            ))}
+          </div>,
+          document.body,
+        )}
     </div>
   );
 };

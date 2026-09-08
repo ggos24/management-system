@@ -393,6 +393,21 @@ body {
   content: none;
 }
 
+/* Description @mentions. The profile ID lives in the attribute, so the label is free to be
+   the same "@Name" token comments use — copying a mention from a description into a comment
+   then still parses as a mention there. */
+.rte-content [data-mention] {
+  color: #2563eb;
+  font-weight: 500;
+}
+.dark .rte-content [data-mention] {
+  color: #60a5fa;
+}
+/* A completed checklist row owns its colour; a mention inside one follows the row. */
+.rte-content [data-checklist][data-checked='true'] [data-mention] {
+  color: inherit;
+}
+
 /* Label printing.
    The browser prints the whole app shell otherwise: hide everything, then bring
    back just the sheet. A label must never straddle a page break — half a QR

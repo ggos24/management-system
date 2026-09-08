@@ -9,6 +9,41 @@ export function getMentionToken(member: Pick<Member, 'name'>): string {
   return `@${member.name.replace(/\s+/g, '')}`;
 }
 
+/**
+ * Attribute carrying a mentioned profile ID inside description HTML. Comments store their
+ * mentions in a junction table, but a description is a single HTML column — so the mention
+ * travels inside the markup, where an edit to the text can never leave the ID behind.
+ */
+export const DESCRIPTION_MENTION_ATTR = 'data-mention';
+
+/**
+ * Profile IDs mentioned inside a rich-text description, deduplicated, in document order.
+ * A chip whose label no longer reads as a mention has been typed over, so it is dropped —
+ * the same rule comments apply when a token is edited away.
+ */
+export function parseDescriptionMentionIds(html: string | null | undefined): string[] {
+  if (!html || !html.includes(DESCRIPTION_MENTION_ATTR)) return [];
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  const ids = new Set<string>();
+  for (const el of Array.from(doc.body.querySelectorAll(`[${DESCRIPTION_MENTION_ATTR}]`))) {
+    const id = el.getAttribute(DESCRIPTION_MENTION_ATTR);
+    if (id && el.textContent?.trim().startsWith('@')) ids.add(id);
+  }
+  return [...ids];
+}
+
+/**
+ * Mentions the new description carries that the old one did not. Editing an unrelated
+ * paragraph must not page everyone named in the description all over again.
+ */
+export function newDescriptionMentionIds(
+  oldHtml: string | null | undefined,
+  newHtml: string | null | undefined,
+): string[] {
+  const before = new Set(parseDescriptionMentionIds(oldHtml));
+  return parseDescriptionMentionIds(newHtml).filter((id) => !before.has(id));
+}
+
 function containsMentionToken(text: string, member: Pick<Member, 'name'>): boolean {
   const token = escapeRegExp(getMentionToken(member));
   return new RegExp(`(^|[\\s([{])${token}(?=$|[\\s.,!?;:)\\]}])`, 'iu').test(text);

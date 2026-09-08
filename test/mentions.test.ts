@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import type { Member, Task, TaskComment, TaskTeamLink } from '../types';
-import { collectTaskParticipantIds, filterSelectedMentionIds, resolveCommentMentionIds } from '../lib/mentions';
+import {
+  collectTaskParticipantIds,
+  filterSelectedMentionIds,
+  newDescriptionMentionIds,
+  parseDescriptionMentionIds,
+  resolveCommentMentionIds,
+} from '../lib/mentions';
 
 const member = (id: string, name: string): Member => ({
   id,
@@ -32,6 +38,58 @@ describe('structured comment mentions', () => {
 
   it('drops a stale selected ID after its token is deleted', () => {
     expect(resolveCommentMentionIds('Mention removed', ['anna'], members)).toEqual([]);
+  });
+});
+
+describe('description mentions', () => {
+  it('reads the profile IDs out of the stored markup, once each', () => {
+    const html = '<p>Ping <span data-mention="anna">@Anna</span> and <span data-mention="mary">@MaryJane</span>.</p>';
+    expect(parseDescriptionMentionIds(html)).toEqual(['anna', 'mary']);
+    expect(parseDescriptionMentionIds(`${html}<p><span data-mention="anna">@Anna</span></p>`)).toEqual([
+      'anna',
+      'mary',
+    ]);
+  });
+
+  it('ignores a chip that has been typed over', () => {
+    expect(parseDescriptionMentionIds('<p><span data-mention="anna">who?</span></p>')).toEqual([]);
+    expect(parseDescriptionMentionIds('<p><span data-mention="anna"></span></p>')).toEqual([]);
+  });
+
+  it('returns nothing for plain descriptions', () => {
+    expect(parseDescriptionMentionIds('<p>No mentions here, not even @Anna.</p>')).toEqual([]);
+    expect(parseDescriptionMentionIds('')).toEqual([]);
+    expect(parseDescriptionMentionIds(undefined)).toEqual([]);
+  });
+
+  it('reports only mentions the previous description did not already carry', () => {
+    const before = '<p><span data-mention="anna">@Anna</span></p>';
+    const after = '<p><span data-mention="anna">@Anna</span> <span data-mention="mary">@MaryJane</span></p>';
+    expect(newDescriptionMentionIds(before, after)).toEqual(['mary']);
+    expect(newDescriptionMentionIds(before, before)).toEqual([]);
+    expect(newDescriptionMentionIds(null, after)).toEqual(['anna', 'mary']);
+  });
+
+  it('does not re-announce a mention that was only moved within the text', () => {
+    const before = '<p>Intro <span data-mention="anna">@Anna</span></p>';
+    const after = '<p><span data-mention="anna">@Anna</span> please review the intro</p>';
+    expect(newDescriptionMentionIds(before, after)).toEqual([]);
+  });
+});
+
+describe('description mentions survive the sanitizer', () => {
+  it('keeps the chip and its profile ID through a save/load round trip', async () => {
+    const { sanitizeRichTextHtml } = await import('../components/RichTextEditor');
+    const stored = '<p>Ping <span data-mention="u-anna">@Anna</span> please</p>';
+    const loaded = sanitizeRichTextHtml(stored);
+    expect(parseDescriptionMentionIds(loaded)).toEqual(['u-anna']);
+  });
+
+  it('drops the type styles insertHTML stamps onto the chip', async () => {
+    const { sanitizeRichTextHtml } = await import('../components/RichTextEditor');
+    const stored =
+      '<p><span data-mention="u-anna" style="letter-spacing: -0.025em; background-color: transparent;">@Anna</span></p>';
+    expect(sanitizeRichTextHtml(stored)).not.toContain('letter-spacing');
   });
 });
 

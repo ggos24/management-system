@@ -36,6 +36,7 @@ import { useAuthStore } from './authStore';
 import { supabase } from '../lib/supabase';
 import { PERSON_FIELD_DEFAULT_LABELS, isAdmin, TICKET_STATUS_META } from '../constants';
 import { getStatusName } from '../lib/statusUtils';
+import { newDescriptionMentionIds } from '../lib/mentions';
 
 export type PersonFieldConfigEntry = { label: string | null; hidden: boolean };
 export type PersonFieldConfigMap = Record<string, Partial<Record<PersonFieldKey, PersonFieldConfigEntry>>>;
@@ -242,9 +243,22 @@ function notifyPeopleByContext(
   }
 }
 
+function notifyDescriptionMentions(oldTask: Task | null, task: Task, actorName: string) {
+  const mentioned = newDescriptionMentionIds(oldTask?.description, task.description);
+  if (mentioned.length === 0) return;
+  // Reuses the comment_mention type on purpose: same 'mentions' preference category, same
+  // task deep link. Only the sentence differs, and no commentId means "open the task".
+  notifyMany(mentioned, 'comment_mention', `${actorName} mentioned you in the description of "${task.title}"`, {
+    taskId: task.id,
+    teamId: task.teamId,
+    contextTeamId: task.teamId,
+  });
+}
+
 function notifyTaskSaved(oldTask: Task | null, task: Task) {
   const actorName = getCurrentUserName();
   const currentPeople = getTaskPeopleByContext(task);
+  notifyDescriptionMentions(oldTask, task, actorName);
   if (!oldTask) {
     if (currentPeople.length > 0) {
       notifyPeopleByContext(currentPeople, 'task_assigned', `${actorName} assigned you to "${task.title}"`, {

@@ -390,6 +390,16 @@ export const TaskModal: React.FC = () => {
     [currentUser?.id, isRelatedOnly, members, taskParticipantIds],
   );
 
+  /**
+   * A description mention notifies; unlike a comment mention it grants nobody access, so an
+   * external collaborator would be paged about a task they cannot open. Leave them to the
+   * comment box, which does carry a grant.
+   */
+  const descriptionMentionMembers = useMemo(
+    () => members.filter((member) => member.accessScope !== 'related_only'),
+    [members],
+  );
+
   const resolveSubmittedMentions = useCallback(
     (text: string, pickerIds: string[]): string[] => {
       const allowedPickerIds = isRelatedOnly
@@ -1097,8 +1107,9 @@ export const TaskModal: React.FC = () => {
             <RichTextEditor
               value={taskModalData.description || ''}
               onChange={(html) => setTaskModalData({ ...taskModalData, description: html })}
-              placeholder="Description..."
+              placeholder="Description... Use @ to mention someone"
               minHeight="120px"
+              mentionMembers={descriptionMentionMembers}
             />
 
             <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
