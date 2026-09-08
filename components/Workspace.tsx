@@ -1661,7 +1661,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               </div>
                                             )}
                                           </div>
-                                          <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden flex items-center gap-1.5">
+                                          <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug wrap-anywhere overflow-hidden flex items-center gap-1.5">
                                             {isLinkedCopy(task) && (
                                               <Link2 size={12} className="text-blue-500 flex-shrink-0" />
                                             )}
@@ -1963,7 +1963,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     </div>
                                   )}
                                 </div>
-                                <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug break-words overflow-hidden flex items-center gap-1.5">
+                                <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug wrap-anywhere overflow-hidden flex items-center gap-1.5">
                                   {isLinkedCopy(task) && <Link2 size={12} className="text-blue-500 flex-shrink-0" />}
                                   <span>{task.title}</span>
                                 </h3>

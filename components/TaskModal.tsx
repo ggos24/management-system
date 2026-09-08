@@ -26,6 +26,7 @@ import {
   AlertTriangle,
   Tags as TagsIcon,
   History,
+  Copy,
 } from 'lucide-react';
 import { Modal } from './Modal';
 import { RichTextEditor, sanitizeRichTextHtml } from './RichTextEditor';
@@ -258,12 +259,31 @@ export const TaskModal: React.FC = () => {
     [members],
   );
 
-  useLayoutEffect(() => {
+  // The title textarea grows to fit its wrapped text instead of scrolling. Recompute
+  // on every open, not just on title changes: reopening the same task leaves the title
+  // string untouched, so a title-only dependency left the freshly mounted textarea
+  // stuck at rows={1} and clipped a two-line title to one.
+  const autosizeTitle = useCallback(() => {
     const el = titleRef.current;
     if (!el) return;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
-  }, [taskModalData.title]);
+  }, []);
+
+  useLayoutEffect(() => {
+    if (isRelatedOnly) return; // the editable title is display:none for related-only users
+    autosizeTitle();
+  }, [autosizeTitle, isRelatedOnly, isTaskModalOpen, taskModalData.title]);
+
+  // Wrapping depends on the available width and on the font actually in use, so a resize
+  // (or a phone rotating) changes how many lines the title needs — and a task deep link
+  // can open this modal while Inter is still loading, which measures the fallback font.
+  useEffect(() => {
+    if (!isTaskModalOpen) return;
+    window.addEventListener('resize', autosizeTitle);
+    document.fonts?.ready.then(autosizeTitle).catch(() => {});
+    return () => window.removeEventListener('resize', autosizeTitle);
+  }, [autosizeTitle, isTaskModalOpen]);
 
   // Load comments when modal opens with an existing task
   const loadComments = useCallback(
@@ -695,6 +715,21 @@ export const TaskModal: React.FC = () => {
   };
 
   const [linkCopied, setLinkCopied] = useState(false);
+  const [titleCopied, setTitleCopied] = useState(false);
+
+  const handleCopyTitle = () => {
+    const title = (taskModalData.title || '').trim();
+    if (!title) return;
+    navigator.clipboard
+      .writeText(title)
+      .then(() => {
+        setTitleCopied(true);
+        setTimeout(() => setTitleCopied(false), 2000);
+      })
+      .catch(() => {
+        toast.error('Could not copy title');
+      });
+  };
 
   const handleShareTask = () => {
     if (!taskModalData.id) {
@@ -835,6 +870,20 @@ export const TaskModal: React.FC = () => {
     return value ? String(value) : <span className="text-zinc-400">—</span>;
   };
 
+  // Sits next to the title in both the editable and the read-only header, so one long
+  // title can be lifted in a single tap instead of being dragged across two lines.
+  const copyTitleButton = (taskModalData.title || '').trim() ? (
+    <button
+      type="button"
+      onClick={handleCopyTitle}
+      title={titleCopied ? 'Title copied' : 'Copy title'}
+      aria-label="Copy title"
+      className="mt-0.5 h-10 w-10 md:h-9 md:w-9 flex-shrink-0 flex items-center justify-center rounded-full text-zinc-400 hover:text-black dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors"
+    >
+      {titleCopied ? <CheckCircle size={18} className="text-emerald-500" /> : <Copy size={18} />}
+    </button>
+  ) : null;
+
   return (
     <Modal
       isOpen={isTaskModalOpen}
@@ -936,9 +985,12 @@ export const TaskModal: React.FC = () => {
         <div className="space-y-6">
           {isRelatedOnly && (
             <div className="space-y-5">
-              <h2 className="text-2xl font-bold break-words text-zinc-900 dark:text-white">
-                {taskModalData.title || 'Untitled'}
-              </h2>
+              <div className="flex items-start gap-2">
+                <h2 className="min-w-0 flex-1 text-2xl font-bold wrap-anywhere text-zinc-900 dark:text-white">
+                  {taskModalData.title || 'Untitled'}
+                </h2>
+                {copyTitleButton}
+              </div>
               {readOnlyDescription.hasContent ? (
                 <div
                   className="rte-content min-h-20 break-words text-sm text-zinc-700 dark:text-zinc-300 [&_a]:text-blue-500 [&_a]:underline [&_h2]:my-2 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:my-1 [&_h3]:text-lg [&_h3]:font-semibold [&_ol]:ml-4 [&_ol]:list-decimal [&_ul]:ml-4 [&_ul]:list-disc"
@@ -1025,19 +1077,22 @@ export const TaskModal: React.FC = () => {
               isRelatedOnly && 'hidden',
             )}
           >
-            <textarea
-              ref={titleRef}
-              rows={1}
-              placeholder="Task Title"
-              value={taskModalData.title || ''}
-              readOnly={isRelatedOnly}
-              onChange={(e) => setTaskModalData({ ...taskModalData, title: e.target.value.replace(/\r?\n/g, ' ') })}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter') e.preventDefault();
-              }}
-              className="w-full text-2xl font-bold bg-transparent border-none outline-none resize-none overflow-hidden break-words placeholder-zinc-300 dark:placeholder-zinc-700"
-              autoFocus={!isRelatedOnly && !taskModalData.deletedAt && !taskModalData.id}
-            />
+            <div className="flex items-start gap-2">
+              <textarea
+                ref={titleRef}
+                rows={1}
+                placeholder="Task Title"
+                value={taskModalData.title || ''}
+                readOnly={isRelatedOnly}
+                onChange={(e) => setTaskModalData({ ...taskModalData, title: e.target.value.replace(/\r?\n/g, ' ') })}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') e.preventDefault();
+                }}
+                className="min-w-0 flex-1 text-2xl font-bold bg-transparent border-none outline-none resize-none overflow-hidden whitespace-pre-wrap wrap-anywhere placeholder-zinc-300 dark:placeholder-zinc-700"
+                autoFocus={!isRelatedOnly && !taskModalData.deletedAt && !taskModalData.id}
+              />
+              {copyTitleButton}
+            </div>
 
             <RichTextEditor
               value={taskModalData.description || ''}
