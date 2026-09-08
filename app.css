@@ -393,19 +393,31 @@ body {
   content: none;
 }
 
-/* Description @mentions. The profile ID lives in the attribute, so the label is free to be
-   the same "@Name" token comments use — copying a mention from a description into a comment
-   then still parses as a mention there. */
+/* Description @mentions. Blue text alone still read as text — a mention is a reference to a
+   person, not a coloured word, so it gets a pill of its own. Kept in step with
+   MENTION_PILL_CLASS in lib/mentions.tsx, which dresses the React-rendered ones in comments.
+   `inline` rather than `inline-block`: padding on an inline box paints outside the line box,
+   so a mention mid-paragraph does not push its own line taller than its neighbours. */
 .rte-content [data-mention] {
-  color: #2563eb;
+  padding: 0.1em 0.4em;
+  border-radius: 999px;
+  background: #dbeafe;
+  color: #1d4ed8;
   font-weight: 500;
+  /* The name is one object; a line break through the middle of the pill would draw two
+     half-pills. */
+  white-space: nowrap;
 }
 .dark .rte-content [data-mention] {
-  color: #60a5fa;
+  background: #1e40af59;
+  color: #bfdbfe;
 }
-/* A completed checklist row owns its colour; a mention inside one follows the row. */
+/* A completed checklist row owns its colour; a mention inside one follows the row and drops
+   the pill, which would otherwise still read as live at a glance. */
 .rte-content [data-checklist][data-checked='true'] [data-mention] {
+  background: transparent;
   color: inherit;
+  padding: 0;
 }
 
 /* Label printing.

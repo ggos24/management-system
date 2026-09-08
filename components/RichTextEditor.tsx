@@ -4,7 +4,7 @@ import DOMPurify from 'dompurify';
 import { Bold, Italic, List, ListOrdered, CheckSquare, Link as LinkIcon, Strikethrough } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
-import { DESCRIPTION_MENTION_ATTR, getMentionToken } from '../lib/mentions';
+import { DESCRIPTION_MENTION_ATTR, getDescriptionMentionLabel, withMentionLabels } from '../lib/mentions';
 
 /** A person the "@" picker can offer. */
 export interface MentionCandidate {
@@ -67,7 +67,7 @@ const STRIP_STYLE_PROPS =
 /**
  * Drop the palette and type stack from inline styles, keeping the rest. Pasted markup drags
  * the source's along, and `insertHTML` stamps the caret's own computed values onto whatever
- * it inserts — both belong to the editor, not to the content.
+ * it inserts on the paste path — both belong to the editor, not to the content.
  */
 function stripAuthoredStyles(root: ParentNode): void {
   for (const el of Array.from(root.querySelectorAll('[style]'))) {
@@ -286,12 +286,19 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   const mentionListRef = useRef<HTMLDivElement>(null);
   const mentionsEnabled = !!mentionMembers?.length;
 
+  // Read through a ref rather than a dependency: a realtime profile refresh must not
+  // re-run the load effect and drop the caret of whoever is mid-sentence.
+  const mentionMembersRef = useRef(mentionMembers);
+  useEffect(() => {
+    mentionMembersRef.current = mentionMembers;
+  }, [mentionMembers]);
+
   useEffect(() => {
     if (!editorRef.current || isInternalChange.current) {
       isInternalChange.current = false;
       return;
     }
-    const safe = value ? sanitizeHtml(value) : '';
+    const safe = value ? sanitizeHtml(withMentionLabels(value, mentionMembersRef.current ?? [])) : '';
     if (editorRef.current.innerHTML !== safe) {
       editorRef.current.innerHTML = safe;
     }
@@ -430,23 +437,31 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
       closeMention();
       return;
     }
+    el.focus();
     const range = document.createRange();
     range.setStart(target.node, target.start);
     range.setEnd(target.node, target.end);
-    const sel = window.getSelection();
-    sel?.removeAllRanges();
-    sel?.addRange(range);
+    range.deleteContents();
 
-    // Built as a node so the name and the ID are escaped for us, then handed to execCommand
-    // so the insertion joins the browser's own undo stack like every other edit here.
+    // Inserted as nodes rather than through execCommand('insertHTML'): Chrome unwraps a span
+    // it sees no styling on, keeping the text and dropping the attribute — so whether the
+    // mention survived came down to whatever letter-spacing happened to surround the caret.
     const chip = document.createElement('span');
     chip.setAttribute(DESCRIPTION_MENTION_ATTR, member.id);
-    chip.textContent = getMentionToken(member);
-    el.focus();
+    chip.textContent = getDescriptionMentionLabel(member);
     // A plain trailing space collapses at the end of a block, leaving the caret with nowhere
     // to sit outside the chip — and the next keystroke then extends the mention itself.
-    document.execCommand('insertHTML', false, `${chip.outerHTML}&nbsp;`);
-    stripAuthoredStyles(el);
+    const tail = document.createTextNode('\u00a0');
+    range.insertNode(tail);
+    range.insertNode(chip);
+
+    const caret = document.createRange();
+    caret.setStart(tail, 1);
+    caret.collapse(true);
+    const sel = window.getSelection();
+    sel?.removeAllRanges();
+    sel?.addRange(caret);
+
     closeMention();
     handleInput();
   };

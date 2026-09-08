@@ -17,6 +17,44 @@ export function getMentionToken(member: Pick<Member, 'name'>): string {
 export const DESCRIPTION_MENTION_ATTR = 'data-mention';
 
 /**
+ * One look for a mention wherever React renders one. Description chips live inside stored
+ * HTML instead of JSX and get the same pill from `.rte-content [data-mention]` in app.css —
+ * keep the two in step.
+ */
+export const MENTION_PILL_CLASS =
+  'rounded-full bg-blue-100 px-1.5 py-px font-medium text-blue-700 dark:bg-blue-500/25 dark:text-blue-200';
+
+/**
+ * What a description chip reads. Comments squash the spaces out because their mentions are
+ * parsed back out of plain text; a description chip carries the ID in an attribute, so it is
+ * free to show the name the way it is written.
+ */
+export function getDescriptionMentionLabel(member: Pick<Member, 'name'>): string {
+  return `@${member.name}`;
+}
+
+/**
+ * Re-stamp chip labels from the live member list. The attribute is the truth and the label is
+ * decoration, so this is what makes a rename show through — and what quietly repairs chips
+ * saved before the label read as a real name.
+ */
+export function withMentionLabels(html: string, members: Pick<Member, 'id' | 'name'>[]): string {
+  if (!html || !members.length || !html.includes(DESCRIPTION_MENTION_ATTR)) return html;
+  const byId = new Map(members.map((member) => [member.id, member]));
+  const doc = new DOMParser().parseFromString(html, 'text/html');
+  let changed = false;
+  for (const el of Array.from(doc.body.querySelectorAll(`[${DESCRIPTION_MENTION_ATTR}]`))) {
+    const member = byId.get(el.getAttribute(DESCRIPTION_MENTION_ATTR) ?? '');
+    if (!member) continue; // a departed member keeps whatever the text last said
+    const label = getDescriptionMentionLabel(member);
+    if (el.textContent === label) continue;
+    el.textContent = label;
+    changed = true;
+  }
+  return changed ? doc.body.innerHTML : html;
+}
+
+/**
  * Profile IDs mentioned inside a rich-text description, deduplicated, in document order.
  * A chip whose label no longer reads as a mention has been typed over, so it is dropped —
  * the same rule comments apply when a token is edited away.
@@ -125,7 +163,7 @@ export function renderCommentContent(text: string, members: Member[]): React.Rea
       const isMember = members.some((m) => m.name.toLowerCase().replace(/\s+/g, '') === name);
       if (isMember) {
         return (
-          <span key={i} className="text-blue-600 dark:text-blue-400 font-medium">
+          <span key={i} className={MENTION_PILL_CLASS}>
             {part}
           </span>
         );

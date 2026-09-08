@@ -44,7 +44,13 @@ import { cn } from '../lib/cn';
 import { formatDateEU, toDateOnly } from '../lib/utils';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusColor } from '../constants';
 import { getStatusName } from '../lib/statusUtils';
-import { collectTaskParticipantIds, getMentionToken, resolveCommentMentionIds } from '../lib/mentions';
+import {
+  collectTaskParticipantIds,
+  getMentionToken,
+  MENTION_PILL_CLASS,
+  resolveCommentMentionIds,
+  withMentionLabels,
+} from '../lib/mentions';
 import * as db from '../lib/database';
 import { supabase } from '../lib/supabase';
 
@@ -568,7 +574,7 @@ export const TaskModal: React.FC = () => {
         const mentionedMember = members.find((m) => m.name.toLowerCase().replace(/\s+/g, '') === name);
         if (mentionedMember && mentionedIds.includes(mentionedMember.id)) {
           return (
-            <span key={i} className="text-blue-600 dark:text-blue-400 font-medium">
+            <span key={i} className={MENTION_PILL_CLASS}>
               {part}
             </span>
           );
@@ -822,7 +828,7 @@ export const TaskModal: React.FC = () => {
   const readOnlyDescription = useMemo(() => {
     const html = taskModalData.description || '';
     if (!html) return { html: '', hasContent: false };
-    const sanitized = sanitizeRichTextHtml(html);
+    const sanitized = sanitizeRichTextHtml(withMentionLabels(html, members));
     if (typeof DOMParser === 'undefined') {
       return { html: sanitized, hasContent: sanitized.replace(/<[^>]*>/g, ' ').trim().length > 0 };
     }
@@ -831,7 +837,7 @@ export const TaskModal: React.FC = () => {
       html: sanitized,
       hasContent: Boolean(body.textContent?.trim() || body.querySelector('[data-checklist], img')),
     };
-  }, [taskModalData.description]);
+  }, [taskModalData.description, members]);
 
   const renderReadOnlyPeople = (ids: string[] | undefined) => {
     const people = members.filter((member) => (ids || []).includes(member.id));

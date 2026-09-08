@@ -6,6 +6,7 @@ import {
   newDescriptionMentionIds,
   parseDescriptionMentionIds,
   resolveCommentMentionIds,
+  withMentionLabels,
 } from '../lib/mentions';
 
 const member = (id: string, name: string): Member => ({
@@ -85,11 +86,40 @@ describe('description mentions survive the sanitizer', () => {
     expect(parseDescriptionMentionIds(loaded)).toEqual(['u-anna']);
   });
 
-  it('drops the type styles insertHTML stamps onto the chip', async () => {
+  it('drops the palette and type stack a paste dragged onto the chip', async () => {
     const { sanitizeRichTextHtml } = await import('../components/RichTextEditor');
     const stored =
       '<p><span data-mention="u-anna" style="letter-spacing: -0.025em; background-color: transparent;">@Anna</span></p>';
     expect(sanitizeRichTextHtml(stored)).not.toContain('letter-spacing');
+  });
+});
+
+describe('description mention labels', () => {
+  const people = [member('anna', 'Anna'), member('mary', 'Mary Jane')];
+
+  it('re-stamps a chip from the live member list', () => {
+    const stored = '<p><span data-mention="mary">@MaryJane</span></p>';
+    expect(withMentionLabels(stored, people)).toContain('>@Mary Jane<');
+  });
+
+  it('repairs the label after a rename without touching the ID', () => {
+    const stored = '<p><span data-mention="anna">@Anna</span></p>';
+    const renamed = withMentionLabels(stored, [member('anna', 'Anna Kovalenko')]);
+    expect(renamed).toContain('>@Anna Kovalenko<');
+    expect(parseDescriptionMentionIds(renamed)).toEqual(['anna']);
+  });
+
+  it('leaves a departed member’s chip as it was written', () => {
+    const stored = '<p><span data-mention="ghost">@Ghost</span></p>';
+    expect(withMentionLabels(stored, people)).toBe(stored);
+  });
+
+  it('returns the same string when there is nothing to stamp', () => {
+    const plain = '<p>No mentions here</p>';
+    expect(withMentionLabels(plain, people)).toBe(plain);
+    expect(withMentionLabels('<p><span data-mention="anna">@Anna</span></p>', [])).toBe(
+      '<p><span data-mention="anna">@Anna</span></p>',
+    );
   });
 });
 
