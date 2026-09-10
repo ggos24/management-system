@@ -11,6 +11,7 @@ export interface User {
   role: UserRole; // App access level
   accessScope: AccessScope; // Data visibility: full workspace or related tasks only
   jobTitle: string; // Job title e.g. "Senior Editor"
+  birthday?: string | null; // YYYY-MM-DD; year 1904 means only day+month shared (see lib/birthday.ts)
   avatar: string;
   teamId: string; // Primary / home team (= teamIds[0]); kept as a denormalized cache
   teamIds: string[]; // All team memberships, primary first. Empty = no teams.

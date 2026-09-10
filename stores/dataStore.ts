@@ -690,6 +690,7 @@ interface DataState {
   updateMemberAvatar: (memberId: string, newAvatar: string) => void;
   updateMemberName: (memberId: string, newName: string) => void;
   updateMemberJobTitle: (memberId: string, jobTitle: string) => void;
+  updateMemberBirthday: (memberId: string, birthday: string | null) => void;
   updateMemberTeams: (memberId: string, nextTeamIds: string[]) => void;
   updateMemberRole: (memberId: string, role: UserRole) => void;
   updateMemberAccess: (
@@ -1917,6 +1918,24 @@ export const useDataStore = create<DataState>((set, get) => ({
     const updatedMembers = members.map((m) => (m.id === memberId ? { ...m, jobTitle } : m));
     set({ members: updatedMembers });
     db.updateProfileJobTitle(memberId, jobTitle).catch(() => toast.error('Failed to update job title'));
+  },
+
+  /**
+   * Two RPCs sit behind this: everyone may set their own birthday, only admins
+   * may set someone else's. Picking the door here keeps the choice out of the
+   * components, which both offer the same control.
+   */
+  updateMemberBirthday: (memberId, birthday) => {
+    const { members } = get();
+    const previous = members;
+    set({ members: members.map((m) => (m.id === memberId ? { ...m, birthday } : m)) });
+
+    const isSelf = memberId === useAuthStore.getState().currentUser?.id;
+    const write = isSelf ? db.updateOwnProfileBirthday(birthday) : db.setMemberBirthday(memberId, birthday);
+    write.catch(() => {
+      set({ members: previous });
+      toast.error('Failed to update birthday');
+    });
   },
 
   updateMemberRole: (memberId, role) => {

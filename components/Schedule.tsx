@@ -13,6 +13,7 @@ import {
   X,
   AlertCircle,
   GripVertical,
+  Cake,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
@@ -20,6 +21,7 @@ import { Avatar } from './Avatar';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { CustomSelect } from './CustomSelect';
 import { calculateAbsenceStats, formatDateEU } from '../lib/utils';
+import { formatBirthday, isBirthdayOn } from '../lib/birthday';
 import { isAdmin } from '../constants';
 import { Button, Label, Input, Badge } from './ui';
 import { AbsenceApprovalQueue } from './AbsenceApprovalQueue';
@@ -842,6 +844,15 @@ const Schedule: React.FC<ScheduleProps> = ({
                                 day === new Date().getDate() &&
                                 currentDate.getMonth() === new Date().getMonth() &&
                                 currentDate.getFullYear() === new Date().getFullYear();
+                              // Outline rather than fill: a birthday is a note
+                              // about the person, not a change to what they are
+                              // rostered for, so whatever the day already says
+                              // has to stay readable underneath.
+                              const isBirthday = isBirthdayOn(
+                                member.birthday,
+                                new Date(year, currentDate.getMonth(), day),
+                              );
+                              const birthdayLabel = isBirthday ? `${member.name}'s birthday` : '';
 
                               let content = null;
                               let cellClass = 'hover:bg-zinc-100 dark:hover:bg-zinc-800';
@@ -899,7 +910,12 @@ const Schedule: React.FC<ScheduleProps> = ({
                                 content = (
                                   <div
                                     className={`w-full h-full flex items-center justify-center ${bgClass} ${statusClass} text-[10px] font-semibold tracking-tight select-none relative`}
-                                    title={shift ? `${text} — shift ${describeShift(shift)} underneath` : text}
+                                    title={[
+                                      shift ? `${text} — shift ${describeShift(shift)} underneath` : text,
+                                      birthdayLabel,
+                                    ]
+                                      .filter(Boolean)
+                                      .join(' · ')}
                                   >
                                     {text}
                                     {statusIcon}
@@ -967,9 +983,33 @@ const Schedule: React.FC<ScheduleProps> = ({
                                   onTouchMove={handleTouchMove}
                                   onTouchEnd={(e) => handleTouchEnd(e, member, group.team.id, day)}
                                   onTouchCancel={abandonTouch}
+                                  title={birthdayLabel || undefined}
                                   className={`w-8 md:w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : !content && isWeekend(day) ? 'bg-emerald-50/40 dark:bg-emerald-900/10' : ''}`}
                                 >
                                   {content}
+                                  {/* An outline drawn over the day rather than a
+                                      fill replacing it, so whatever the person is
+                                      already rostered for stays readable. It has
+                                      to be a positioned overlay: an inset ring on
+                                      the cell paints underneath the absence and
+                                      shift blocks, which cover the cell edge to
+                                      edge. The cake only fits where the day is
+                                      otherwise empty — which is most days — and
+                                      elsewhere the outline carries it alone. */}
+                                  {isBirthday && !inSelection && (
+                                    <span
+                                      aria-hidden
+                                      // No z-index: coming after the content is enough to paint
+                                      // over it, while a raised one would also
+                                      // outrank the sticky name column and show
+                                      // through it when the grid scrolls.
+                                      className="pointer-events-none absolute inset-0 flex items-center justify-center border-2 border-fuchsia-400 dark:border-fuchsia-500"
+                                    >
+                                      {!content && (
+                                        <Cake size={12} className="text-fuchsia-500 dark:text-fuchsia-300" />
+                                      )}
+                                    </span>
+                                  )}
                                 </div>
                               );
                             })}
@@ -997,6 +1037,12 @@ const Schedule: React.FC<ScheduleProps> = ({
               <div>
                 <h3 className="font-semibold text-lg text-zinc-900 dark:text-white">{selectedMemberStats.name}</h3>
                 <p className="text-xs text-zinc-500">{selectedMemberStats.jobTitle}</p>
+                {selectedMemberStats.birthday && (
+                  <p className="mt-0.5 flex items-center gap-1 text-xs text-fuchsia-600 dark:text-fuchsia-300">
+                    <Cake size={12} className="flex-shrink-0" />
+                    {formatBirthday(selectedMemberStats.birthday)}
+                  </p>
+                )}
               </div>
             </div>
 

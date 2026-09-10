@@ -15,15 +15,18 @@ import {
   Search,
   Users,
   UserMinus,
+  Cake,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
 import { AbsenceStatsCard } from './AbsenceStatsCard';
 import { CustomSelect } from './CustomSelect';
+import { BirthdayInput } from './BirthdayInput';
 import { MultiSelect } from './MultiSelect';
 import { DateRangeFilter } from './DateRangeFilter';
 import { calculateAbsenceStats } from '../lib/utils';
+import { formatBirthday } from '../lib/birthday';
 import {
   uploadAvatar,
   fetchTelegramLink,
@@ -255,6 +258,7 @@ export const SettingsModal: React.FC = () => {
     updateMemberAvatar,
     updateMemberName,
     updateMemberJobTitle,
+    updateMemberBirthday,
     updateMemberTeams,
     updateMemberRole,
     updateMemberAccess,
@@ -278,6 +282,11 @@ export const SettingsModal: React.FC = () => {
   const [nameDraft, setNameDraft] = useState('');
   const [editingJobTitle, setEditingJobTitle] = useState(false);
   const [jobTitleDraft, setJobTitleDraft] = useState('');
+  const [editingBirthday, setEditingBirthday] = useState(false);
+  const [birthdayDraft, setBirthdayDraft] = useState<string | null>(null);
+  // Which member's birthday an admin is editing on the Team Members tab.
+  const [editingBirthdayMemberId, setEditingBirthdayMemberId] = useState<string | null>(null);
+  const [memberBirthdayDraft, setMemberBirthdayDraft] = useState<string | null>(null);
   const [editingPlacementId, setEditingPlacementId] = useState<string | null>(null);
   const [placementDraft, setPlacementDraft] = useState('');
   const [newPlacementName, setNewPlacementName] = useState('');
@@ -531,8 +540,75 @@ export const SettingsModal: React.FC = () => {
                     />
                   </p>
                 )}
+                {/* External collaborators never see the schedule the highlight
+                    lives on, so asking them for a birthday would collect a date
+                    nobody in the app would ever look at. */}
+                {!isRelatedOnly &&
+                  (editingBirthday ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <BirthdayInput value={birthdayDraft} onChange={setBirthdayDraft} />
+                      <button
+                        type="button"
+                        aria-label="Save birthday"
+                        disabled={!birthdayDraft}
+                        onClick={() => {
+                          if (!birthdayDraft) return;
+                          updateMemberBirthday(currentUser.id, birthdayDraft);
+                          setCurrentUser({ ...currentUser, birthday: birthdayDraft });
+                          setEditingBirthday(false);
+                          toast.success('Birthday updated');
+                        }}
+                        className="text-emerald-500 hover:text-emerald-600 disabled:opacity-40 disabled:hover:text-emerald-500"
+                      >
+                        <Check size={16} />
+                      </button>
+                      <button
+                        type="button"
+                        aria-label="Cancel"
+                        onClick={() => setEditingBirthday(false)}
+                        className="text-zinc-400 hover:text-zinc-600"
+                      >
+                        <X size={16} />
+                      </button>
+                      {currentUser.birthday && (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            updateMemberBirthday(currentUser.id, null);
+                            setCurrentUser({ ...currentUser, birthday: null });
+                            setEditingBirthday(false);
+                            toast.success('Birthday removed');
+                          }}
+                          className="text-xs font-medium text-red-600 hover:underline dark:text-red-400"
+                        >
+                          Remove
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <p
+                      className="group mt-1 flex cursor-pointer items-center gap-1.5 text-sm text-zinc-500"
+                      onClick={() => {
+                        setBirthdayDraft(currentUser.birthday || null);
+                        setEditingBirthday(true);
+                      }}
+                    >
+                      <Cake size={13} className="flex-shrink-0 text-fuchsia-500 dark:text-fuchsia-400" />
+                      {formatBirthday(currentUser.birthday) || 'Add birthday...'}
+                      <Pencil
+                        size={12}
+                        className="text-zinc-400 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100"
+                      />
+                    </p>
+                  ))}
               </div>
             </div>
+            {!isRelatedOnly && (
+              <p className="text-xs text-zinc-400 dark:text-zinc-500">
+                Your birthday is outlined on the team schedule. Sharing the year is optional — leave it out and only the
+                day and month are stored.
+              </p>
+            )}
             {!isRelatedOnly && (
               <div className="space-y-2">
                 <Label variant="section">My Absences</Label>
@@ -692,178 +768,243 @@ export const SettingsModal: React.FC = () => {
                 const roleLabel = m.role === 'admin' ? 'Admin' : m.role === 'editor' ? 'Editor' : 'User';
                 const selectedTeamIds =
                   m.accessScope === 'related_only' ? pendingConversionTeamIds[m.id] || [] : m.teamIds;
+                const canSetBirthday = canManage && m.accessScope !== 'related_only';
+                const birthdayLabel = formatBirthday(m.birthday);
                 return (
-                  <div
-                    key={m.id}
-                    className="flex flex-col gap-2 px-3 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors lg:flex-row lg:items-center lg:justify-between"
-                  >
-                    <div className="flex min-w-0 items-center gap-3 lg:min-w-[200px] lg:flex-1">
-                      <Avatar src={m.avatar} alt={m.name} size="md" />
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {m.name}
-                          {isMe && <span className="text-zinc-400 font-normal ml-1">(you)</span>}
-                        </p>
-                        {m.jobTitle && <p className="text-xs text-zinc-500 truncate">{m.jobTitle}</p>}
-                      </div>
-                    </div>
-                    <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                      {canManage ? (
-                        <>
-                          <div className="w-full min-w-0 sm:w-auto sm:min-w-[180px] sm:max-w-[260px] lg:w-auto">
-                            <MultiSelect
-                              compact
-                              icon={Users}
-                              label=""
-                              options={teamOptions}
-                              selected={selectedTeamIds}
-                              onChange={(next) => {
-                                if (m.accessScope === 'related_only') {
-                                  setPendingConversionTeamIds((current) => ({ ...current, [m.id]: next }));
-                                  return;
-                                }
-                                const prev = m.teamIds;
-                                updateMemberTeams(m.id, next);
-                                if (isMe) {
-                                  setCurrentUser({ ...currentUser, teamId: next[0] || '', teamIds: next });
-                                }
-                                // Surface what actually changed so admins get clear feedback
-                                const added = next.filter((id) => !prev.includes(id));
-                                const removed = prev.filter((id) => !next.includes(id));
-                                if (added.length > 0) {
-                                  const names = added
-                                    .map((id) => teams.find((t) => t.id === id)?.name || '')
-                                    .join(', ');
-                                  toast.success(`${m.name} added to ${names}`);
-                                } else if (removed.length > 0) {
-                                  const names = removed
-                                    .map((id) => teams.find((t) => t.id === id)?.name || '')
-                                    .join(', ');
-                                  toast.success(`${m.name} removed from ${names}`);
-                                }
+                  <div key={m.id} className="px-3 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                    <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
+                      <div className="flex min-w-0 items-center gap-3 lg:min-w-[200px] lg:flex-1">
+                        <Avatar src={m.avatar} alt={m.name} size="md" />
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium truncate">
+                            {m.name}
+                            {isMe && <span className="text-zinc-400 font-normal ml-1">(you)</span>}
+                          </p>
+                          {m.jobTitle && <p className="text-xs text-zinc-500 truncate">{m.jobTitle}</p>}
+                          {/* Birthdays sit with the name rather than with the
+                            access controls: everyone reads them, only admins
+                            edit them, and the control strip is already full. */}
+                          {canSetBirthday ? (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setEditingBirthdayMemberId(editingBirthdayMemberId === m.id ? null : m.id);
+                                setMemberBirthdayDraft(m.birthday || null);
                               }}
-                              placeholder={
-                                m.accessScope === 'related_only' ? 'Select team to make internal' : 'No teams'
-                              }
-                              searchable
-                            />
-                          </div>
-                          {isMe && (
-                            <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">{roleLabel}</span>
+                              className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500 hover:text-zinc-900 dark:hover:text-zinc-200"
+                            >
+                              <Cake size={11} className="flex-shrink-0 text-fuchsia-500 dark:text-fuchsia-400" />
+                              {birthdayLabel || 'Add birthday'}
+                            </button>
+                          ) : (
+                            birthdayLabel && (
+                              <p className="mt-0.5 flex items-center gap-1 text-xs text-zinc-500">
+                                <Cake size={11} className="flex-shrink-0 text-fuchsia-500 dark:text-fuchsia-400" />
+                                {birthdayLabel}
+                              </p>
+                            )
                           )}
-                          {!isMe && (
-                            <>
-                              <CustomSelect
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                        {canManage ? (
+                          <>
+                            <div className="w-full min-w-0 sm:w-auto sm:min-w-[180px] sm:max-w-[260px] lg:w-auto">
+                              <MultiSelect
                                 compact
-                                value={m.accessScope || 'full'}
-                                onChange={(newAccessScope) => {
-                                  if (newAccessScope === 'related_only') {
-                                    void updateMemberAccess(m.id, 'related_only', [], 'user')
-                                      .then(() => {
-                                        setPendingConversionTeamIds((current) => ({ ...current, [m.id]: [] }));
-                                        toast.success(`${m.name} is now an external collaborator`);
-                                      })
-                                      .catch(() => undefined);
+                                icon={Users}
+                                label=""
+                                options={teamOptions}
+                                selected={selectedTeamIds}
+                                onChange={(next) => {
+                                  if (m.accessScope === 'related_only') {
+                                    setPendingConversionTeamIds((current) => ({ ...current, [m.id]: next }));
                                     return;
                                   }
-                                  if (selectedTeamIds.length === 0) {
-                                    toast.error('Select at least one team before making this member internal');
-                                    return;
+                                  const prev = m.teamIds;
+                                  updateMemberTeams(m.id, next);
+                                  if (isMe) {
+                                    setCurrentUser({ ...currentUser, teamId: next[0] || '', teamIds: next });
                                   }
-                                  void updateMemberAccess(m.id, 'full', selectedTeamIds, m.role)
-                                    .then(() => {
-                                      setPendingConversionTeamIds((current) => ({ ...current, [m.id]: [] }));
-                                      toast.success(`${m.name} is now an internal member`);
-                                    })
-                                    .catch(() => undefined);
+                                  // Surface what actually changed so admins get clear feedback
+                                  const added = next.filter((id) => !prev.includes(id));
+                                  const removed = prev.filter((id) => !next.includes(id));
+                                  if (added.length > 0) {
+                                    const names = added
+                                      .map((id) => teams.find((t) => t.id === id)?.name || '')
+                                      .join(', ');
+                                    toast.success(`${m.name} added to ${names}`);
+                                  } else if (removed.length > 0) {
+                                    const names = removed
+                                      .map((id) => teams.find((t) => t.id === id)?.name || '')
+                                      .join(', ');
+                                    toast.success(`${m.name} removed from ${names}`);
+                                  }
                                 }}
-                                options={[
-                                  { value: 'full', label: 'Internal member' },
-                                  { value: 'related_only', label: 'External collaborator' },
-                                ]}
-                                renderValue={(v) => (
-                                  <span className="flex items-center gap-1 text-xs">
-                                    {v === 'related_only' ? 'External' : 'Internal'}
-                                    <ChevronDown size={12} className="text-zinc-400" />
-                                  </span>
-                                )}
-                                dropdownMinWidth={170}
-                                className="w-auto"
+                                placeholder={
+                                  m.accessScope === 'related_only' ? 'Select team to make internal' : 'No teams'
+                                }
+                                searchable
                               />
-                              {m.accessScope === 'related_only' ? (
-                                <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">User</span>
-                              ) : (
+                            </div>
+                            {isMe && (
+                              <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">{roleLabel}</span>
+                            )}
+                            {!isMe && (
+                              <>
                                 <CustomSelect
                                   compact
-                                  value={m.role}
-                                  onChange={(newRole) => {
-                                    updateMemberRole(m.id, newRole as UserRole);
-                                    toast.success(
-                                      `${m.name} is now ${newRole === 'admin' ? 'Admin' : newRole === 'editor' ? 'Editor' : 'User'}`,
-                                    );
+                                  value={m.accessScope || 'full'}
+                                  onChange={(newAccessScope) => {
+                                    if (newAccessScope === 'related_only') {
+                                      void updateMemberAccess(m.id, 'related_only', [], 'user')
+                                        .then(() => {
+                                          setPendingConversionTeamIds((current) => ({ ...current, [m.id]: [] }));
+                                          toast.success(`${m.name} is now an external collaborator`);
+                                        })
+                                        .catch(() => undefined);
+                                      return;
+                                    }
+                                    if (selectedTeamIds.length === 0) {
+                                      toast.error('Select at least one team before making this member internal');
+                                      return;
+                                    }
+                                    void updateMemberAccess(m.id, 'full', selectedTeamIds, m.role)
+                                      .then(() => {
+                                        setPendingConversionTeamIds((current) => ({ ...current, [m.id]: [] }));
+                                        toast.success(`${m.name} is now an internal member`);
+                                      })
+                                      .catch(() => undefined);
                                   }}
-                                  options={roleOptions}
+                                  options={[
+                                    { value: 'full', label: 'Internal member' },
+                                    { value: 'related_only', label: 'External collaborator' },
+                                  ]}
                                   renderValue={(v) => (
                                     <span className="flex items-center gap-1 text-xs">
-                                      {v === 'admin' ? 'Admin' : v === 'editor' ? 'Editor' : 'User'}
+                                      {v === 'related_only' ? 'External' : 'Internal'}
                                       <ChevronDown size={12} className="text-zinc-400" />
                                     </span>
                                   )}
-                                  dropdownMinWidth={110}
+                                  dropdownMinWidth={170}
                                   className="w-auto"
                                 />
-                              )}
-                              {/* Most people never open Settings, so they can never
+                                {m.accessScope === 'related_only' ? (
+                                  <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">User</span>
+                                ) : (
+                                  <CustomSelect
+                                    compact
+                                    value={m.role}
+                                    onChange={(newRole) => {
+                                      updateMemberRole(m.id, newRole as UserRole);
+                                      toast.success(
+                                        `${m.name} is now ${newRole === 'admin' ? 'Admin' : newRole === 'editor' ? 'Editor' : 'User'}`,
+                                      );
+                                    }}
+                                    options={roleOptions}
+                                    renderValue={(v) => (
+                                      <span className="flex items-center gap-1 text-xs">
+                                        {v === 'admin' ? 'Admin' : v === 'editor' ? 'Editor' : 'User'}
+                                        <ChevronDown size={12} className="text-zinc-400" />
+                                      </span>
+                                    )}
+                                    dropdownMinWidth={110}
+                                    className="w-auto"
+                                  />
+                                )}
+                                {/* Most people never open Settings, so they can never
                                   link Telegram themselves — and without a link the
                                   Mini App cannot map them to a profile at all. */}
-                              <button
-                                type="button"
-                                aria-label={`Telegram link code for ${m.name}`}
-                                onClick={async () => {
-                                  try {
-                                    const code = await adminGenerateTelegramLinkCode(m.id);
-                                    setIssuedCodes((previous) => ({ ...previous, [m.id]: code }));
-                                  } catch {
-                                    toast.error('Could not issue a link code');
-                                  }
-                                }}
-                                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                              >
-                                <Send size={13} />
-                                {issuedCodes[m.id] ? issuedCodes[m.id] : 'Link code'}
-                              </button>
-                              {issuedCodes[m.id] && (
-                                <a
-                                  href={`https://t.me/${TELEGRAM_BOT_USERNAME}?start=${issuedCodes[m.id]}`}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                <button
+                                  type="button"
+                                  aria-label={`Telegram link code for ${m.name}`}
+                                  onClick={async () => {
+                                    try {
+                                      const code = await adminGenerateTelegramLinkCode(m.id);
+                                      setIssuedCodes((previous) => ({ ...previous, [m.id]: code }));
+                                    } catch {
+                                      toast.error('Could not issue a link code');
+                                    }
+                                  }}
+                                  className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
                                 >
-                                  Send link
-                                </a>
-                              )}
-                              {/* Was a bare zinc-400 label that read as disabled text and
+                                  <Send size={13} />
+                                  {issuedCodes[m.id] ? issuedCodes[m.id] : 'Link code'}
+                                </button>
+                                {issuedCodes[m.id] && (
+                                  <a
+                                    href={`https://t.me/${TELEGRAM_BOT_USERNAME}?start=${issuedCodes[m.id]}`}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                  >
+                                    Send link
+                                  </a>
+                                )}
+                                {/* Was a bare zinc-400 label that read as disabled text and
                                   gave a tap target under 20px tall on a phone. */}
-                              <button
-                                type="button"
-                                aria-label={`Remove ${m.name}`}
-                                onClick={() => {
-                                  if (confirm(`Remove ${m.name} from the team?`)) {
-                                    removeMember(m.id, currentUser.id);
-                                  }
-                                }}
-                                className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 dark:border-zinc-700 dark:text-red-400 dark:hover:border-red-900/60 dark:hover:bg-red-900/20"
-                              >
-                                <UserMinus size={13} />
-                                Remove
-                              </button>
-                            </>
-                          )}
-                        </>
-                      ) : (
-                        <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">{roleLabel}</span>
-                      )}
+                                <button
+                                  type="button"
+                                  aria-label={`Remove ${m.name}`}
+                                  onClick={() => {
+                                    if (confirm(`Remove ${m.name} from the team?`)) {
+                                      removeMember(m.id, currentUser.id);
+                                    }
+                                  }}
+                                  className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 dark:border-zinc-700 dark:text-red-400 dark:hover:border-red-900/60 dark:hover:bg-red-900/20"
+                                >
+                                  <UserMinus size={13} />
+                                  Remove
+                                </button>
+                              </>
+                            )}
+                          </>
+                        ) : (
+                          <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">{roleLabel}</span>
+                        )}
+                      </div>
                     </div>
+                    {editingBirthdayMemberId === m.id && (
+                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-700 dark:bg-zinc-800/50">
+                        <BirthdayInput key={m.id} value={memberBirthdayDraft} onChange={setMemberBirthdayDraft} />
+                        <button
+                          type="button"
+                          disabled={!memberBirthdayDraft}
+                          onClick={() => {
+                            if (!memberBirthdayDraft) return;
+                            updateMemberBirthday(m.id, memberBirthdayDraft);
+                            if (isMe) setCurrentUser({ ...currentUser, birthday: memberBirthdayDraft });
+                            setEditingBirthdayMemberId(null);
+                            toast.success(`Birthday saved for ${m.name}`);
+                          }}
+                          className="inline-flex items-center gap-1.5 rounded-md bg-zinc-900 px-2.5 py-1.5 text-xs font-medium text-white transition-colors hover:bg-zinc-700 disabled:opacity-40 dark:bg-white dark:text-zinc-900 dark:hover:bg-zinc-200"
+                        >
+                          <Check size={13} />
+                          Save
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setEditingBirthdayMemberId(null)}
+                          className="inline-flex items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-100 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
+                        >
+                          Cancel
+                        </button>
+                        {m.birthday && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              updateMemberBirthday(m.id, null);
+                              if (isMe) setCurrentUser({ ...currentUser, birthday: null });
+                              setEditingBirthdayMemberId(null);
+                              toast.success(`Birthday removed for ${m.name}`);
+                            }}
+                            className="text-xs font-medium text-red-600 hover:underline dark:text-red-400"
+                          >
+                            Remove
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 );
               })}
