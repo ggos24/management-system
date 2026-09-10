@@ -34,7 +34,11 @@ const RELATED_ACTIONABLE_TASK_TYPES = new Set([
   'comment_mention',
 ]);
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Shape check only, so ids are safe to interpolate into PostgREST filters.
+// Deliberately not RFC 4122-strict: seeded profiles carry ids such as
+// b0000000-0000-0000-0000-000000000001 (version and variant nibbles are zero),
+// and a strict pattern rejected every batch that included one of them.
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 interface AuthorizeNotificationInput {
   adminClient: SupabaseClient;
