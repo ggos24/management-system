@@ -17,6 +17,10 @@
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+// package.json has "type": "module", so Vercel runs this file as native Node
+// ESM: relative imports MUST carry a .js extension (the .ts sources are
+// compiled and renamed at build time). Extensionless imports resolve fine in
+// Vite and Vitest but crash the deployed function on load.
 import {
   ACCREDITATION_KIND_LABEL,
   REMINDER_OFFSETS,
@@ -27,9 +31,9 @@ import {
   formatMoney,
   todayDateOnly,
   type ReminderOffset,
-} from '../lib/renewals';
-import { formatDateEU } from '../lib/utils';
-import type { AccreditationKind, BillingPeriod, Currency } from '../types';
+} from '../lib/renewals.js';
+import { formatDateEU } from '../lib/utils.js';
+import type { AccreditationKind, BillingPeriod, Currency } from '../types.js';
 
 const REMINDER_TYPE = 'renewal_reminder';
 const WINDOW_DAYS = Math.max(...REMINDER_OFFSETS);
