@@ -238,6 +238,67 @@ export interface EquipmentVerification {
   verifiedAt: string;
 }
 
+// === Renewals: accreditations & subscriptions (Tools, admin-only) ===
+
+export type AccreditationKind = 'military' | 'government' | 'parliament' | 'event' | 'press_card' | 'other';
+/** Expired is derived from validUntil, never stored — see lib/renewals.ts. */
+export type AccreditationStatus = 'pending' | 'active' | 'revoked';
+
+export interface Accreditation {
+  id: string;
+  holderId: string | null;
+  // Trigger-set snapshot of the holder's name; outlives the profile.
+  holderName: string;
+  issuer: string;
+  kind: AccreditationKind;
+  cardNumber: string;
+  issuedAt: string | null; // YYYY-MM-DD
+  validUntil: string | null; // YYYY-MM-DD; null = no expiry
+  status: AccreditationStatus;
+  documentUrl: string;
+  notes: string;
+  createdBy: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export type SubscriptionCategory = 'software' | 'ai' | 'media' | 'hosting' | 'communication' | 'other';
+export type BillingPeriod = 'monthly' | 'quarterly' | 'yearly' | 'one_time';
+export type Currency = 'UAH' | 'USD' | 'EUR';
+/** Overdue is derived from nextPaymentDate, never stored — see lib/renewals.ts. */
+export type SubscriptionStatus = 'active' | 'paused' | 'cancelled';
+
+export interface Subscription {
+  id: string;
+  serviceName: string;
+  category: SubscriptionCategory;
+  plan: string;
+  amount: number;
+  currency: Currency;
+  billingPeriod: BillingPeriod;
+  nextPaymentDate: string | null; // YYYY-MM-DD; null = nothing scheduled
+  ownerId: string | null;
+  accountEmail: string;
+  paymentMethod: string;
+  websiteUrl: string;
+  documentUrl: string;
+  status: SubscriptionStatus;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface SubscriptionPayment {
+  id: string;
+  subscriptionId: string;
+  paidAt: string; // YYYY-MM-DD
+  amount: number;
+  currency: Currency;
+  note: string;
+  recordedBy: string | null;
+  createdAt: string;
+}
+
 export type DocSection = 'help' | 'knowledge-base';
 
 export interface Doc {
@@ -303,7 +364,8 @@ export type NotificationType =
   | 'ticket_reply'
   | 'equipment_taken'
   | 'equipment_returned'
-  | 'equipment_overdue';
+  | 'equipment_overdue'
+  | 'renewal_reminder';
 
 export interface Notification {
   id: string;
@@ -323,7 +385,8 @@ export type NotificationCategory =
   | 'schedule'
   | 'members'
   | 'support'
-  | 'equipment';
+  | 'equipment'
+  | 'renewals';
 export type NotificationChannel = 'in_app' | 'telegram' | 'email';
 
 export const NOTIFICATION_CATEGORY: Record<NotificationType, NotificationCategory> = {
@@ -347,6 +410,7 @@ export const NOTIFICATION_CATEGORY: Record<NotificationType, NotificationCategor
   equipment_taken: 'equipment',
   equipment_returned: 'equipment',
   equipment_overdue: 'equipment',
+  renewal_reminder: 'renewals',
 };
 
 export interface NotificationPreference {

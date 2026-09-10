@@ -17,6 +17,7 @@ import {
   LifeBuoy,
   Package,
   PackageX,
+  CalendarClock,
 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { IconButton, Divider } from './ui';
@@ -60,6 +61,8 @@ function getNotificationIcon(type: NotificationType) {
       return <Package size={14} className="shrink-0" />;
     case 'equipment_overdue':
       return <PackageX size={14} className="shrink-0" />;
+    case 'renewal_reminder':
+      return <CalendarClock size={14} className="shrink-0" />;
     default:
       return <Bell size={14} className="shrink-0" />;
   }
@@ -188,6 +191,16 @@ export const Header: React.FC = () => {
     } else if (n.type === 'member_invited') {
       setIsSettingsModalOpen(true);
       useUiStore.getState().setActiveSettingsTab('Team Members');
+    } else if (n.type === 'renewal_reminder') {
+      // The digest names its kind so the click lands on the right register.
+      const kind = n.entityData?.renewalKind;
+      navigate(
+        kind === 'subscription'
+          ? '/tools/subscriptions'
+          : kind === 'accreditation'
+            ? '/tools/accreditations'
+            : '/tools',
+      );
     }
 
     setIsNotificationsOpen(false);

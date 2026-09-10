@@ -5,6 +5,7 @@ import { useUiStore } from '../stores/uiStore';
 import { captureAuthSession, isAuthSessionCurrent, useAuthStore } from '../stores/authStore';
 import * as db from '../lib/database';
 import { toast } from 'sonner';
+import { isAdmin } from '../constants';
 
 function useDebouncedCallback(fn: () => void, delay: number): () => void {
   const timer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -60,6 +61,15 @@ export function useRealtimeSync() {
     const { setEquipmentItems, setEquipmentCheckouts } = storeRef.current.getState();
     fetchForCurrentSession(db.fetchEquipmentItems, setEquipmentItems, { fullOnly: true });
     fetchForCurrentSession(db.fetchEquipmentCheckouts, setEquipmentCheckouts, { fullOnly: true });
+  }, 300);
+
+  const debouncedFetchRenewals = useDebouncedCallback(() => {
+    // Admin-only tables: anyone else would only get an empty result back.
+    const role = useAuthStore.getState().currentUser?.role;
+    if (!role || !isAdmin(role)) return;
+    const { setAccreditations, setSubscriptions } = storeRef.current.getState();
+    fetchForCurrentSession(db.fetchAccreditations, setAccreditations, { fullOnly: true });
+    fetchForCurrentSession(db.fetchSubscriptions, setSubscriptions, { fullOnly: true });
   }, 300);
 
   const debouncedFetchMembers = useDebouncedCallback(() => {
@@ -193,6 +203,12 @@ export function useRealtimeSync() {
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'equipment_checkouts' }, () => {
         debouncedFetchEquipment();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'accreditations' }, () => {
+        debouncedFetchRenewals();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'subscriptions' }, () => {
+        debouncedFetchRenewals();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'profiles' }, (payload) => {
         const currentUser = useAuthStore.getState().currentUser;

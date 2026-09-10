@@ -31,6 +31,9 @@ import {
   EquipmentItem,
   EquipmentCheckout,
   EquipmentVerification,
+  Accreditation,
+  Subscription,
+  SubscriptionPayment,
 } from '../types';
 import { toDateOnly } from './utils';
 
@@ -2139,4 +2142,188 @@ export async function markItemVerified(itemId: string, verifiedBy: string): Prom
     .single();
   if (error) throw error;
   return mapEquipmentVerification(data);
+}
+
+// === Renewals: accreditations & subscriptions (Tools, admin-only) ===
+
+function mapAccreditation(row: any): Accreditation {
+  return {
+    id: row.id,
+    holderId: row.holder_id ?? null,
+    holderName: row.holder_name || '',
+    issuer: row.issuer,
+    kind: row.kind,
+    cardNumber: row.card_number || '',
+    issuedAt: row.issued_at ?? null,
+    validUntil: row.valid_until ?? null,
+    status: row.status,
+    documentUrl: row.document_url || '',
+    notes: row.notes || '',
+    createdBy: row.created_by ?? null,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapSubscription(row: any): Subscription {
+  return {
+    id: row.id,
+    serviceName: row.service_name,
+    category: row.category,
+    plan: row.plan || '',
+    // numeric arrives as a string over PostgREST and in realtime payloads.
+    amount: Number(row.amount),
+    currency: row.currency,
+    billingPeriod: row.billing_period,
+    nextPaymentDate: row.next_payment_date ?? null,
+    ownerId: row.owner_id ?? null,
+    accountEmail: row.account_email || '',
+    paymentMethod: row.payment_method || '',
+    websiteUrl: row.website_url || '',
+    documentUrl: row.document_url || '',
+    status: row.status,
+    notes: row.notes || '',
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function mapSubscriptionPayment(row: any): SubscriptionPayment {
+  return {
+    id: row.id,
+    subscriptionId: row.subscription_id,
+    paidAt: row.paid_at,
+    amount: Number(row.amount),
+    currency: row.currency,
+    note: row.note || '',
+    recordedBy: row.recorded_by ?? null,
+    createdAt: row.created_at,
+  };
+}
+
+export async function fetchAccreditations(): Promise<Accreditation[]> {
+  const { data, error } = await supabase
+    .from('accreditations')
+    .select('*')
+    .order('valid_until', { ascending: true, nullsFirst: false })
+    .order('holder_name');
+  if (error) throw error;
+  return (data || []).map(mapAccreditation);
+}
+
+export async function fetchSubscriptions(): Promise<Subscription[]> {
+  const { data, error } = await supabase
+    .from('subscriptions')
+    .select('*')
+    .order('next_payment_date', { ascending: true, nullsFirst: false })
+    .order('service_name');
+  if (error) throw error;
+  return (data || []).map(mapSubscription);
+}
+
+export type AccreditationInput = Partial<Accreditation> & { id?: string; createdBy?: string | null };
+
+export async function upsertAccreditation(input: AccreditationInput): Promise<Accreditation> {
+  const payload: Record<string, any> = {
+    holder_id: input.holderId || null,
+    issuer: (input.issuer || '').trim(),
+    kind: input.kind || 'other',
+    card_number: input.cardNumber?.trim() || null,
+    issued_at: input.issuedAt || null,
+    valid_until: input.validUntil || null,
+    status: input.status || 'active',
+    document_url: input.documentUrl?.trim() || null,
+    notes: input.notes?.trim() || null,
+  };
+  // holder_name is trigger-owned and never sent. An existing row goes through
+  // UPDATE rather than upsert: for a former member (holder_id NULL) an upsert
+  // would run the INSERT trigger first and be refused. `.single()` turns an
+  // RLS-filtered zero-row write into an error instead of a silent no-op.
+  const { data, error } = input.id
+    ? await supabase.from('accreditations').update(payload).eq('id', input.id).select().single()
+    : await supabase
+        .from('accreditations')
+        .insert({ ...payload, holder_name: '', created_by: input.createdBy ?? null })
+        .select()
+        .single();
+  if (error) throw error;
+  return mapAccreditation(data);
+}
+
+export async function deleteAccreditation(id: string): Promise<void> {
+  const { data, error } = await supabase.from('accreditations').delete().eq('id', id).select('id');
+  if (error) throw error;
+  await assertDeleted(data, 'accreditations', id);
+}
+
+export async function upsertSubscription(input: Partial<Subscription> & { id?: string }): Promise<Subscription> {
+  const payload: Record<string, any> = {
+    service_name: (input.serviceName || '').trim(),
+    category: input.category || 'software',
+    plan: input.plan?.trim() || null,
+    amount: input.amount ?? 0,
+    currency: input.currency || 'USD',
+    billing_period: input.billingPeriod || 'monthly',
+    next_payment_date: input.nextPaymentDate || null,
+    owner_id: input.ownerId || null,
+    account_email: input.accountEmail?.trim() || null,
+    payment_method: input.paymentMethod?.trim() || null,
+    website_url: input.websiteUrl?.trim() || null,
+    document_url: input.documentUrl?.trim() || null,
+    status: input.status || 'active',
+    notes: input.notes?.trim() || null,
+  };
+  if (input.id) payload.id = input.id;
+  const { data, error } = await supabase.from('subscriptions').upsert(payload).select().single();
+  if (error) throw error;
+  return mapSubscription(data);
+}
+
+export async function deleteSubscription(id: string): Promise<void> {
+  const { data, error } = await supabase.from('subscriptions').delete().eq('id', id).select('id');
+  if (error) throw error;
+  await assertDeleted(data, 'subscriptions', id);
+}
+
+/** Payment ledger for one subscription, newest first. Loaded on demand. */
+export async function fetchSubscriptionPayments(subscriptionId: string): Promise<SubscriptionPayment[]> {
+  const { data, error } = await supabase
+    .from('subscription_payments')
+    .select('*')
+    .eq('subscription_id', subscriptionId)
+    .order('paid_at', { ascending: false })
+    .order('created_at', { ascending: false });
+  if (error) throw error;
+  return (data || []).map(mapSubscriptionPayment);
+}
+
+export interface RecordPaymentInput {
+  subscriptionId: string;
+  paidAt: string; // YYYY-MM-DD
+  amount?: number;
+  note?: string;
+}
+
+/**
+ * Insert the payment and roll next_payment_date forward in ONE transaction.
+ * Two client writes could leave a payment recorded with the date unchanged.
+ */
+export async function recordSubscriptionPayment(input: RecordPaymentInput): Promise<Subscription> {
+  const { data, error } = await supabase.rpc('record_subscription_payment', {
+    p_subscription_id: input.subscriptionId,
+    p_paid_at: input.paidAt,
+    p_amount: input.amount ?? null,
+    p_note: input.note ?? null,
+  });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) throw new Error('Recording the payment returned no subscription');
+  return mapSubscription(row);
+}
+
+/** Removes a mistaken ledger entry. Does NOT move next_payment_date back. */
+export async function deleteSubscriptionPayment(id: string): Promise<void> {
+  const { data, error } = await supabase.from('subscription_payments').delete().eq('id', id).select('id');
+  if (error) throw error;
+  await assertDeleted(data, 'subscription_payments', id);
 }

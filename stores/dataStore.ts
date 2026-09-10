@@ -29,9 +29,13 @@ import {
   EquipmentItem,
   EquipmentCheckout,
   EquipmentVerification,
+  Accreditation,
+  Subscription,
+  SubscriptionPayment,
 } from '../types';
 import * as db from '../lib/database';
 import { formatDateEU, toDateOnly } from '../lib/utils';
+import { formatMoney, rollForward } from '../lib/renewals';
 import { useAuthStore } from './authStore';
 import { supabase } from '../lib/supabase';
 import { PERSON_FIELD_DEFAULT_LABELS, isAdmin, TICKET_STATUS_META } from '../constants';
@@ -524,6 +528,9 @@ interface DataState {
   // holder of a unit is derived from these, never stored on the item.
   equipmentCheckouts: EquipmentCheckout[];
   equipmentVerifications: EquipmentVerification[];
+  // Admin-only registers behind /tools; stay empty for everyone else.
+  accreditations: Accreditation[];
+  subscriptions: Subscription[];
   teams: Team[];
   members: Member[];
   absences: Absence[];
@@ -553,6 +560,8 @@ interface DataState {
   setEquipmentItems: (items: EquipmentItem[]) => void;
   setEquipmentCheckouts: (checkouts: EquipmentCheckout[]) => void;
   setEquipmentVerifications: (verifications: EquipmentVerification[]) => void;
+  setAccreditations: (accreditations: Accreditation[]) => void;
+  setSubscriptions: (subscriptions: Subscription[]) => void;
   setTeams: (teams: Team[]) => void;
   setMembers: (members: Member[]) => void;
   setAbsences: (absences: Absence[]) => void;
@@ -639,6 +648,15 @@ interface DataState {
   markItemVerified: (itemId: string) => Promise<boolean>;
   markEquipmentLabelsPrinted: (itemIds: string[]) => Promise<void>;
   loadEquipmentHistory: (itemId: string) => Promise<EquipmentCheckout[]>;
+
+  // Renewals actions (Tools → Accreditations / Subscriptions)
+  saveAccreditation: (input: Partial<Accreditation> & { id?: string }) => Promise<Accreditation | null>;
+  removeAccreditation: (id: string) => void;
+  saveSubscription: (input: Partial<Subscription> & { id?: string }) => Promise<Subscription | null>;
+  removeSubscription: (id: string) => void;
+  markSubscriptionPaid: (id: string, input: { paidAt: string; amount?: number; note?: string }) => Promise<boolean>;
+  loadSubscriptionPayments: (subscriptionId: string) => Promise<SubscriptionPayment[]>;
+  removeSubscriptionPayment: (paymentId: string) => Promise<boolean>;
 
   // Absence/Shift actions
   updateAbsence: (absence: Absence) => void;
@@ -737,6 +755,8 @@ export const useDataStore = create<DataState>((set, get) => ({
   equipmentItems: [],
   equipmentCheckouts: [],
   equipmentVerifications: [],
+  accreditations: [],
+  subscriptions: [],
   teams: [],
   members: [],
   absences: [],
@@ -766,6 +786,8 @@ export const useDataStore = create<DataState>((set, get) => ({
   setEquipmentItems: (equipmentItems) => set({ equipmentItems }),
   setEquipmentCheckouts: (equipmentCheckouts) => set({ equipmentCheckouts }),
   setEquipmentVerifications: (equipmentVerifications) => set({ equipmentVerifications }),
+  setAccreditations: (accreditations) => set({ accreditations }),
+  setSubscriptions: (subscriptions) => set({ subscriptions }),
   setTeams: (teams) => {
     const orders = get().sidebarTeamOrders;
     if (Object.keys(orders).length > 0) {
@@ -866,6 +888,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       equipmentItems: [],
       equipmentCheckouts: [],
       equipmentVerifications: [],
+      accreditations: [],
+      subscriptions: [],
       teams: [],
       members: [],
       absences: [],
@@ -2443,6 +2467,138 @@ export const useDataStore = create<DataState>((set, get) => ({
     }
   },
 
+  // === Renewals actions (Tools → Accreditations / Subscriptions) ===
+
+  saveAccreditation: async (input) => {
+    try {
+      const saved = await db.upsertAccreditation(input.id ? input : { ...input, createdBy: getCurrentUserId() });
+      const prev = get().accreditations;
+      const exists = prev.some((candidate) => candidate.id === saved.id);
+      set({
+        accreditations: exists
+          ? prev.map((candidate) => (candidate.id === saved.id ? saved : candidate))
+          : [...prev, saved],
+      });
+      logAction(
+        exists ? 'Accreditation Updated' : 'Accreditation Added',
+        `${saved.holderName} — ${saved.issuer}`,
+        'accreditation',
+      );
+      return saved;
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to save accreditation');
+      return null;
+    }
+  },
+
+  removeAccreditation: (id) => {
+    const prev = get().accreditations;
+    const item = prev.find((candidate) => candidate.id === id);
+    if (!item) return;
+    set({ accreditations: prev.filter((candidate) => candidate.id !== id) });
+    db.deleteAccreditation(id).then(
+      () => logAction('Accreditation Deleted', `${item.holderName} — ${item.issuer}`, 'accreditation'),
+      (error) => {
+        console.error(error);
+        set({ accreditations: prev });
+        toast.error('Failed to delete accreditation');
+      },
+    );
+  },
+
+  saveSubscription: async (input) => {
+    try {
+      const saved = await db.upsertSubscription(input);
+      const prev = get().subscriptions;
+      const exists = prev.some((candidate) => candidate.id === saved.id);
+      set({
+        subscriptions: exists
+          ? prev.map((candidate) => (candidate.id === saved.id ? saved : candidate))
+          : [...prev, saved],
+      });
+      logAction(exists ? 'Subscription Updated' : 'Subscription Added', saved.serviceName, 'subscription');
+      return saved;
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to save subscription');
+      return null;
+    }
+  },
+
+  removeSubscription: (id) => {
+    const prev = get().subscriptions;
+    const item = prev.find((candidate) => candidate.id === id);
+    if (!item) return;
+    set({ subscriptions: prev.filter((candidate) => candidate.id !== id) });
+    db.deleteSubscription(id).then(
+      () => logAction('Subscription Deleted', item.serviceName, 'subscription'),
+      (error) => {
+        console.error(error);
+        set({ subscriptions: prev });
+        toast.error('Failed to delete subscription');
+      },
+    );
+  },
+
+  markSubscriptionPaid: async (id, input) => {
+    const prev = get().subscriptions;
+    const current = prev.find((candidate) => candidate.id === id);
+    if (!current) return false;
+    // Optimistic: mirror the RPC's roll-forward so the row moves at once; the
+    // server row replaces it when the write lands.
+    set({
+      subscriptions: prev.map((candidate) =>
+        candidate.id === id
+          ? {
+              ...candidate,
+              nextPaymentDate: rollForward(candidate.nextPaymentDate, input.paidAt, candidate.billingPeriod),
+            }
+          : candidate,
+      ),
+    });
+    try {
+      const saved = await db.recordSubscriptionPayment({
+        subscriptionId: id,
+        paidAt: input.paidAt,
+        amount: input.amount,
+        note: input.note,
+      });
+      set({ subscriptions: get().subscriptions.map((candidate) => (candidate.id === id ? saved : candidate)) });
+      logAction(
+        'Subscription Paid',
+        `${current.serviceName} — ${formatMoney(input.amount ?? current.amount, current.currency)} on ${formatDateEU(input.paidAt)}`,
+        'subscription',
+      );
+      return true;
+    } catch (error) {
+      console.error(error);
+      set({ subscriptions: prev });
+      toast.error('Failed to record the payment');
+      return false;
+    }
+  },
+
+  loadSubscriptionPayments: async (subscriptionId) => {
+    try {
+      return await db.fetchSubscriptionPayments(subscriptionId);
+    } catch {
+      toast.error('Failed to load payment history');
+      return [];
+    }
+  },
+
+  removeSubscriptionPayment: async (paymentId) => {
+    try {
+      await db.deleteSubscriptionPayment(paymentId);
+      return true;
+    } catch (error) {
+      console.error(error);
+      toast.error('Failed to delete the payment');
+      return false;
+    }
+  },
+
   setNotificationPreference: (userId, category, channel, enabled) => {
     const { notificationPreferences } = get();
     const previous = notificationPreferences;
@@ -2539,6 +2695,10 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchEquipmentItems(), // 22
       db.fetchEquipmentCheckouts(), // 23
       db.fetchRecentEquipmentVerifications(), // 24
+      // Admin-only registers: RLS would hand anyone else an empty result, so
+      // skip the requests instead of issuing them.
+      isAdmin(profileResult.role) ? db.fetchAccreditations() : Promise.resolve([] as Accreditation[]), // 25
+      isAdmin(profileResult.role) ? db.fetchSubscriptions() : Promise.resolve([] as Subscription[]), // 26
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
@@ -2595,6 +2755,8 @@ export const useDataStore = create<DataState>((set, get) => ({
       equipmentItems: getValue(results[22], [] as EquipmentItem[]),
       equipmentCheckouts: getValue(results[23], [] as EquipmentCheckout[]),
       equipmentVerifications: getValue(results[24], [] as EquipmentVerification[]),
+      accreditations: getValue(results[25], [] as Accreditation[]),
+      subscriptions: getValue(results[26], [] as Subscription[]),
       deletedTasks: [],
     });
 
