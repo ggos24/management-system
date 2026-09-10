@@ -98,7 +98,14 @@ export function getNotificationCategoryRows(
         : 'Gear returned on your behalf, and your overdue items',
     },
     ...(showAdminCategories
-      ? ([{ category: 'members', label: 'Members', description: 'New member invitations' }] as const)
+      ? ([
+          { category: 'members', label: 'Members', description: 'New member invitations' },
+          {
+            category: 'renewals',
+            label: 'Renewals',
+            description: 'Daily digest of expiring accreditations and upcoming subscription payments',
+          },
+        ] as const)
       : []),
   ];
 }
@@ -120,6 +127,8 @@ const ENTITY_TYPE_OPTIONS = [
   { value: 'schedule', label: 'Schedule' },
   { value: 'integration', label: 'Integration' },
   { value: 'permission', label: 'Permission' },
+  { value: 'accreditation', label: 'Accreditation' },
+  { value: 'subscription', label: 'Subscription' },
 ];
 
 const LogsHistoryTab: React.FC<{ logs: LogEntry[]; members: Member[] }> = ({ logs, members }) => {

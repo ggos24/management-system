@@ -36,6 +36,8 @@ const EquipmentAudit = React.lazy(() => import('./components/EquipmentAudit'));
 const EquipmentLabels = React.lazy(() => import('./components/EquipmentLabels'));
 const ToolsView = React.lazy(() => import('./components/ToolsView'));
 const EmailTemplateGenerator = React.lazy(() => import('./components/EmailTemplateGenerator'));
+const AccreditationsTool = React.lazy(() => import('./components/AccreditationsTool'));
+const SubscriptionsTool = React.lazy(() => import('./components/SubscriptionsTool'));
 
 // Outlet context type used by route wrappers
 interface LayoutContext {
@@ -469,6 +471,22 @@ export const router = createBrowserRouter([
                 element: (
                   <AdminGuard>
                     <EmailTemplateGenerator />
+                  </AdminGuard>
+                ),
+              },
+              {
+                path: 'tools/accreditations',
+                element: (
+                  <AdminGuard>
+                    <AccreditationsTool />
+                  </AdminGuard>
+                ),
+              },
+              {
+                path: 'tools/subscriptions',
+                element: (
+                  <AdminGuard>
+                    <SubscriptionsTool />
                   </AdminGuard>
                 ),
               },

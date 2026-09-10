@@ -23,6 +23,7 @@ const CATEGORY_BY_TYPE: Record<string, string> = {
   equipment_taken: 'equipment',
   equipment_returned: 'equipment',
   equipment_overdue: 'equipment',
+  renewal_reminder: 'renewals',
 };
 
 const RELATED_ACTIONABLE_TASK_TYPES = new Set([

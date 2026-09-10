@@ -64,6 +64,9 @@ npm run format       # Format all files with Prettier
 │   ├── SettingsModal.tsx  Profile, Telegram, members, logs (lazy-loaded)
 │   ├── ManageTeamsModal.tsx  Team CRUD (lazy-loaded)
 │   ├── InviteModal.tsx  Invite users via edge function (lazy-loaded)
+│   ├── ToolsView.tsx    Admin-only Tools hub (card grid under /tools)
+│   ├── AccreditationsTool.tsx  Journalist accreditations register + expiry tracking (Tools)
+│   ├── SubscriptionsTool.tsx   Paid services register, payment ledger, spend summary (Tools)
 │   └── ...              Other: Avatar, CustomSelect, MultiSelect, TagSelect, SimpleDatePicker, etc.
 ├── stores/              Zustand stores
 │   ├── authStore.ts     Session, current user, auth state
@@ -179,7 +182,7 @@ Typed in `vite-env.d.ts`. Example in `.env.example`.
 
 ### Key Tables
 
-`profiles`, `teams`, `tasks`, `task_assignees`, `task_team_links`, `placements`, `task_placements`, `team_statuses`, `team_content_types`, `custom_properties`, `absences`, `shifts`, `permissions`, `activity_log`, `notifications`, `telegram_links`, `task_comments`, `docs`, `user_team_orders`
+`profiles`, `teams`, `tasks`, `task_assignees`, `task_team_links`, `placements`, `task_placements`, `team_statuses`, `team_content_types`, `custom_properties`, `absences`, `shifts`, `permissions`, `activity_log`, `notifications`, `telegram_links`, `task_comments`, `docs`, `user_team_orders`, `accreditations`, `subscriptions`, `subscription_payments`, `renewal_reminders`
 
 ### RLS Policy Model
 
@@ -198,9 +201,13 @@ Typed in `vite-env.d.ts`. Example in `.env.example`.
 - `send-telegram` — Send Telegram notifications to linked users
 - `telegram-webhook` — Public webhook for `/start CODE` linking flow
 
+### Scheduled jobs (Vercel Cron)
+
+`vercel.json` declares the crons; each `path` is a serverless function in `api/*.ts` (`deadline-reminders`, `equipment-overdue`, `renewal-reminders`), all meant to run at `0 6 * * *` UTC. Vercel injects `Authorization: Bearer ${CRON_SECRET}`; the handlers use the service-role client and dedup through a claim table (`task_deadline_reminders`, `renewal_reminders`) or a `last_*_ping_at` column, so re-running one is idempotent. Trigger one by hand with `curl -H "Authorization: Bearer $CRON_SECRET" $PUBLIC_APP_ORIGIN/api/<name>`. **The Vercel Hobby plan caps a project at two cron entries** and a third fails the deploy — chain an extra handler from an existing one instead (`api/renewal-reminders.ts` exports `runRenewalReminders()` for exactly that).
+
 ### Realtime
 
-Subscribed tables (see `hooks/useRealtimeSync.ts`): `tasks`, `task_comments`, `tickets`, `profiles`, `team_members`, `absences`, `shifts`, `task_team_links`, `team_statuses`, `team_placements`, `team_hidden_columns`, `team_person_field_config`, `notifications`, `task_access_revisions`. Strategy: full refetch on any change event.
+Subscribed tables (see `hooks/useRealtimeSync.ts`): `tasks`, `task_comments`, `tickets`, `profiles`, `team_members`, `absences`, `shifts`, `task_team_links`, `team_statuses`, `team_placements`, `team_hidden_columns`, `team_person_field_config`, `notifications`, `task_access_revisions`, `accreditations`, `subscriptions` (the last two are admin-only and refetched only for admins). Strategy: full refetch on any change event.
 
 **A subscription only fires if the table is a member of the `supabase_realtime` publication.** Subscribing to a table that is not published attaches without error and then silently receives nothing — clients keep the snapshot they loaded until a full page reload. Any table added to `useRealtimeSync` therefore needs `ALTER PUBLICATION supabase_realtime ADD TABLE` in the same migration (see `20260818000000_realtime_publication_backfill.sql`).
 
