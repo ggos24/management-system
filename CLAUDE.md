@@ -183,10 +183,13 @@ Typed in `vite-env.d.ts`. Example in `.env.example`.
 
 ### RLS Policy Model
 
-- SELECT: all authenticated users
+- SELECT: full-access members see everything; external collaborators (`access_scope = 'related_only'`) are narrowed to the rows granted to them — see `is_full_access()` and the `*_select_scope` policies
 - Mutations: team-scoped for regular users, unrestricted for admins
 - Admin check: `is_admin()` helper function
-- Profile updates: users own profile, admins any
+- **`profiles` has no UPDATE policy at all** — `20260811000000_external_collaborator_access.sql` dropped every policy on the table and recreated only SELECT, INSERT and DELETE. A direct `from('profiles').update(...)` is therefore refused by RLS, and PostgREST reports that refusal as success with zero rows affected, so it fails silently. Every profile write goes through a `SECURITY DEFINER` RPC instead:
+  - `update_own_profile(p_name, p_job_title, p_avatar, p_birthday, p_clear_birthday)` — the caller's own row
+  - `set_member_access_scope(p_profile_id, p_access_scope, p_team_ids, p_role)` — admin: role, access scope, team membership
+  - `set_member_birthday(p_profile_id, p_birthday)` — admin: anyone's birthday
 - Per-user data (e.g. `user_team_orders`): `user_id = (SELECT id FROM profiles WHERE auth_user_id = auth.uid())`
 
 ### Edge Functions (Deno)
@@ -265,6 +268,18 @@ Minimal test coverage. Vitest with jsdom and Testing Library. Run with `npm run 
 3. Use `(SELECT id FROM profiles WHERE auth_user_id = auth.uid())` for user-scoped RLS — NOT `auth.uid()` directly (profiles.id differs from auth.uid)
 4. Add mapper and fetch/upsert functions to `lib/database.ts`
 5. Add Realtime subscription in `hooks/useRealtimeSync.ts` if needed — and add the table to the `supabase_realtime` publication in the migration, or the subscription silently never fires
+
+### Adding a column to `profiles`
+
+The table has no UPDATE policy (see **RLS Policy Model**), so a new column is readable the moment it exists but **not writable until an RPC gains a parameter for it**. A `from('profiles').update(...)` added alongside the column looks like it works and changes nothing.
+
+1. `ALTER TABLE public.profiles ADD COLUMN ...` in a migration
+2. Give the column a write path — add a parameter to `update_own_profile` for self-service, and/or a dedicated admin RPC alongside `set_member_access_scope`. Adding a parameter means `DROP FUNCTION` then recreate: extra parameters produce an _overload_, and the existing call then resolves ambiguously
+3. `COALESCE(p_new, p.existing)` cannot blank a column — a field the user can clear needs its own `p_clear_*` flag
+4. `REVOKE ALL ... FROM PUBLIC, anon, authenticated` then `GRANT EXECUTE ... TO authenticated` on the new signature, matching `20260813000000_harden_function_privileges.sql`
+5. Add the column to the `fetchMembers` select list and to `mapProfile` in `lib/database.ts`
+
+**Apply the migration before merging to `main`.** Vercel deploys production from `main`, and `fetchMembers` names its columns explicitly — a deployed bundle selecting a column the database does not have gets a 400, which throws out of `fetchMembers` and takes down the whole data bootstrap, not just the new field.
 
 ### Breaking schema changes (drop / rename columns)
 

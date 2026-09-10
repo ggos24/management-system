@@ -930,22 +930,6 @@ export async function updateMemberScheduleOrders(teamId: string, orders: { membe
 
 // === Member mutations ===
 
-export async function upsertMember(member: Member) {
-  const row = {
-    id: member.id || undefined,
-    name: member.name,
-    role: member.role,
-    access_scope: member.accessScope,
-    job_title: member.jobTitle,
-    birthday: member.birthday ?? null,
-    avatar: member.avatar,
-    team_id: member.teamId,
-    status: member.status,
-  };
-  const { data, error } = await supabase.from('profiles').upsert(row, { onConflict: 'id' }).select().single();
-  return { data, error };
-}
-
 export async function updateMemberAccess(
   memberId: string,
   accessScope: AccessScope,
@@ -1143,75 +1127,6 @@ export async function setMemberBirthday(memberId: string, birthday: string | nul
     p_birthday: birthday,
   });
   if (error) throw error;
-}
-
-export async function updateProfileRole(memberId: string, role: string): Promise<void> {
-  const { error } = await supabase.from('profiles').update({ role }).eq('id', memberId);
-  if (error) throw error;
-}
-
-/**
- * Reconcile a member's team memberships to exactly `nextTeamIds`.
- * The first entry is treated as the primary team — also written to profiles.team_id.
- * An empty array removes all memberships and sets profiles.team_id to null.
- */
-export async function setProfileTeams(memberId: string, nextTeamIds: string[]): Promise<void> {
-  // Fetch current memberships
-  const { data: current, error: fetchErr } = await supabase
-    .from('team_members')
-    .select('team_id, is_primary')
-    .eq('profile_id', memberId);
-  if (fetchErr) throw fetchErr;
-
-  const currentIds = new Set((current || []).map((r) => r.team_id));
-  const nextIds = new Set(nextTeamIds);
-  const toAdd = nextTeamIds.filter((id) => !currentIds.has(id));
-  const toRemove = (current || []).map((r) => r.team_id).filter((id) => !nextIds.has(id));
-  const nextPrimary = nextTeamIds[0] ?? null;
-
-  // Insert new memberships (as non-primary initially; primary is set in a dedicated step)
-  if (toAdd.length > 0) {
-    const { error } = await supabase
-      .from('team_members')
-      .insert(toAdd.map((teamId) => ({ team_id: teamId, profile_id: memberId, is_primary: false })));
-    if (error) throw error;
-  }
-
-  // Remove stale memberships
-  if (toRemove.length > 0) {
-    const { error } = await supabase.from('team_members').delete().eq('profile_id', memberId).in('team_id', toRemove);
-    if (error) throw error;
-  }
-
-  // Reconcile primary:
-  // 1. Clear any existing primary flag that isn't the new primary (avoids the partial unique index conflict)
-  // 2. Set the new primary (if any)
-  // 3. Update profiles.team_id cache
-  if (nextPrimary) {
-    const { error: clearErr } = await supabase
-      .from('team_members')
-      .update({ is_primary: false })
-      .eq('profile_id', memberId)
-      .neq('team_id', nextPrimary);
-    if (clearErr) throw clearErr;
-
-    const { error: setErr } = await supabase
-      .from('team_members')
-      .update({ is_primary: true })
-      .eq('profile_id', memberId)
-      .eq('team_id', nextPrimary);
-    if (setErr) throw setErr;
-  } else {
-    // No teams at all — clear every primary flag
-    const { error: clearErr } = await supabase
-      .from('team_members')
-      .update({ is_primary: false })
-      .eq('profile_id', memberId);
-    if (clearErr) throw clearErr;
-  }
-
-  const { error: profileErr } = await supabase.from('profiles').update({ team_id: nextPrimary }).eq('id', memberId);
-  if (profileErr) throw profileErr;
 }
 
 export async function fetchAllNotificationPreferences(): Promise<NotificationPreference[]> {
