@@ -46,6 +46,7 @@ function mapProfile(row: any, teamIds: string[] = [], scheduleSortOrders: Record
     role: row.role,
     accessScope: row.access_scope || 'full',
     jobTitle: row.job_title || '',
+    birthday: row.birthday || null,
     avatar: row.avatar || '',
     teamId: primaryTeamId,
     teamIds: ordered,
@@ -175,7 +176,7 @@ async function fetchAllPaged<T = any>(queryFactory: () => any): Promise<T[]> {
 
 export async function fetchMembers(): Promise<Member[]> {
   const [{ data: profileRows, error: profileError }, { data: memberRows, error: memberError }] = await Promise.all([
-    supabase.from('profiles').select('id, name, role, access_scope, job_title, avatar, team_id, status'),
+    supabase.from('profiles').select('id, name, role, access_scope, job_title, birthday, avatar, team_id, status'),
     supabase.from('team_members').select('profile_id, team_id, is_primary, sort_order'),
   ]);
   if (profileError) throw profileError;
@@ -936,6 +937,7 @@ export async function upsertMember(member: Member) {
     role: member.role,
     access_scope: member.accessScope,
     job_title: member.jobTitle,
+    birthday: member.birthday ?? null,
     avatar: member.avatar,
     team_id: member.teamId,
     status: member.status,
@@ -1115,6 +1117,30 @@ export async function updateProfileJobTitle(_memberId: string, jobTitle: string)
     p_name: null,
     p_job_title: jobTitle,
     p_avatar: null,
+  });
+  if (error) throw error;
+}
+
+/**
+ * A member's own birthday. Passing null removes it — which COALESCE inside the
+ * RPC cannot express, hence the explicit clear flag.
+ */
+export async function updateOwnProfileBirthday(birthday: string | null): Promise<void> {
+  const { error } = await supabase.rpc('update_own_profile', {
+    p_name: null,
+    p_job_title: null,
+    p_avatar: null,
+    p_birthday: birthday,
+    p_clear_birthday: birthday === null,
+  });
+  if (error) throw error;
+}
+
+/** Admin-only path: set (or clear, with null) anyone's birthday. */
+export async function setMemberBirthday(memberId: string, birthday: string | null): Promise<void> {
+  const { error } = await supabase.rpc('set_member_birthday', {
+    p_profile_id: memberId,
+    p_birthday: birthday,
   });
   if (error) throw error;
 }
