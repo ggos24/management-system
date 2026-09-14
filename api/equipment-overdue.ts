@@ -1,7 +1,7 @@
 // Vercel serverless function. Daily-cron handler that chases equipment which
 // was due back and has not been returned.
 //
-// Trigger: Vercel Cron (see vercel.json) at 06:00 UTC = 08:00 Europe/Kyiv.
+// Trigger: Vercel Cron (see vercel.json) at 08:00 UTC = 11:00 Europe/Kyiv (10:00 in winter).
 // Auth:    Vercel Cron injects `Authorization: Bearer ${CRON_SECRET}`.
 //
 // Overdue means "not back by morning" — a 40-minute delay mid-shoot is noise,

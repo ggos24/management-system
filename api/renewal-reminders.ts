@@ -1,7 +1,7 @@
 // Vercel serverless function. Daily-cron handler that reminds admins about
 // accreditations about to expire and subscription payments coming due.
 //
-// Trigger: Vercel Cron (see vercel.json) at 06:00 UTC = 08:00 Europe/Kyiv — or,
+// Trigger: Vercel Cron (see vercel.json) at 08:00 UTC = 11:00 Europe/Kyiv (10:00 in winter) — or,
 //          on a plan capped at two cron jobs, chained from
 //          api/equipment-overdue.ts through runRenewalReminders().
 // Auth:    Vercel Cron injects `Authorization: Bearer ${CRON_SECRET}`.

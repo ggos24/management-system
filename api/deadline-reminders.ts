@@ -1,7 +1,7 @@
 // Vercel serverless function. Daily-cron handler that fires deadline
 // reminders 3 days and 1 day before each task's due_date.
 //
-// Trigger: Vercel Cron (see vercel.json) at 06:00 UTC = 08:00 Europe/Kyiv.
+// Trigger: Vercel Cron (see vercel.json) at 08:00 UTC = 11:00 Europe/Kyiv (10:00 in winter).
 // Auth:    Vercel Cron injects `Authorization: Bearer ${CRON_SECRET}`.
 //
 // Reuses the existing send-telegram + send-email Supabase Edge Functions
