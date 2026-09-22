@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatLateness } from '../api/equipment-overdue';
 
-// The overdue cron runs once at 06:00, so most items it reports are late by
+// The overdue cron runs once a day, so most items it reports are late by
 // hours rather than days. Rounding those up to "1d" overstates the problem in
 // the one message people actually read.
 describe('formatLateness', () => {
