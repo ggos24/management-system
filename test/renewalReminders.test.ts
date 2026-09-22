@@ -15,7 +15,6 @@ const inDays = (days: number) => {
 const accreditation = (overrides: Partial<Parameters<typeof collectDue>[0][number]> = {}) => ({
   id: 'acc-1',
   holder_name: 'Olena K.',
-  issuer: 'Ministry of Defence',
   kind: 'military' as const,
   valid_until: inDays(7),
   ...overrides,
@@ -64,9 +63,7 @@ describe('collectDue', () => {
 
   it('writes lines a person can act on', () => {
     const [sub, acc] = collectDue([accreditation()], [subscription()], now);
-    expect(acc.line).toBe(
-      `• Military accreditation — Olena K., Ministry of Defence (expires in 7 days, ${formatEU(inDays(7))})`,
-    );
+    expect(acc.line).toBe(`• Military accreditation — Olena K. (expires in 7 days, ${formatEU(inDays(7))})`);
     expect(sub.line).toBe(`• Adobe CC — $59.99 due tomorrow (${formatEU(inDays(1))})`);
   });
 });

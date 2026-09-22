@@ -1,7 +1,6 @@
 import type {
   Accreditation,
   AccreditationKind,
-  AccreditationStatus,
   BillingPeriod,
   Currency,
   Subscription,
@@ -16,7 +15,7 @@ import type {
  * close" lives in exactly one place.
  */
 
-/** An accreditation this close to its end shows as "expiring". */
+/** An accreditation this close to its end shows as "expiring" — a month's notice. */
 export const EXPIRING_SOON_DAYS = 30;
 /** A payment this close shows as "due soon". Monthly plans are always within 30 days. */
 export const DUE_SOON_DAYS = 7;
@@ -44,13 +43,6 @@ export const ACCREDITATION_KIND_LABEL: Record<AccreditationKind, string> = {
   press_card: 'Press card',
   other: 'Other',
 };
-export const ACCREDITATION_STATUSES: AccreditationStatus[] = ['active', 'pending', 'revoked'];
-export const ACCREDITATION_STATUS_LABEL: Record<AccreditationStatus, string> = {
-  active: 'Active',
-  pending: 'Pending',
-  revoked: 'Revoked',
-};
-
 export const SUBSCRIPTION_CATEGORIES: SubscriptionCategory[] = [
   'software',
   'ai',
@@ -151,23 +143,20 @@ export function countdownClass(days: number | null, soonDays: number): string {
 
 // --- Derived states. Never stored: a stored "expired" would need a job to flip it. ---
 
-export type AccreditationState = 'pending' | 'valid' | 'expiring' | 'expired' | 'revoked' | 'no_expiry';
+export type AccreditationState = 'valid' | 'expiring' | 'expired' | 'no_expiry';
 
 export const ACCREDITATION_STATE_BADGE: Record<AccreditationState, { color: BadgeColor; label: string }> = {
   valid: { color: 'emerald', label: 'Valid' },
   no_expiry: { color: 'emerald', label: 'No expiry' },
   expiring: { color: 'amber', label: 'Expiring' },
   expired: { color: 'red', label: 'Expired' },
-  pending: { color: 'blue', label: 'Pending' },
-  revoked: { color: 'zinc', label: 'Revoked' },
 };
 
+/** The expiry date decides everything; there is no status to override it. */
 export function deriveAccreditationState(
-  accreditation: Pick<Accreditation, 'status' | 'validUntil'>,
+  accreditation: Pick<Accreditation, 'validUntil'>,
   now: number,
 ): AccreditationState {
-  if (accreditation.status === 'revoked') return 'revoked';
-  if (accreditation.status === 'pending') return 'pending';
   const days = daysUntil(accreditation.validUntil, now);
   if (days === null) return 'no_expiry';
   if (days < 0) return 'expired';

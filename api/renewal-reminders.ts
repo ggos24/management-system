@@ -45,7 +45,6 @@ export type RenewalKind = 'accreditation' | 'subscription';
 export interface AccreditationRow {
   id: string;
   holder_name: string;
-  issuer: string;
   kind: AccreditationKind;
   valid_until: string;
 }
@@ -101,7 +100,7 @@ export function collectDue(
       dueDate: row.valid_until,
       days,
       offsets,
-      line: `• ${kind} accreditation — ${row.holder_name}, ${row.issuer} (expires ${describeCountdown(days)}, ${formatDateEU(row.valid_until)})`,
+      line: `• ${kind} accreditation — ${row.holder_name} (expires ${describeCountdown(days)}, ${formatDateEU(row.valid_until)})`,
     });
   }
 
@@ -161,7 +160,7 @@ export async function runRenewalReminders(
   const [accreditationsResult, subscriptionsResult] = await Promise.all([
     sb
       .from('accreditations')
-      .select('id, holder_name, issuer, kind, valid_until')
+      .select('id, holder_name, kind, valid_until')
       .eq('status', 'active')
       .gte('valid_until', today)
       .lte('valid_until', horizon)
