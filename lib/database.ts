@@ -2164,18 +2164,12 @@ function mapSubscription(row: any): Subscription {
   return {
     id: row.id,
     serviceName: row.service_name,
-    category: row.category,
-    plan: row.plan || '',
     // numeric arrives as a string over PostgREST and in realtime payloads.
     amount: Number(row.amount),
     currency: row.currency,
     billingPeriod: row.billing_period,
     nextPaymentDate: row.next_payment_date ?? null,
     ownerId: row.owner_id ?? null,
-    accountEmail: row.account_email || '',
-    paymentMethod: row.payment_method || '',
-    websiteUrl: row.website_url || '',
-    documentUrl: row.document_url || '',
     status: row.status,
     notes: row.notes || '',
     createdAt: row.created_at,
@@ -2251,19 +2245,17 @@ export async function deleteAccreditation(id: string): Promise<void> {
 }
 
 export async function upsertSubscription(input: Partial<Subscription> & { id?: string }): Promise<Subscription> {
+  // The retired columns (category, plan, account_email, payment_method,
+  // website_url, document_url) are left out: every one is nullable or carries a
+  // default, so an insert that never names them is fine. They stay in the table
+  // until a later release, per the two-phase rule in CLAUDE.md.
   const payload: Record<string, any> = {
     service_name: (input.serviceName || '').trim(),
-    category: input.category || 'software',
-    plan: input.plan?.trim() || null,
     amount: input.amount ?? 0,
     currency: input.currency || 'USD',
     billing_period: input.billingPeriod || 'monthly',
     next_payment_date: input.nextPaymentDate || null,
     owner_id: input.ownerId || null,
-    account_email: input.accountEmail?.trim() || null,
-    payment_method: input.paymentMethod?.trim() || null,
-    website_url: input.websiteUrl?.trim() || null,
-    document_url: input.documentUrl?.trim() || null,
     status: input.status || 'active',
     notes: input.notes?.trim() || null,
   };

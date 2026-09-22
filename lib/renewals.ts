@@ -4,7 +4,6 @@ import type {
   BillingPeriod,
   Currency,
   Subscription,
-  SubscriptionCategory,
   SubscriptionStatus,
 } from '../types';
 
@@ -41,22 +40,6 @@ export const ACCREDITATION_KIND_LABEL: Record<AccreditationKind, string> = {
   parliament: 'Parliament',
   event: 'Event',
   press_card: 'Press card',
-  other: 'Other',
-};
-export const SUBSCRIPTION_CATEGORIES: SubscriptionCategory[] = [
-  'software',
-  'ai',
-  'media',
-  'hosting',
-  'communication',
-  'other',
-];
-export const SUBSCRIPTION_CATEGORY_LABEL: Record<SubscriptionCategory, string> = {
-  software: 'Software',
-  ai: 'AI',
-  media: 'Media',
-  hosting: 'Hosting',
-  communication: 'Communication',
   other: 'Other',
 };
 export const SUBSCRIPTION_STATUSES: SubscriptionStatus[] = ['active', 'paused', 'cancelled'];
@@ -226,6 +209,41 @@ export function rollForward(nextPaymentDate: string | null, paidAt: string, peri
   // YYYY-MM-DD compares correctly as text.
   while (next && next <= paidAt) next = advanceByPeriod(next, period);
   return next;
+}
+
+/** Guards the projection loop against a corrupt date that never advances. */
+const MAX_PROJECTED_CHARGES = 400;
+
+/**
+ * Every charge a subscription makes between `from` and `to`, inclusive, as
+ * YYYY-MM-DD. This is what the payment calendar draws: the register stores one
+ * next_payment_date, and the cadence implied by the billing period fills in the
+ * rest, so a monthly plan appears in every month and a yearly one in one.
+ *
+ * Projection runs forward from next_payment_date even when that date is already
+ * past. An overdue row means nobody has ticked "paid" yet, not that the service
+ * stopped charging, so the upcoming dates are still the honest answer to "when
+ * does this leave the account". Paused and cancelled plans are not being paid
+ * and produce nothing.
+ */
+export function projectPayments(
+  subscription: Pick<Subscription, 'nextPaymentDate' | 'billingPeriod' | 'status'>,
+  from: string,
+  to: string,
+): string[] {
+  const start = subscription.nextPaymentDate;
+  if (!start || subscription.status !== 'active' || from > to) return [];
+  // A one-time purchase is charged once, on the date it is scheduled for.
+  if (subscription.billingPeriod === 'one_time') return start >= from && start <= to ? [start] : [];
+
+  const dates: string[] = [];
+  let cursor: string | null = start;
+  for (let guard = 0; cursor && guard < MAX_PROJECTED_CHARGES; guard += 1) {
+    if (cursor > to) break;
+    if (cursor >= from) dates.push(cursor);
+    cursor = advanceByPeriod(cursor, subscription.billingPeriod);
+  }
+  return dates;
 }
 
 export function monthlyEquivalent(amount: number, period: BillingPeriod): number {

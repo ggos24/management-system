@@ -7,6 +7,7 @@ import {
   describeCountdown,
   dueOffsets,
   formatMoney,
+  projectPayments,
   rollForward,
   summarizeSpend,
 } from '../lib/renewals';
@@ -102,6 +103,54 @@ describe('rollForward', () => {
 
   it('clears the date for a one-time purchase', () => {
     expect(rollForward('2026-09-15', '2026-09-15', 'one_time')).toBeNull();
+  });
+});
+
+describe('projectPayments', () => {
+  const plan = (overrides: Partial<Parameters<typeof projectPayments>[0]> = {}) =>
+    ({ nextPaymentDate: '2026-09-15', billingPeriod: 'monthly', status: 'active', ...overrides }) as Parameters<
+      typeof projectPayments
+    >[0];
+
+  it('repeats the cadence across the window', () => {
+    expect(projectPayments(plan(), '2026-09-01', '2026-11-30')).toEqual(['2026-09-15', '2026-10-15', '2026-11-15']);
+    expect(projectPayments(plan({ billingPeriod: 'quarterly' }), '2026-09-01', '2027-06-30')).toEqual([
+      '2026-09-15',
+      '2026-12-15',
+      '2027-03-15',
+      '2027-06-15',
+    ]);
+  });
+
+  it('skips forward to the window instead of listing dates before it', () => {
+    expect(projectPayments(plan(), '2027-01-01', '2027-01-31')).toEqual(['2027-01-15']);
+  });
+
+  it('keeps projecting from a date already overdue — the service still charges', () => {
+    expect(projectPayments(plan({ nextPaymentDate: '2026-06-15' }), '2026-09-01', '2026-09-30')).toEqual([
+      '2026-09-15',
+    ]);
+  });
+
+  it('charges a one-time purchase once, and only inside the window', () => {
+    const once = plan({ billingPeriod: 'one_time' });
+    expect(projectPayments(once, '2026-09-01', '2026-09-30')).toEqual(['2026-09-15']);
+    expect(projectPayments(once, '2026-10-01', '2026-10-31')).toEqual([]);
+  });
+
+  it('produces nothing without a date, or once paused or cancelled', () => {
+    expect(projectPayments(plan({ nextPaymentDate: null }), '2026-09-01', '2026-09-30')).toEqual([]);
+    expect(projectPayments(plan({ status: 'paused' }), '2026-09-01', '2026-09-30')).toEqual([]);
+    expect(projectPayments(plan({ status: 'cancelled' }), '2026-09-01', '2026-09-30')).toEqual([]);
+  });
+
+  it('clamps month-end the way the due date itself rolls forward', () => {
+    expect(projectPayments(plan({ nextPaymentDate: '2026-01-31' }), '2026-01-01', '2026-04-30')).toEqual([
+      '2026-01-31',
+      '2026-02-28',
+      '2026-03-28',
+      '2026-04-28',
+    ]);
   });
 });
 

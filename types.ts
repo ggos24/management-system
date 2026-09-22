@@ -261,26 +261,24 @@ export interface Accreditation {
   updatedAt: string;
 }
 
-export type SubscriptionCategory = 'software' | 'ai' | 'media' | 'hosting' | 'communication' | 'other';
 export type BillingPeriod = 'monthly' | 'quarterly' | 'yearly' | 'one_time';
 export type Currency = 'UAH' | 'USD' | 'EUR';
 /** Overdue is derived from nextPaymentDate, never stored — see lib/renewals.ts. */
 export type SubscriptionStatus = 'active' | 'paused' | 'cancelled';
 
+/**
+ * What is paid, how often, and when the next charge lands — the rest of the
+ * columns (category, plan, account email, payment method, website, document
+ * link) are retired and still in the table; nothing reads them.
+ */
 export interface Subscription {
   id: string;
   serviceName: string;
-  category: SubscriptionCategory;
-  plan: string;
   amount: number;
   currency: Currency;
   billingPeriod: BillingPeriod;
   nextPaymentDate: string | null; // YYYY-MM-DD; null = nothing scheduled
   ownerId: string | null;
-  accountEmail: string;
-  paymentMethod: string;
-  websiteUrl: string;
-  documentUrl: string;
   status: SubscriptionStatus;
   notes: string;
   createdAt: string;
