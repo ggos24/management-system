@@ -35,10 +35,9 @@ describe('daysUntil', () => {
 });
 
 describe('deriveAccreditationState', () => {
-  const at = (validUntil: string | null, status: 'pending' | 'active' | 'revoked' = 'active') =>
-    deriveAccreditationState({ status, validUntil }, now);
+  const at = (validUntil: string | null) => deriveAccreditationState({ validUntil }, now);
 
-  it('warns inside the 30-day window and flags the day after expiry', () => {
+  it('warns a month out and flags the day after expiry', () => {
     expect(at(inDays(31))).toBe('valid');
     expect(at(inDays(30))).toBe('expiring');
     expect(at(inDays(1))).toBe('expiring');
@@ -48,11 +47,6 @@ describe('deriveAccreditationState', () => {
 
   it('treats no date as never expiring', () => {
     expect(at(null)).toBe('no_expiry');
-  });
-
-  it('lets the stored status win over the date', () => {
-    expect(at(inDays(-10), 'revoked')).toBe('revoked');
-    expect(at(inDays(5), 'pending')).toBe('pending');
   });
 });
 

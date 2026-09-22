@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { ArrowLeft, ExternalLink, IdCard, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowLeft, IdCard, Pencil, Plus, Search, Trash2 } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
 import { CustomSelect } from './CustomSelect';
@@ -15,8 +15,6 @@ import {
   ACCREDITATION_KINDS,
   ACCREDITATION_KIND_LABEL,
   ACCREDITATION_STATE_BADGE,
-  ACCREDITATION_STATUSES,
-  ACCREDITATION_STATUS_LABEL,
   EXPIRING_SOON_DAYS,
   countdownClass,
   daysUntil,
@@ -24,28 +22,16 @@ import {
   describeCountdown,
   type AccreditationState,
 } from '../lib/renewals';
-import type { Accreditation, AccreditationKind, AccreditationStatus, Member } from '../types';
+import type { Accreditation, AccreditationKind, Member } from '../types';
 
-type FilterKey = 'all' | 'expiring' | 'expired' | 'active' | 'pending' | 'revoked';
+type FilterKey = 'all' | 'expiring' | 'expired' | 'valid';
 
 const FILTERS: { key: FilterKey; label: string }[] = [
   { key: 'all', label: 'All' },
   { key: 'expiring', label: 'Expiring soon' },
   { key: 'expired', label: 'Expired' },
-  { key: 'active', label: 'Active' },
-  { key: 'pending', label: 'Pending' },
-  { key: 'revoked', label: 'Revoked' },
+  { key: 'valid', label: 'Valid' },
 ];
-
-/** Attention first, revoked last; inside a group the nearest date wins. */
-const STATE_RANK: Record<AccreditationState, number> = {
-  expired: 0,
-  expiring: 0,
-  valid: 0,
-  pending: 1,
-  no_expiry: 2,
-  revoked: 3,
-};
 
 const textareaClass =
   'w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg outline-none focus:ring-1 focus:ring-zinc-400 text-base md:text-sm text-zinc-900 dark:text-white resize-none';
@@ -89,33 +75,30 @@ export const AccreditationsTool: React.FC = () => {
 
   const rows = useMemo(() => {
     const query = search.trim().toLowerCase();
-    return allRows
-      .filter(({ item, state }) => {
-        if (query && !`${item.holderName} ${item.issuer} ${item.cardNumber}`.toLowerCase().includes(query)) {
-          return false;
-        }
-        if (kind !== 'all' && item.kind !== kind) return false;
-        switch (filter) {
-          case 'expiring':
-            return state === 'expiring';
-          case 'expired':
-            return state === 'expired';
-          case 'active':
-            return state === 'valid' || state === 'expiring' || state === 'no_expiry';
-          case 'pending':
-            return state === 'pending';
-          case 'revoked':
-            return state === 'revoked';
-          default:
-            return true;
-        }
-      })
-      .sort(
-        (a, b) =>
-          STATE_RANK[a.state] - STATE_RANK[b.state] ||
-          (a.days ?? Number.MAX_SAFE_INTEGER) - (b.days ?? Number.MAX_SAFE_INTEGER) ||
-          a.item.holderName.localeCompare(b.item.holderName),
-      );
+    return (
+      allRows
+        .filter(({ item, state }) => {
+          if (query && !item.holderName.toLowerCase().includes(query)) return false;
+          if (kind !== 'all' && item.kind !== kind) return false;
+          switch (filter) {
+            case 'expiring':
+              return state === 'expiring';
+            case 'expired':
+              return state === 'expired';
+            case 'valid':
+              return state === 'valid' || state === 'expiring' || state === 'no_expiry';
+            default:
+              return true;
+          }
+        })
+        // Nearest date first, which puts what has already lapsed at the top and
+        // the rows with no expiry (days === null) at the bottom.
+        .sort(
+          (a, b) =>
+            (a.days ?? Number.MAX_SAFE_INTEGER) - (b.days ?? Number.MAX_SAFE_INTEGER) ||
+            a.item.holderName.localeCompare(b.item.holderName),
+        )
+    );
   }, [allRows, filter, search, kind]);
 
   // Header badges count everything, not just the rows passing the filter.
@@ -152,7 +135,7 @@ export const AccreditationsTool: React.FC = () => {
               {expiredCount > 0 && <Badge color="red">{expiredCount} expired</Badge>}
             </h1>
           </div>
-          <Button size="sm" onClick={() => setEditing({ kind: 'press_card', status: 'active' })}>
+          <Button size="sm" onClick={() => setEditing({ kind: 'press_card' })}>
             <Plus size={14} className="mr-1.5" />
             New accreditation
           </Button>
@@ -167,7 +150,7 @@ export const AccreditationsTool: React.FC = () => {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="Holder, issuer or number…"
+              placeholder="Holder name…"
               aria-label="Search accreditations"
               className="pl-8 py-1.5 text-xs"
             />
@@ -228,8 +211,6 @@ export const AccreditationsTool: React.FC = () => {
               <tr className="text-left text-xs text-zinc-500">
                 <th className="px-3 py-2 font-medium">Holder</th>
                 <th className="px-3 py-2 font-medium">Kind</th>
-                <th className="px-3 py-2 font-medium">Issuer</th>
-                <th className="px-3 py-2 font-medium hidden md:table-cell">Number</th>
                 <th className="px-3 py-2 font-medium">Valid until</th>
                 <th className="px-3 py-2 font-medium">State</th>
                 <th className="px-3 py-2" />
@@ -239,10 +220,6 @@ export const AccreditationsTool: React.FC = () => {
               {rows.map(({ item, state, days }) => {
                 const holder = item.holderId ? memberById.get(item.holderId) : undefined;
                 const badge = ACCREDITATION_STATE_BADGE[state];
-                const dateClass =
-                  state === 'revoked' || state === 'pending'
-                    ? 'text-zinc-500'
-                    : countdownClass(days, EXPIRING_SOON_DAYS);
                 return (
                   <tr
                     key={item.id}
@@ -261,14 +238,12 @@ export const AccreditationsTool: React.FC = () => {
                     <td className="px-3 py-2 text-zinc-600 dark:text-zinc-300">
                       {ACCREDITATION_KIND_LABEL[item.kind]}
                     </td>
-                    <td className="px-3 py-2 text-zinc-900 dark:text-white">{item.issuer}</td>
-                    <td className="px-3 py-2 hidden md:table-cell font-mono text-xs text-zinc-500">
-                      {item.cardNumber || '—'}
-                    </td>
                     <td className="px-3 py-2 text-xs">
                       {item.validUntil ? (
                         <>
-                          <span className={dateClass}>{formatDateEU(item.validUntil)}</span>
+                          <span className={countdownClass(days, EXPIRING_SOON_DAYS)}>
+                            {formatDateEU(item.validUntil)}
+                          </span>
                           <span className="block text-[10px] text-zinc-400">{describeCountdown(days)}</span>
                         </>
                       ) : (
@@ -280,17 +255,6 @@ export const AccreditationsTool: React.FC = () => {
                     </td>
                     <td className="px-3 py-2">
                       <div className="flex items-center justify-end gap-1" onClick={(e) => e.stopPropagation()}>
-                        {item.documentUrl && (
-                          <a
-                            href={item.documentUrl}
-                            target="_blank"
-                            rel="noreferrer"
-                            title="Open document"
-                            className="p-1.5 rounded-md text-zinc-500 hover:text-zinc-900 dark:hover:text-white hover:bg-zinc-100 dark:hover:bg-zinc-800"
-                          >
-                            <ExternalLink size={14} />
-                          </a>
-                        )}
                         <IconButton size="sm" title="Edit" onClick={() => setEditing(item)}>
                           <Pencil size={14} />
                         </IconButton>
@@ -333,8 +297,8 @@ export const AccreditationsTool: React.FC = () => {
           title="Delete accreditation"
           description={
             <>
-              Remove the <strong>{deleting.issuer}</strong> accreditation held by <strong>{deleting.holderName}</strong>
-              ? This cannot be undone.
+              Remove the <strong>{ACCREDITATION_KIND_LABEL[deleting.kind].toLowerCase()}</strong> accreditation held by{' '}
+              <strong>{deleting.holderName}</strong>? This cannot be undone.
             </>
           }
           onCancel={() => setDeleting(null)}
@@ -374,7 +338,7 @@ const AccreditationFormModal: React.FC<AccreditationFormModalProps> = ({
     .map((member) => ({ value: member.id, label: member.name }));
   // The holder left: the snapshot name stays unless someone new is picked.
   const formerHolder = Boolean(item.id) && !item.holderId;
-  const canSave = (Boolean(draft.holderId) || formerHolder) && (draft.issuer || '').trim().length > 0 && !saving;
+  const canSave = (Boolean(draft.holderId) || formerHolder) && !saving;
 
   return (
     <Modal
@@ -433,60 +397,17 @@ const AccreditationFormModal: React.FC<AccreditationFormModalProps> = ({
               onChange={(value) => update({ kind: value as AccreditationKind })}
             />
           </FormField>
-          <FormField label="Status">
-            <CustomSelect
-              options={ACCREDITATION_STATUSES.map((entry) => ({
-                value: entry,
-                label: ACCREDITATION_STATUS_LABEL[entry],
-              }))}
-              value={draft.status || 'active'}
-              onChange={(value) => update({ status: value as AccreditationStatus })}
-            />
-          </FormField>
-        </div>
-
-        <FormField label="Issuer" required>
-          <Input
-            value={draft.issuer || ''}
-            placeholder="Ministry of Defence"
-            onChange={(e) => update({ issuer: e.target.value })}
-          />
-        </FormField>
-
-        <FormField label="Card number">
-          <Input
-            value={draft.cardNumber || ''}
-            placeholder="MoD-2026-0142"
-            onChange={(e) => update({ cardNumber: e.target.value })}
-          />
-        </FormField>
-
-        <div className="grid grid-cols-2 gap-3">
-          <FormField label="Issued on">
-            <SimpleDatePicker
-              value={draft.issuedAt || ''}
-              onChange={(value) => update({ issuedAt: value || null })}
-              placeholder="Pick a date"
-            />
-          </FormField>
           <FormField label="Valid until">
             <SimpleDatePicker
               value={draft.validUntil || ''}
               onChange={(value) => update({ validUntil: value || null })}
               placeholder="No expiry"
             />
-            <p className="text-xs text-zinc-500 mt-1">Leave empty if it never expires.</p>
           </FormField>
         </div>
-
-        <FormField label="Document link">
-          <Input
-            type="url"
-            value={draft.documentUrl || ''}
-            placeholder="https://drive.google.com/…"
-            onChange={(e) => update({ documentUrl: e.target.value })}
-          />
-        </FormField>
+        <p className="-mt-2 text-xs text-zinc-500">
+          Leave the date empty if it never expires. A warning shows a month before it runs out.
+        </p>
 
         <FormField label="Notes">
           <textarea

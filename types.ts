@@ -241,21 +241,20 @@ export interface EquipmentVerification {
 // === Renewals: accreditations & subscriptions (Tools, admin-only) ===
 
 export type AccreditationKind = 'military' | 'government' | 'parliament' | 'event' | 'press_card' | 'other';
-/** Expired is derived from validUntil, never stored — see lib/renewals.ts. */
-export type AccreditationStatus = 'pending' | 'active' | 'revoked';
 
+/**
+ * Only what the newsroom actually fills in: who holds it, what it is, when it
+ * runs out. The register's whole job is the expiry date, and every state is
+ * derived from it — see lib/renewals.ts. The issuer / card number / issued-on /
+ * document-link columns are retired and still in the table; nothing reads them.
+ */
 export interface Accreditation {
   id: string;
   holderId: string | null;
   // Trigger-set snapshot of the holder's name; outlives the profile.
   holderName: string;
-  issuer: string;
   kind: AccreditationKind;
-  cardNumber: string;
-  issuedAt: string | null; // YYYY-MM-DD
   validUntil: string | null; // YYYY-MM-DD; null = no expiry
-  status: AccreditationStatus;
-  documentUrl: string;
   notes: string;
   createdBy: string | null;
   createdAt: string;

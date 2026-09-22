@@ -35,7 +35,7 @@ import {
 } from '../types';
 import * as db from '../lib/database';
 import { formatDateEU, toDateOnly } from '../lib/utils';
-import { formatMoney, rollForward } from '../lib/renewals';
+import { ACCREDITATION_KIND_LABEL, formatMoney, rollForward } from '../lib/renewals';
 import { useAuthStore } from './authStore';
 import { supabase } from '../lib/supabase';
 import { PERSON_FIELD_DEFAULT_LABELS, isAdmin, TICKET_STATUS_META } from '../constants';
@@ -2481,7 +2481,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       });
       logAction(
         exists ? 'Accreditation Updated' : 'Accreditation Added',
-        `${saved.holderName} — ${saved.issuer}`,
+        `${saved.holderName} — ${ACCREDITATION_KIND_LABEL[saved.kind]}`,
         'accreditation',
       );
       return saved;
@@ -2498,7 +2498,12 @@ export const useDataStore = create<DataState>((set, get) => ({
     if (!item) return;
     set({ accreditations: prev.filter((candidate) => candidate.id !== id) });
     db.deleteAccreditation(id).then(
-      () => logAction('Accreditation Deleted', `${item.holderName} — ${item.issuer}`, 'accreditation'),
+      () =>
+        logAction(
+          'Accreditation Deleted',
+          `${item.holderName} — ${ACCREDITATION_KIND_LABEL[item.kind]}`,
+          'accreditation',
+        ),
       (error) => {
         console.error(error);
         set({ accreditations: prev });

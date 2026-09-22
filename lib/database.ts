@@ -2151,13 +2151,8 @@ function mapAccreditation(row: any): Accreditation {
     id: row.id,
     holderId: row.holder_id ?? null,
     holderName: row.holder_name || '',
-    issuer: row.issuer,
     kind: row.kind,
-    cardNumber: row.card_number || '',
-    issuedAt: row.issued_at ?? null,
     validUntil: row.valid_until ?? null,
-    status: row.status,
-    documentUrl: row.document_url || '',
     notes: row.notes || '',
     createdBy: row.created_by ?? null,
     createdAt: row.created_at,
@@ -2226,24 +2221,23 @@ export type AccreditationInput = Partial<Accreditation> & { id?: string; created
 export async function upsertAccreditation(input: AccreditationInput): Promise<Accreditation> {
   const payload: Record<string, any> = {
     holder_id: input.holderId || null,
-    issuer: (input.issuer || '').trim(),
     kind: input.kind || 'other',
-    card_number: input.cardNumber?.trim() || null,
-    issued_at: input.issuedAt || null,
     valid_until: input.validUntil || null,
-    status: input.status || 'active',
-    document_url: input.documentUrl?.trim() || null,
     notes: input.notes?.trim() || null,
   };
   // holder_name is trigger-owned and never sent. An existing row goes through
   // UPDATE rather than upsert: for a former member (holder_id NULL) an upsert
   // would run the INSERT trigger first and be refused. `.single()` turns an
   // RLS-filtered zero-row write into an error instead of a silent no-op.
+  //
+  // issuer is a retired column that is still NOT NULL — the two-phase rule in
+  // CLAUDE.md keeps the drop out of this release — so an insert has to name it.
+  // status keeps its 'active' default; pending / revoked no longer exist.
   const { data, error } = input.id
     ? await supabase.from('accreditations').update(payload).eq('id', input.id).select().single()
     : await supabase
         .from('accreditations')
-        .insert({ ...payload, holder_name: '', created_by: input.createdBy ?? null })
+        .insert({ ...payload, issuer: '', holder_name: '', created_by: input.createdBy ?? null })
         .select()
         .single();
   if (error) throw error;
