@@ -57,7 +57,6 @@ export const AccreditationsTool: React.FC = () => {
   const [filter, setFilter] = useState<FilterKey>('all');
   // Local, not the header's global search: that box only renders on task views.
   const [search, setSearch] = useState('');
-  const [kind, setKind] = useState<'all' | AccreditationKind>('all');
   const [editing, setEditing] = useState<Partial<Accreditation> | null>(null);
   const [deleting, setDeleting] = useState<Accreditation | null>(null);
 
@@ -79,7 +78,6 @@ export const AccreditationsTool: React.FC = () => {
       allRows
         .filter(({ item, state }) => {
           if (query && !item.holderName.toLowerCase().includes(query)) return false;
-          if (kind !== 'all' && item.kind !== kind) return false;
           switch (filter) {
             case 'expiring':
               return state === 'expiring';
@@ -99,16 +97,15 @@ export const AccreditationsTool: React.FC = () => {
             a.item.holderName.localeCompare(b.item.holderName),
         )
     );
-  }, [allRows, filter, search, kind]);
+  }, [allRows, filter, search]);
 
   // Header badges count everything, not just the rows passing the filter.
   const expiringCount = allRows.filter((row) => row.state === 'expiring').length;
   const expiredCount = allRows.filter((row) => row.state === 'expired').length;
 
-  const filtersActive = filter !== 'all' || kind !== 'all' || search.trim().length > 0;
+  const filtersActive = filter !== 'all' || search.trim().length > 0;
   const resetFilters = () => {
     setFilter('all');
-    setKind('all');
     setSearch('');
   };
 
@@ -153,18 +150,6 @@ export const AccreditationsTool: React.FC = () => {
               placeholder="Holder name…"
               aria-label="Search accreditations"
               className="pl-8 py-1.5 text-xs"
-            />
-          </div>
-
-          <div className="w-40">
-            <CustomSelect
-              options={[
-                { value: 'all', label: 'All kinds' },
-                ...ACCREDITATION_KINDS.map((entry) => ({ value: entry, label: ACCREDITATION_KIND_LABEL[entry] })),
-              ]}
-              value={kind}
-              onChange={(value) => setKind(value as 'all' | AccreditationKind)}
-              compact
             />
           </div>
 

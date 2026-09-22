@@ -77,7 +77,7 @@ describe('AccreditationsTool', () => {
     const states = within(screen.getByRole('table'))
       .getAllByRole('row')
       .slice(1)
-      .map((row) => row.cells[row.cells.length - 2].textContent);
+      .map((row) => within(row).getAllByRole('cell').at(-2)?.textContent);
     expect(states).toEqual(['Expiring', 'Valid']);
     expect(screen.queryByText('Pending')).toBeNull();
     expect(screen.queryByText('Revoked')).toBeNull();
