@@ -14,6 +14,7 @@ import {
   AlertCircle,
   GripVertical,
   Cake,
+  Rocket,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
@@ -246,6 +247,20 @@ const Schedule: React.FC<ScheduleProps> = ({
     return shifts.find((s) => s.memberId === memberId && s.teamId === teamId && s.date === dateStr);
   };
 
+  const isRapidResponseTeam = (teamId: string) => !!teams.find((t) => t.id === teamId)?.rapidResponse;
+
+  // An absence belongs to the person, not to a team, so it shows on every row
+  // they sit in. Rapid Response rows are a DUTY/CALL rota and nothing else: an
+  // absence entered there used to turn up on the person's home team row too.
+  // So those rows neither show absences nor offer to create one.
+  const getAbsenceForRow = (memberId: string, teamId: string, day: number) =>
+    isRapidResponseTeam(teamId) ? undefined : getAbsenceForDay(memberId, day);
+
+  // Admins can edit any row; everyone else only their own, and only to request
+  // an absence — which a Rapid Response row does not take.
+  const canEditRow = (memberId: string, teamId: string) =>
+    isAdmin(userRole) || (memberId === currentUserId && !isRapidResponseTeam(teamId));
+
   // Shifts and absences are separate records: an absence is drawn over the shift
   // it covers rather than replacing it, so the roster survives a request that is
   // later declined or cancelled. That only works if the covered shift is visible
@@ -259,8 +274,7 @@ const Schedule: React.FC<ScheduleProps> = ({
   const MOUSE_AFTER_TOUCH_MS = 600;
 
   const beginSelection = (member: Member, teamId: string, day: number) => {
-    // Admins can click any row; others can only click their own row (for absences)
-    if (!isAdmin(userRole) && member.id !== currentUserId) return;
+    if (!canEditRow(member.id, teamId)) return;
     setIsDragging(true);
     setDragStart({ memberId: member.id, teamId, day });
     setDragEnd({ memberId: member.id, teamId, day });
@@ -283,8 +297,7 @@ const Schedule: React.FC<ScheduleProps> = ({
    * write from the same event has not landed yet.
    */
   const openCellEditor = (member: Member, teamId: string, startDay: number, endDay: number) => {
-    // Admins can open any row; everyone else only their own (for absences).
-    if (!isAdmin(userRole) && member.id !== currentUserId) return;
+    if (!canEditRow(member.id, teamId)) return;
 
     const startStr = getDateStr(startDay);
     const endStr = getDateStr(endDay);
@@ -292,7 +305,7 @@ const Schedule: React.FC<ScheduleProps> = ({
     setRangeStartDate(startStr);
     setRangeEndDate(endStr);
 
-    const existingAbsence = getAbsenceForDay(member.id, startDay);
+    const existingAbsence = getAbsenceForRow(member.id, teamId, startDay);
     const existingShift = getShiftForDay(member.id, teamId, startDay);
 
     setSelectedCell({ member, teamId, day: startDay });
@@ -322,11 +335,13 @@ const Schedule: React.FC<ScheduleProps> = ({
       setShiftType('on_duty');
     }
 
-    // Determine which tab to show. Non-admins always get absence, and the
-    // synthetic "No Team" group has no real team_id so shifts cannot be stored
-    // there — force absence mode for those rows.
+    // Determine which tab to show. Rapid Response rows only take shifts. Non-admins
+    // always get absence, and the synthetic "No Team" group has no real team_id
+    // so shifts cannot be stored there — force absence mode for those rows.
     const noTeamRow = !teamId || teamId === '__no_team__';
-    setEditType(noTeamRow ? 'absence' : !isAdmin(userRole) ? 'absence' : existingAbsence ? 'absence' : 'shift');
+    setEditType(
+      isRapidResponseTeam(teamId) ? 'shift' : noTeamRow || !isAdmin(userRole) || existingAbsence ? 'absence' : 'shift',
+    );
 
     // Reset decline mode
     setModalDeclineMode(false);
@@ -437,7 +452,7 @@ const Schedule: React.FC<ScheduleProps> = ({
     if (!wasDragging) {
       // Released before the hold registered. Say so rather than silently doing
       // nothing — a shared toast id means repeat taps replace, not stack.
-      if (isAdmin(userRole) || member.id === currentUserId) {
+      if (canEditRow(member.id, teamId)) {
         toast('Hold a day to edit', { id: 'schedule-hold-hint' });
       }
       return;
@@ -461,10 +476,12 @@ const Schedule: React.FC<ScheduleProps> = ({
     if (editType === 'absence' && !isAdmin(userRole) && selectedCell.member.id !== currentUserId) return;
     // Shifts require a concrete team (not the synthetic "No Team" row)
     if (editType === 'shift' && (!selectedCell.teamId || selectedCell.teamId === '__no_team__')) return;
+    // Rapid Response rows take shifts only
+    if (editType === 'absence' && isRapidResponseTeam(selectedCell.teamId)) return;
 
     if (editType === 'absence') {
       if (!rangeStartDate || !rangeEndDate) return;
-      const existing = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
+      const existing = getAbsenceForRow(selectedCell.member.id, selectedCell.teamId, selectedCell.day);
 
       const newAbsence: Absence = {
         id: existing?.id || crypto.randomUUID(),
@@ -502,7 +519,7 @@ const Schedule: React.FC<ScheduleProps> = ({
     if (!selectedCell) return;
 
     if (editType === 'absence') {
-      const existing = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
+      const existing = getAbsenceForRow(selectedCell.member.id, selectedCell.teamId, selectedCell.day);
       if (existing) onDeleteAbsence(existing.id);
     } else if (isAdmin(userRole)) {
       const start = new Date(rangeStartDate);
@@ -532,7 +549,9 @@ const Schedule: React.FC<ScheduleProps> = ({
           teamMembers = teamMembers.filter((m) => m.id === filterPerson);
         }
         if (filterAbsenceType !== 'all') {
+          // Rapid Response rows draw no absences, so they have nothing to match.
           teamMembers = teamMembers.filter((m) => {
+            if (team.rapidResponse) return false;
             return absences.some(
               (a) =>
                 a.memberId === m.id &&
@@ -755,6 +774,9 @@ const Schedule: React.FC<ScheduleProps> = ({
 
               {membersByTeam.map((group) => {
                 const isCurrentUserTeam = group.members.some((m) => m.id === currentUserId);
+                // Rapid Response is a separate DUTY/CALL rota sitting among the
+                // ordinary team schedules, so its block is shaded grey to set it apart.
+                const isRapidResponse = !!group.team.rapidResponse;
                 const isTeamDragOver = dragState.dragType === 'team' && dragState.dragOverId === group.team.id;
                 const teamDropClass = isTeamDragOver
                   ? dragState.dropPosition === 'after'
@@ -764,21 +786,26 @@ const Schedule: React.FC<ScheduleProps> = ({
                 return (
                   <div key={group.team.id} onDragEnd={handleDragEnd}>
                     <div
-                      className={`flex border-b border-zinc-200 dark:border-zinc-800 bg-zinc-100/95 dark:bg-zinc-800/95 md:bg-transparent md:dark:bg-transparent ${teamDropClass}`}
+                      className={`flex border-b md:bg-transparent md:dark:bg-transparent ${isRapidResponse ? 'border-zinc-300 bg-zinc-200/95 dark:border-zinc-700 dark:bg-zinc-700/95' : 'border-zinc-200 bg-zinc-100/95 dark:border-zinc-800 dark:bg-zinc-800/95'} ${teamDropClass}`}
                       draggable={isAdminUser}
                       onDragStart={(e) => handleTeamDragStart(e, group.team.id)}
                       onDragOver={(e) => handleTeamDragOver(e, group.team.id)}
                       onDrop={(e) => handleTeamDrop(e, group.team.id)}
                     >
                       <div
-                        className={`group sticky left-0 z-20 w-auto md:w-64 md:bg-zinc-100/95 md:dark:bg-zinc-800/95 md:backdrop-blur-sm md:border-r border-zinc-200 dark:border-zinc-800 px-2 md:px-3 py-1.5 flex items-center gap-1.5 cursor-pointer md:hover:bg-zinc-200/95 md:dark:hover:bg-zinc-700/95 transition-colors md:shadow-[1px_0_0_0_rgba(228,228,231,1)] md:dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] ${isCurrentUserTeam ? 'border-l-2 border-l-blue-400 dark:border-l-blue-500' : ''}`}
+                        className={`group sticky left-0 z-20 w-auto md:w-64 md:backdrop-blur-sm md:border-r px-2 md:px-3 py-1.5 flex items-center gap-1.5 cursor-pointer transition-colors md:shadow-[1px_0_0_0_rgba(228,228,231,1)] md:dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] ${isRapidResponse ? 'border-zinc-300 dark:border-zinc-700 md:bg-zinc-200/95 md:dark:bg-zinc-700/95 md:hover:bg-zinc-300/95 md:dark:hover:bg-zinc-600/95' : 'border-zinc-200 dark:border-zinc-800 md:bg-zinc-100/95 md:dark:bg-zinc-800/95 md:hover:bg-zinc-200/95 md:dark:hover:bg-zinc-700/95'} ${isCurrentUserTeam ? 'border-l-2 border-l-blue-400 dark:border-l-blue-500' : ''}`}
                         onClick={ifGridIsStill(() => toggleTeamCollapse(group.team.id))}
                       >
                         <ChevronDown
                           size={14}
                           className={`text-zinc-500 transition-transform duration-200 ${collapsedTeams[group.team.id] ? '-rotate-90' : ''}`}
                         />
-                        <span className="whitespace-nowrap text-[10px] font-semibold text-zinc-600 dark:text-zinc-300 uppercase tracking-wider">
+                        {isRapidResponse && (
+                          <Rocket size={11} aria-hidden className="flex-shrink-0 text-zinc-500 dark:text-zinc-400" />
+                        )}
+                        <span
+                          className={`whitespace-nowrap text-[10px] font-semibold uppercase tracking-wider ${isRapidResponse ? 'text-zinc-800 dark:text-zinc-100' : 'text-zinc-600 dark:text-zinc-300'}`}
+                        >
                           {group.team.name}
                         </span>
                         {isAdminUser && (
@@ -787,7 +814,9 @@ const Schedule: React.FC<ScheduleProps> = ({
                           </div>
                         )}
                       </div>
-                      <div className="flex-1 min-w-0 md:bg-zinc-50/50 md:dark:bg-zinc-900/50"></div>
+                      <div
+                        className={`flex-1 min-w-0 ${isRapidResponse ? 'md:bg-zinc-200/70 md:dark:bg-zinc-700/60' : 'md:bg-zinc-50/50 md:dark:bg-zinc-900/50'}`}
+                      ></div>
                     </div>
 
                     {!collapsedTeams[group.team.id] &&
@@ -803,13 +832,13 @@ const Schedule: React.FC<ScheduleProps> = ({
                           <div
                             // Composite key — a multi-team member appears in multiple rows
                             key={`${group.team.id}-${member.id}`}
-                            className={`flex border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/30 transition-colors h-10 ${isCurrentUser ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''} ${memberDropClass}`}
+                            className={`flex border-b transition-colors h-10 ${isRapidResponse ? 'border-zinc-200 bg-zinc-100 hover:bg-zinc-200/60 dark:border-zinc-700/60 dark:bg-zinc-800 dark:hover:bg-zinc-700/60' : `border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/30 ${isCurrentUser ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''}`} ${memberDropClass}`}
                             onDragOver={(e) => handleMemberDragOver(e, member.id)}
                             onDrop={(e) => handleMemberDrop(e, member.id)}
                             onDragEnd={handleDragEnd}
                           >
                             <div
-                              className={`group sticky left-0 z-10 w-32 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-1.5 md:px-2 flex items-center gap-1.5 md:gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800 ${isCurrentUser ? 'bg-blue-50 dark:bg-blue-950' : 'bg-white dark:bg-zinc-900'}`}
+                              className={`group sticky left-0 z-10 w-32 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-1.5 md:px-2 flex items-center gap-1.5 md:gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer ${isCurrentUser ? 'bg-blue-50 hover:bg-zinc-50 dark:bg-blue-950 dark:hover:bg-zinc-800' : isRapidResponse ? 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700' : 'bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-800'}`}
                               onClick={ifGridIsStill(() => setSelectedMemberStats(member))}
                             >
                               <Avatar src={member.avatar} alt={member.name} size="sm" />
@@ -838,7 +867,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                               )}
                             </div>
                             {days.map((day) => {
-                              const absence = getAbsenceForDay(member.id, day);
+                              const absence = getAbsenceForRow(member.id, group.team.id, day);
                               const shift = getShiftForDay(member.id, group.team.id, day);
                               const isToday =
                                 day === new Date().getDate() &&
@@ -855,7 +884,9 @@ const Schedule: React.FC<ScheduleProps> = ({
                               const birthdayLabel = isBirthday ? `${member.name}'s birthday` : '';
 
                               let content = null;
-                              let cellClass = 'hover:bg-zinc-100 dark:hover:bg-zinc-800';
+                              let cellClass = isRapidResponse
+                                ? 'hover:bg-zinc-200 dark:hover:bg-zinc-700'
+                                : 'hover:bg-zinc-100 dark:hover:bg-zinc-800';
 
                               const inSelection =
                                 dragStart &&
@@ -984,7 +1015,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                                   onTouchEnd={(e) => handleTouchEnd(e, member, group.team.id, day)}
                                   onTouchCancel={abandonTouch}
                                   title={birthdayLabel || undefined}
-                                  className={`w-8 md:w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : !content && isWeekend(day) ? 'bg-emerald-50/40 dark:bg-emerald-900/10' : ''}`}
+                                  className={`w-8 md:w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift || isRapidResponse ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : !content && isWeekend(day) ? 'bg-emerald-50/40 dark:bg-emerald-900/10' : ''}`}
                                 >
                                   {content}
                                   {/* An outline drawn over the day rather than a
@@ -1110,7 +1141,9 @@ const Schedule: React.FC<ScheduleProps> = ({
         actions={
           <div className="flex items-center gap-3 w-full">
             {(() => {
-              const existingAbsence = selectedCell ? getAbsenceForDay(selectedCell.member.id, selectedCell.day) : null;
+              const existingAbsence = selectedCell
+                ? getAbsenceForRow(selectedCell.member.id, selectedCell.teamId, selectedCell.day)
+                : null;
               const isOwnPending =
                 existingAbsence && existingAbsence.memberId === currentUserId && existingAbsence.status === 'pending';
               const isReadOnly = existingAbsence && existingAbsence.status !== 'pending' && !isAdmin(userRole);
@@ -1156,7 +1189,7 @@ const Schedule: React.FC<ScheduleProps> = ({
       >
         {selectedCell &&
           (() => {
-            const existingAbsence = getAbsenceForDay(selectedCell.member.id, selectedCell.day);
+            const existingAbsence = getAbsenceForRow(selectedCell.member.id, selectedCell.teamId, selectedCell.day);
             const isSA = isAdmin(userRole);
             const decider = existingAbsence?.decidedBy ? members.find((m) => m.id === existingAbsence.decidedBy) : null;
             const holidayStats =
@@ -1167,6 +1200,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                 ? teams.find((t) => t.id === selectedCell.teamId)
                 : null;
             const coveredShift = getShiftForDay(selectedCell.member.id, selectedCell.teamId, selectedCell.day);
+            const cellIsRapidResponse = !!cellTeam?.rapidResponse;
             return (
               <div>
                 {/* Who and when, up front. The old header was a 12px grey line,
@@ -1188,7 +1222,10 @@ const Schedule: React.FC<ScheduleProps> = ({
                         {formatRangeLabel(rangeStartDate, rangeEndDate)}
                       </span>
                       {cellTeam && (
-                        <span className="rounded bg-zinc-100 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300">
+                        <span
+                          className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${cellIsRapidResponse ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+                        >
+                          {cellIsRapidResponse && <Rocket size={10} aria-hidden />}
                           {cellTeam.name}
                         </span>
                       )}
@@ -1312,7 +1349,9 @@ const Schedule: React.FC<ScheduleProps> = ({
                 )}
 
                 <div className="space-y-4">
-                  {isAdmin(userRole) ? (
+                  {/* Rapid Response takes DUTY/CALL only — the picker below is the
+                      whole form, so there is no Shift/Absence switch to show. */}
+                  {cellIsRapidResponse ? null : isAdmin(userRole) ? (
                     <div className="mb-4 flex gap-2 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800">
                       <button
                         onClick={() => setEditType('shift')}
@@ -1377,7 +1416,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                         onChange={(v) => setAbsenceType(v as any)}
                       />
                     </div>
-                  ) : teams.find((t) => t.id === selectedCell?.teamId)?.rapidResponse ? (
+                  ) : cellIsRapidResponse ? (
                     <div className="flex gap-2 rounded-lg bg-zinc-100 p-1 dark:bg-zinc-800">
                       <button
                         onClick={() => setShiftType('on_duty')}
