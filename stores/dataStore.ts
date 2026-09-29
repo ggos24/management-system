@@ -41,6 +41,7 @@ import { supabase } from '../lib/supabase';
 import { PERSON_FIELD_DEFAULT_LABELS, isAdmin, TICKET_STATUS_META } from '../constants';
 import { getStatusName } from '../lib/statusUtils';
 import { newDescriptionMentionIds } from '../lib/mentions';
+import { diffSubtaskChecks, toggleSubtaskInHtml } from '../lib/subtasks';
 
 export type PersonFieldConfigEntry = { label: string | null; hidden: boolean };
 export type PersonFieldConfigMap = Record<string, Partial<Record<PersonFieldKey, PersonFieldConfigEntry>>>;
@@ -157,7 +158,15 @@ function diffTaskFields(
     entries.push({ field: 'dueDate', oldValue: oldTask.dueDate || null, newValue: newTask.dueDate || null });
   }
   if (oldTask.description !== newTask.description) {
-    entries.push({ field: 'description' });
+    // A tick is logged as the subtask it touched, not as a rewrite of the description.
+    const ticks = diffSubtaskChecks(oldTask.description, newTask.description);
+    if (ticks) {
+      for (const tick of ticks) {
+        entries.push({ field: 'subtask', oldValue: tick.text, newValue: tick.done ? 'done' : 'open' });
+      }
+    } else {
+      entries.push({ field: 'description' });
+    }
   }
   if (JSON.stringify(oldTask.assigneeIds) !== JSON.stringify(newTask.assigneeIds)) {
     entries.push({
@@ -295,7 +304,10 @@ function notifyTaskSaved(oldTask: Task | null, task: Task) {
   if (oldTask.title !== task.title) changes.push('title');
   if (oldTask.priority !== task.priority) changes.push('priority');
   if (oldTask.dueDate !== task.dueDate) changes.push('due date');
-  if (oldTask.description !== task.description) changes.push('description');
+  // Ticking subtasks stays quiet — it is progress, recorded in the activity log, not news.
+  if (oldTask.description !== task.description && !diffSubtaskChecks(oldTask.description, task.description)) {
+    changes.push('description');
+  }
   if (JSON.stringify(oldTask.placements) !== JSON.stringify(task.placements)) changes.push('placements');
   if (JSON.stringify(oldTask.customFieldValues) !== JSON.stringify(task.customFieldValues)) changes.push('fields');
   const addedKeys = new Set(added.map((person) => `${person.profileId}::${person.contextTeamId}`));
@@ -609,6 +621,8 @@ interface DataState {
   // Task actions
   updateTaskStatus: (taskId: string, newStatusId: string | null, teamContext?: string) => void;
   updateTask: (updatedTask: Task) => void;
+  /** Flip one description checklist row and save it. Returns the saved description, or null. */
+  toggleSubtask: (taskId: string, index: number, key: string) => string | null;
   deleteTask: (taskId: string) => void;
   addTask: (task: Task) => void;
   saveTask: (taskData: Partial<Task>, teams: Team[]) => void;
@@ -1178,6 +1192,16 @@ export const useDataStore = create<DataState>((set, get) => ({
         notifyTaskSaved(oldTask || null, finalTask);
       })
       .catch(() => set({ tasks: prev }));
+  },
+
+  toggleSubtask: (taskId, index, key) => {
+    if (!hasFullAccess()) return null;
+    const task = get().tasks.find((t) => t.id === taskId);
+    if (!task || task.deletedAt) return null;
+    const description = toggleSubtaskInHtml(task.description, index, key);
+    if (description === null) return null;
+    get().updateTask({ ...task, description });
+    return description;
   },
 
   deleteTask: (taskId) => {

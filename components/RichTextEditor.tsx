@@ -5,6 +5,7 @@ import { Bold, Italic, List, ListOrdered, CheckSquare, Link as LinkIcon, Striket
 import { Avatar } from './Avatar';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
 import { DESCRIPTION_MENTION_ATTR, getDescriptionMentionLabel, withMentionLabels } from '../lib/mentions';
+import { CHECKED_ATTR, CHECKLIST_ATTR, flattenChecklists, subtaskKey, upgradeLegacyChecklists } from '../lib/subtasks';
 
 /** A person the "@" picker can offer. */
 export interface MentionCandidate {
@@ -20,11 +21,12 @@ interface RichTextEditorProps {
   minHeight?: string;
   /** People the "@" picker offers. Omit, or pass an empty list, to disable mentions. */
   mentionMembers?: MentionCandidate[];
+  /**
+   * Called after a checklist box is clicked, with the row's position and `subtaskKey`. Return true
+   * when the parent has stored the new value itself — the editor then skips its own onChange.
+   */
+  onChecklistToggle?: (index: number, key: string) => boolean;
 }
-
-/** Marks a checklist row. State lives in `data-checked` so it survives serialization. */
-const CHECKLIST_ATTR = 'data-checklist';
-const CHECKED_ATTR = 'data-checked';
 
 const ALLOWED_TAGS = [
   'a',
@@ -77,51 +79,6 @@ function stripAuthoredStyles(root: ParentNode): void {
       .trim();
     if (cleaned) el.setAttribute('style', cleaned);
     else el.removeAttribute('style');
-  }
-}
-
-/**
- * The original checklist embedded a live `<input type="checkbox">`, whose ticked state
- * never survived `innerHTML` serialization. Stored descriptions still carry that markup,
- * so fold it into the attribute-based format on the way in — the old code recorded "done"
- * as a line-through on the row, which is the only signal that did persist.
- */
-function upgradeLegacyChecklists(html: string): string {
-  if (!/<input/i.test(html)) return html;
-  const doc = new DOMParser().parseFromString(html, 'text/html');
-  // Grouped by host: with two boxes in one row, clearing `style` on the first pass destroyed
-  // the line-through evidence and the second pass recomputed a completed item as unchecked.
-  const hosts = new Map<Element, boolean>();
-  for (const box of Array.from(doc.querySelectorAll('input[type="checkbox"]'))) {
-    const row = box.parentElement;
-    const done = box.hasAttribute('checked') || /line-through/i.test(row?.getAttribute('style') || '');
-    box.remove();
-    if (!row || row === doc.body) continue;
-    hosts.set(row, (hosts.get(row) ?? false) || done);
-  }
-  for (const [row, done] of hosts) {
-    row.removeAttribute('style');
-    row.setAttribute(CHECKLIST_ATTR, '');
-    row.setAttribute(CHECKED_ATTR, done ? 'true' : 'false');
-  }
-  return doc.body.innerHTML;
-}
-
-/**
- * Rows are flat by construction, but descriptions saved by an earlier build can hold rows nested
- * inside rows — drawing one box per level and stacking an indent per level. Lift each nested row
- * out to a sibling; removing it from between its neighbours also rejoins the text it had split.
- */
-function flattenChecklists(body: HTMLElement): void {
-  const nestedSelector = `[${CHECKLIST_ATTR}] [${CHECKLIST_ATTR}]`;
-  // Each lift removes one level, so this converges; the bound is only a runaway guard.
-  for (let guard = 0; guard < 500; guard++) {
-    const nested = body.querySelector<HTMLElement>(nestedSelector);
-    if (!nested) return;
-    const outer = nested.parentElement?.closest<HTMLElement>(`[${CHECKLIST_ATTR}]`);
-    if (!outer) return;
-    outer.after(nested);
-    outer.normalize();
   }
 }
 
@@ -273,6 +230,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   placeholder = 'Start typing...',
   minHeight = '120px',
   mentionMembers,
+  onChecklistToggle,
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
   const isInternalChange = useRef(false);
@@ -830,6 +788,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const firstLine = row.getClientRects()[0];
     if (firstLine && (e.clientY < firstLine.top || e.clientY > firstLine.bottom)) return;
     row.setAttribute(CHECKED_ATTR, row.getAttribute(CHECKED_ATTR) === 'true' ? 'false' : 'true');
+    const index = Array.from(editorRef.current.querySelectorAll(`[${CHECKLIST_ATTR}]`)).indexOf(row);
+    if (onChecklistToggle?.(index, subtaskKey(row))) return;
     handleInput();
   };
 

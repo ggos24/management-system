@@ -123,6 +123,7 @@ const MyWorkspaceRoute: React.FC = () => {
     teams,
     updateTaskStatus,
     updateTask,
+    toggleSubtask,
     teamStatuses,
     addStatus,
     renameStatus,
@@ -154,6 +155,7 @@ const MyWorkspaceRoute: React.FC = () => {
       teams: s.teams,
       updateTaskStatus: s.updateTaskStatus,
       updateTask: s.updateTask,
+      toggleSubtask: s.toggleSubtask,
       teamStatuses: s.teamStatuses,
       addStatus: s.addStatus,
       renameStatus: s.renameStatus,
@@ -203,6 +205,7 @@ const MyWorkspaceRoute: React.FC = () => {
       searchQuery={searchQuery}
       onTaskClick={openTaskModal}
       onUpdateTask={updateTask}
+      onToggleSubtask={toggleSubtask}
       teamStatuses={teamStatuses}
       onAddStatus={addStatus}
       onRenameStatus={renameStatus}
@@ -242,6 +245,7 @@ const TeamWorkspaceRoute: React.FC = () => {
     teams,
     updateTaskStatus,
     updateTask,
+    toggleSubtask,
     teamStatuses,
     addStatus,
     renameStatus,
@@ -272,6 +276,7 @@ const TeamWorkspaceRoute: React.FC = () => {
       teams: s.teams,
       updateTaskStatus: s.updateTaskStatus,
       updateTask: s.updateTask,
+      toggleSubtask: s.toggleSubtask,
       teamStatuses: s.teamStatuses,
       addStatus: s.addStatus,
       renameStatus: s.renameStatus,
@@ -323,6 +328,7 @@ const TeamWorkspaceRoute: React.FC = () => {
       searchQuery={searchQuery}
       onTaskClick={(task) => openTaskModal({ ...task, viewingTeamId: team.id })}
       onUpdateTask={updateTask}
+      onToggleSubtask={toggleSubtask}
       teamStatuses={teamStatuses}
       onAddStatus={addStatus}
       onRenameStatus={renameStatus}
