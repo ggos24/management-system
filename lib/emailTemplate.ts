@@ -31,7 +31,7 @@ export interface DigestInput {
 }
 
 const LOGO_URL =
-  'https://s9152801.sendpul.se/image/files/emailservice/userfiles/ecaadd411e3712914f84c397dfdf648e9152801/united24media-logo.png';
+  'https://s9492315.sendpul.se/image/files/emailservice/userfiles/2533287c334a943d4137247ce4e941d59492315/united24media-logo.png';
 
 /** Escape text for HTML element content. */
 function esc(value: string): string {
