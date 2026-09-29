@@ -24,6 +24,7 @@ import {
   PERSON_FIELD_DEFAULT_LABELS,
 } from '../constants';
 import { formatDateEU, getDateDiffFromToday, mondayIndex, toDateOnly, WEEKDAYS_MON_SHORT } from '../lib/utils';
+import { parseSubtasks } from '../lib/subtasks';
 import {
   Plus,
   MoreHorizontal,
@@ -63,6 +64,7 @@ import { CustomSelect } from './CustomSelect';
 import { TagSelect } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
+import { SubtaskProgress } from './SubtaskProgress';
 import { Button, Divider } from './ui';
 import { useAuthStore } from '../stores/authStore';
 
@@ -401,6 +403,12 @@ const ColumnMenu: React.FC<{
   );
 };
 
+/** Share of subtasks done, for sorting; tasks without any sort below an untouched checklist. */
+function subtaskRatio(task: Task): number {
+  const summary = parseSubtasks(task.description);
+  return summary ? summary.done / summary.total : -1;
+}
+
 interface WorkspaceProps {
   tasks: Task[];
   teamFilter: TeamType | 'all';
@@ -413,6 +421,8 @@ interface WorkspaceProps {
   onTaskClick: (task: Task) => void;
 
   onUpdateTask: (task: Task) => void;
+  /** Tick a description checklist row straight from a card or table row. */
+  onToggleSubtask?: (taskId: string, index: number, key: string) => void;
   teamStatuses: Record<string, TeamStatus[]>;
   onAddStatus: (teamId: string, name: string) => void;
   onRenameStatus: (teamId: string, statusId: string, newName: string) => void;
@@ -455,6 +465,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   searchQuery,
   onTaskClick,
   onUpdateTask,
+  onToggleSubtask,
   teamStatuses,
   onAddStatus,
   onRenameStatus,
@@ -508,6 +519,14 @@ const Workspace: React.FC<WorkspaceProps> = ({
   const getTaskRenderKey = useCallback(
     (task: ContextualTask): string => (usesAclContexts ? `${task.id}::${getTaskContextTeamId(task)}` : task.id),
     [getTaskContextTeamId, usesAclContexts],
+  );
+
+  const getSubtaskToggle = useCallback(
+    (task: Task): ((index: number, key: string) => void) | undefined =>
+      !isRelatedOnly && onToggleSubtask && !task.deletedAt
+        ? (index, key) => onToggleSubtask(task.id, index, key)
+        : undefined,
+    [isRelatedOnly, onToggleSubtask],
   );
 
   const openTask = useCallback(
@@ -585,6 +604,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
     }
     base.push(
       { key: 'priority', label: 'Priority', className: 'w-24' },
+      { key: 'subtasks', label: 'Subtasks', className: 'w-24' },
       { key: 'deadline', label: 'Deadline', className: 'w-[8.25rem] min-w-[8.25rem]' },
       { key: 'done', label: 'Pub Date', className: 'w-24' },
       { key: 'created', label: 'Created', className: 'w-24' },
@@ -1162,6 +1182,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
           case 'links':
             return dir * ((a.links?.length || 0) - (b.links?.length || 0));
+          case 'subtasks':
+            return dir * (subtaskRatio(a) - subtaskRatio(b));
           case 'placements':
             return dir * (a.placements || []).join(', ').localeCompare((b.placements || []).join(', '));
           default: {
@@ -1682,7 +1704,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               </span>
                                             )}
                                           </div>
-                                          <div className="flex items-center justify-between pt-2">
+                                          <div className="flex items-center gap-2 pt-2">
                                             {task.dueDate &&
                                               (() => {
                                                 const urgency = getDeadlineUrgency(task.dueDate);
@@ -1699,6 +1721,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                   </div>
                                                 );
                                               })()}
+                                            <SubtaskProgress
+                                              description={task.description}
+                                              onToggle={getSubtaskToggle(task)}
+                                            />
                                             <div className="ml-auto flex -space-x-1.5">
                                               {assignees.length > 0 ? (
                                                 assignees
@@ -1984,7 +2010,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   )}
                                 </div>
 
-                                <div className="flex items-center justify-between pt-2">
+                                <div className="flex items-center gap-2 pt-2">
                                   {task.dueDate &&
                                     (() => {
                                       const urgency = getDeadlineUrgency(task.dueDate);
@@ -1999,6 +2025,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                         </div>
                                       );
                                     })()}
+                                  <SubtaskProgress description={task.description} onToggle={getSubtaskToggle(task)} />
                                   <div className="ml-auto flex -space-x-1.5">
                                     {assignees.length > 0 ? (
                                       assignees
@@ -2317,6 +2344,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       {formatDateEU(toDateOnly(task.dueDate))}
                                     </span>
                                   )}
+                                  <SubtaskProgress
+                                    description={task.description}
+                                    onToggle={getSubtaskToggle(task)}
+                                    size="compact"
+                                  />
                                 </div>
                               </div>
                             );
@@ -2675,6 +2707,19 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                     </span>
                                                   )}
                                                 />
+                                              )}
+                                            </td>
+                                          );
+                                        case 'subtasks':
+                                          return (
+                                            <td key={tc.key} className="p-3">
+                                              {parseSubtasks(task.description) ? (
+                                                <SubtaskProgress
+                                                  description={task.description}
+                                                  onToggle={getSubtaskToggle(task)}
+                                                />
+                                              ) : (
+                                                <span className="text-xs text-zinc-400">—</span>
                                               )}
                                             </td>
                                           );

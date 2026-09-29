@@ -35,12 +35,14 @@ import { CustomSelect } from './CustomSelect';
 import { TagSelect } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
+import { SubtaskSummaryBar } from './SubtaskProgress';
 import { Button, Input, Label, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useDataStore, resolvePersonFieldConfig } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
 import { Task, TaskComment, TaskActivity, CustomProperty } from '../types';
 import { cn } from '../lib/cn';
+import { toggleSubtaskInHtml } from '../lib/subtasks';
 import { formatDateEU, toDateOnly } from '../lib/utils';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusColor } from '../constants';
 import { getStatusName } from '../lib/statusUtils';
@@ -91,6 +93,7 @@ export const TaskModal: React.FC = () => {
     linkTaskToTeam,
     updateLinkedTaskFields,
     teamPersonFieldConfig,
+    toggleSubtask,
   } = useDataStore();
 
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -116,6 +119,36 @@ export const TaskModal: React.FC = () => {
   }, [taskModalData]);
 
   const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
+
+  /**
+   * Ticking a subtask on an existing task saves that one row straight away — the rest of the
+   * draft still waits for Save. The baseline gets the same tick so the saved row never reads as
+   * an unsaved change. Returns true when the draft was replaced with the saved description.
+   */
+  const handleChecklistToggle = (index: number, key: string): boolean => {
+    if (!taskModalData.id || taskModalData.deletedAt || isRelatedOnly || !initialDataRef.current) return false;
+    let baseline: Partial<Task>;
+    try {
+      baseline = JSON.parse(initialDataRef.current);
+    } catch {
+      return false;
+    }
+    const saved = toggleSubtask(taskModalData.id, index, key);
+    // Not in the stored description yet (a row added in this draft) — it saves with the rest.
+    if (saved === null) return false;
+
+    const draftUntouched = (taskModalData.description || '') === (baseline.description || '');
+    if (draftUntouched) {
+      baseline.description = saved;
+      initialDataRef.current = JSON.stringify(baseline);
+      setTaskModalData({ ...taskModalData, description: saved });
+      return true;
+    }
+    // Other edits are pending: keep them in the draft, and move only this row in the baseline.
+    baseline.description = toggleSubtaskInHtml(baseline.description, index, key) ?? baseline.description;
+    initialDataRef.current = JSON.stringify(baseline);
+    return false;
+  };
 
   const handleClose = useCallback(() => {
     if (!isRelatedOnly && hasUnsavedChanges()) {
@@ -677,6 +710,12 @@ export const TaskModal: React.FC = () => {
         );
       case 'description':
         return 'updated description';
+      case 'subtask':
+        return (
+          <>
+            {a.newValue === 'done' ? 'completed' : 'reopened'} subtask {bold(a.oldValue || '')}
+          </>
+        );
       case 'placements':
         return 'updated placements';
       case 'contentInfo':
@@ -1007,6 +1046,7 @@ export const TaskModal: React.FC = () => {
                 </h2>
                 {copyTitleButton}
               </div>
+              <SubtaskSummaryBar description={taskModalData.description} />
               {readOnlyDescription.hasContent ? (
                 <div
                   className="rte-content min-h-20 break-words text-sm text-zinc-700 dark:text-zinc-300 [&_a]:text-blue-500 [&_a]:underline [&_h2]:my-2 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:my-1 [&_h3]:text-lg [&_h3]:font-semibold [&_ol]:ml-4 [&_ol]:list-decimal [&_ul]:ml-4 [&_ul]:list-disc"
@@ -1110,13 +1150,17 @@ export const TaskModal: React.FC = () => {
               {copyTitleButton}
             </div>
 
-            <RichTextEditor
-              value={taskModalData.description || ''}
-              onChange={(html) => setTaskModalData({ ...taskModalData, description: html })}
-              placeholder="Description... Use @ to mention someone"
-              minHeight="120px"
-              mentionMembers={descriptionMentionMembers}
-            />
+            <div className="space-y-2">
+              <SubtaskSummaryBar description={taskModalData.description} />
+              <RichTextEditor
+                value={taskModalData.description || ''}
+                onChange={(html) => setTaskModalData({ ...taskModalData, description: html })}
+                placeholder="Description... Use @ to mention someone"
+                minHeight="120px"
+                mentionMembers={descriptionMentionMembers}
+                onChecklistToggle={handleChecklistToggle}
+              />
+            </div>
 
             <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 md:gap-x-8 gap-y-4 md:gap-y-5">

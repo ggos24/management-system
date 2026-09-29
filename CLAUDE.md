@@ -67,6 +67,7 @@ npm run format       # Format all files with Prettier
 │   ├── ToolsView.tsx    Admin-only Tools hub (card grid under /tools)
 │   ├── AccreditationsTool.tsx  Journalist accreditations register + expiry tracking (Tools)
 │   ├── SubscriptionsTool.tsx   Paid services register, payment ledger, spend summary (Tools)
+│   ├── SubtaskProgress.tsx     Subtask chip + tick-in-place popover (cards/table), summary bar (TaskModal)
 │   └── ...              Other: Avatar, CustomSelect, MultiSelect, TagSelect, SimpleDatePicker, etc.
 ├── stores/              Zustand stores
 │   ├── authStore.ts     Session, current user, auth state
@@ -82,6 +83,7 @@ npm run format       # Format all files with Prettier
 │   ├── database.ts      All DB queries (~1150 lines, mapper functions)
 │   ├── cn.ts            clsx + tailwind-merge utility
 │   ├── utils.ts         Absence stats, team slug helpers
+│   ├── subtasks.ts      Subtasks = description checklist rows: parse, toggle, tick-only diff
 │   └── fetchWithRetry.ts  Retry wrapper (available, not currently used)
 ├── supabase/
 │   ├── functions/       Edge functions (Deno): invite-user, send-telegram, telegram-webhook
@@ -129,6 +131,10 @@ Component ← Store state ← Realtime subscription (full refetch) ← Supabase
 ### Notifications
 
 Fire-and-forget pattern. `notify()` inserts DB notification AND sends Telegram via edge function. `notifyMany()` for batch notifications. Self-notifications are filtered out. Non-blocking `.catch(console.error)`.
+
+### Subtasks
+
+Subtasks are the checklist rows of a task description (`data-checklist` / `data-checked` in `tasks.description`) — there is no table of their own, and progress is always derived from the HTML via `lib/subtasks.ts`. `dataStore.toggleSubtask()` flips one row and saves it immediately (from the card/table popover and from a checkbox click in TaskModal, which also patches its unsaved-changes baseline). A save whose only description change is ticks logs `subtask` activity entries instead of `description` and sends no "updated description" notification.
 
 ### Permissions
 
