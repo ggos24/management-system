@@ -24,7 +24,6 @@ import {
   PERSON_FIELD_DEFAULT_LABELS,
 } from '../constants';
 import { formatDateEU, getDateDiffFromToday, mondayIndex, toDateOnly, WEEKDAYS_MON_SHORT } from '../lib/utils';
-import { parseSubtasks } from '../lib/subtasks';
 import {
   Plus,
   MoreHorizontal,
@@ -403,12 +402,6 @@ const ColumnMenu: React.FC<{
   );
 };
 
-/** Share of subtasks done, for sorting; tasks without any sort below an untouched checklist. */
-function subtaskRatio(task: Task): number {
-  const summary = parseSubtasks(task.description);
-  return summary ? summary.done / summary.total : -1;
-}
-
 interface WorkspaceProps {
   tasks: Task[];
   teamFilter: TeamType | 'all';
@@ -604,8 +597,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
     }
     base.push(
       { key: 'priority', label: 'Priority', className: 'w-24' },
-      { key: 'subtasks', label: 'Subtasks', className: 'w-24' },
-      { key: 'deadline', label: 'Deadline', className: 'w-[8.25rem] min-w-[8.25rem]' },
+      // Wide enough for the subtask ring beside the date — it lives here rather than in a column
+      // of its own, since most tasks have no checklist and that column would sit mostly empty.
+      { key: 'deadline', label: 'Deadline', className: 'w-[11.5rem] min-w-[11.5rem]' },
       { key: 'done', label: 'Pub Date', className: 'w-24' },
       { key: 'created', label: 'Created', className: 'w-24' },
     );
@@ -1182,8 +1176,6 @@ const Workspace: React.FC<WorkspaceProps> = ({
 
           case 'links':
             return dir * ((a.links?.length || 0) - (b.links?.length || 0));
-          case 'subtasks':
-            return dir * (subtaskRatio(a) - subtaskRatio(b));
           case 'placements':
             return dir * (a.placements || []).join(', ').localeCompare((b.placements || []).join(', '));
           default: {
@@ -2706,19 +2698,6 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               )}
                                             </td>
                                           );
-                                        case 'subtasks':
-                                          return (
-                                            <td key={tc.key} className="p-3">
-                                              {parseSubtasks(task.description) ? (
-                                                <SubtaskProgress
-                                                  description={task.description}
-                                                  onToggle={getSubtaskToggle(task)}
-                                                />
-                                              ) : (
-                                                <span className="text-xs text-zinc-400">—</span>
-                                              )}
-                                            </td>
-                                          );
                                         case 'deadline': {
                                           const deadlineCategory: DeadlineStatusCategory = isIgnoredTable
                                             ? 'ignored'
@@ -2729,31 +2708,37 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                 : 'active';
                                           return (
                                             <td key={tc.key} className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-                                              {isRelatedOnly ? (
-                                                <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                                                  {task.dueDate ? formatDateEU(toDateOnly(task.dueDate)) : '—'}
-                                                </span>
-                                              ) : (
-                                                <SimpleDatePicker
-                                                  value={toDateOnly(task.dueDate)}
-                                                  onChange={(date) =>
-                                                    onUpdateTask({
-                                                      ...task,
-                                                      dueDate: toDateOnly(date),
-                                                    })
-                                                  }
-                                                  placeholder="Set date"
-                                                  renderTrigger={(onClick, value, placeholder) => (
-                                                    <DeadlineDateTrigger
-                                                      value={value}
-                                                      placeholder={placeholder}
-                                                      onClick={onClick}
-                                                      statusCategory={deadlineCategory}
-                                                      doneDate={task.doneDate ?? null}
-                                                    />
-                                                  )}
+                                              <div className="flex items-center gap-1">
+                                                {isRelatedOnly ? (
+                                                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                                    {task.dueDate ? formatDateEU(toDateOnly(task.dueDate)) : '—'}
+                                                  </span>
+                                                ) : (
+                                                  <SimpleDatePicker
+                                                    value={toDateOnly(task.dueDate)}
+                                                    onChange={(date) =>
+                                                      onUpdateTask({
+                                                        ...task,
+                                                        dueDate: toDateOnly(date),
+                                                      })
+                                                    }
+                                                    placeholder="Set date"
+                                                    renderTrigger={(onClick, value, placeholder) => (
+                                                      <DeadlineDateTrigger
+                                                        value={value}
+                                                        placeholder={placeholder}
+                                                        onClick={onClick}
+                                                        statusCategory={deadlineCategory}
+                                                        doneDate={task.doneDate ?? null}
+                                                      />
+                                                    )}
+                                                  />
+                                                )}
+                                                <SubtaskProgress
+                                                  description={task.description}
+                                                  onToggle={getSubtaskToggle(task)}
                                                 />
-                                              )}
+                                              </div>
                                             </td>
                                           );
                                         }
