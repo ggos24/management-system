@@ -23,6 +23,45 @@ const Bar: React.FC<{ done: number; total: number; className?: string }> = ({ do
   </span>
 );
 
+/**
+ * A pie-style ring: the arc is the share done. It says "progress" in the width of one glyph,
+ * where a bar needed its own run of space beside the count.
+ */
+const Ring: React.FC<{ done: number; total: number; size?: number }> = ({ done, total, size = 12 }) => {
+  const stroke = 2;
+  const r = (size - stroke) / 2;
+  const circumference = 2 * Math.PI * r;
+  const share = total ? done / total : 0;
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0 -rotate-90" aria-hidden>
+      <circle
+        cx={size / 2}
+        cy={size / 2}
+        r={r}
+        fill="none"
+        strokeWidth={stroke}
+        className="stroke-zinc-200 dark:stroke-zinc-700"
+      />
+      {share > 0 && (
+        <circle
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
+          fill="none"
+          strokeWidth={stroke}
+          strokeLinecap={share < 1 ? 'round' : 'butt'}
+          strokeDasharray={circumference}
+          strokeDashoffset={circumference * (1 - share)}
+          className={cn(
+            'transition-[stroke-dashoffset] duration-300',
+            share === 1 ? 'stroke-emerald-500' : 'stroke-zinc-500 dark:stroke-zinc-400',
+          )}
+        />
+      )}
+    </svg>
+  );
+};
+
 /** "Subtasks 2/5" with a bar — the header line above a task description. */
 export const SubtaskSummaryBar: React.FC<{ description: string | null | undefined; className?: string }> = ({
   description,
@@ -49,7 +88,6 @@ interface SubtaskProgressProps {
   description: string | null | undefined;
   /** Omit for a read-only list (no write access, or the task is in the bin). */
   onToggle?: (index: number, key: string) => void;
-  size?: 'card' | 'compact';
   className?: string;
 }
 
@@ -58,12 +96,7 @@ interface SubtaskProgressProps {
 const stop = (e: React.SyntheticEvent) => e.stopPropagation();
 
 /** Subtask count chip for cards and table cells; opens the checklist to tick items in place. */
-export const SubtaskProgress: React.FC<SubtaskProgressProps> = ({
-  description,
-  onToggle,
-  size = 'card',
-  className,
-}) => {
+export const SubtaskProgress: React.FC<SubtaskProgressProps> = ({ description, onToggle, className }) => {
   const [open, setOpen] = useState(false);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -113,19 +146,15 @@ export const SubtaskProgress: React.FC<SubtaskProgressProps> = ({
         aria-label={`Subtasks: ${summary.done} of ${summary.total} done`}
         aria-expanded={open}
         className={cn(
-          'inline-flex items-center gap-1.5 rounded px-1.5 py-0.5 text-[10px] font-medium border transition-colors',
-          complete
-            ? 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/20 border-emerald-200 dark:border-emerald-800'
-            : 'text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300 dark:hover:border-zinc-600',
-          size === 'compact' && 'py-0',
+          'inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium tabular-nums transition-colors',
+          'hover:bg-zinc-100 dark:hover:bg-zinc-800',
+          complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-500 dark:text-zinc-400',
+          open && 'bg-zinc-100 dark:bg-zinc-800',
           className,
         )}
       >
-        <ListChecks size={12} className="flex-shrink-0" />
-        <span className="tabular-nums">
-          {summary.done}/{summary.total}
-        </span>
-        {size === 'card' && <Bar done={summary.done} total={summary.total} className="w-8" />}
+        <Ring done={summary.done} total={summary.total} />
+        {summary.done}/{summary.total}
       </button>
       {open &&
         position &&

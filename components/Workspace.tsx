@@ -2344,11 +2344,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       {formatDateEU(toDateOnly(task.dueDate))}
                                     </span>
                                   )}
-                                  <SubtaskProgress
-                                    description={task.description}
-                                    onToggle={getSubtaskToggle(task)}
-                                    size="compact"
-                                  />
+                                  <SubtaskProgress description={task.description} onToggle={getSubtaskToggle(task)} />
                                 </div>
                               </div>
                             );
