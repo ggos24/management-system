@@ -2415,7 +2415,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   />
                                 </th>
                               )}
-                              <th className="w-16 p-1" aria-label="Subtasks" />
+                              <th className="w-12 px-0.5" aria-label="Subtasks" />
                               {sectionTableColumns.map((tc) => {
                                 const isProp = tc.key.startsWith('prop:');
                                 const prop = isProp ? resolvedProps.find((p) => p.id === tc.key.slice(5)) : undefined;
@@ -2562,7 +2562,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                           />
                                         </td>
                                       )}
-                                      <td className="px-1 py-2" onClick={(e) => e.stopPropagation()}>
+                                      <td className="w-12 px-0.5 py-2" onClick={(e) => e.stopPropagation()}>
                                         {renderSubtaskProgress(task)}
                                       </td>
                                       {/* Data-driven cells */}

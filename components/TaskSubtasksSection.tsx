@@ -1,10 +1,12 @@
-import React, { useState } from 'react';
-import { Check, Edit2, Plus, Trash2, X } from 'lucide-react';
+import React, { useMemo, useState } from 'react';
+import { Calendar, Check, Edit2, Plus, Trash2, User, X } from 'lucide-react';
 import { toast } from 'sonner';
 import type { Member, TaskSubtask } from '../types';
 import { useDataStore } from '../stores/dataStore';
 import { formatDateEU } from '../lib/utils';
 import { SubtaskSummaryBar } from './SubtaskProgress';
+import { CustomSelect } from './CustomSelect';
+import { SimpleDatePicker } from './SimpleDatePicker';
 import { Button, Input } from './ui';
 
 interface Props {
@@ -34,6 +36,10 @@ export const TaskSubtasksSection: React.FC<Props> = ({
   const [saving, setSaving] = useState(false);
   const subtasks = taskId ? savedSubtasks.filter((item) => item.taskId === taskId) : draftSubtasks;
   const canEdit = !readOnly && !deleted;
+  const sortedMembers = useMemo(
+    () => [...members].sort((a, b) => (a.id === currentUserId ? -1 : b.id === currentUserId ? 1 : 0)),
+    [members, currentUserId],
+  );
 
   const startAdding = () =>
     setForm({
@@ -167,7 +173,7 @@ export const TaskSubtasksSection: React.FC<Props> = ({
         })}
       </ul>
       {canEdit && form && (
-        <div className="space-y-3 rounded-lg border border-zinc-200 dark:border-zinc-800 p-3">
+        <div key={form.id} className="space-y-3 rounded-lg border border-zinc-200 dark:border-zinc-800 p-3">
           <label className="block text-xs font-medium text-zinc-600 dark:text-zinc-300">
             Title
             <Input
@@ -179,39 +185,39 @@ export const TaskSubtasksSection: React.FC<Props> = ({
             />
           </label>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
-              Assignee
-              <select
-                value={form.assigneeId || ''}
-                onChange={(event) => setForm({ ...form, assigneeId: event.target.value || null })}
-                className="mt-1 block w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
-              >
-                <option value="">Unassigned</option>
-                {members.map((member) => (
-                  <option key={member.id} value={member.id}>
-                    {member.name}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
-              Start date
-              <input
-                type="date"
+            <CustomSelect
+              icon={User}
+              label="Assignee"
+              options={[
+                { value: '', label: 'Unassigned' },
+                ...sortedMembers.map((member) => ({ value: member.id, label: member.name })),
+              ]}
+              value={form.assigneeId || ''}
+              onChange={(value) => setForm({ ...form, assigneeId: value || null })}
+              placeholder="Unassigned"
+              searchable
+              highlightValue={currentUserId}
+            />
+            <div className="space-y-1">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                <Calendar size={12} /> Start date
+              </label>
+              <SimpleDatePicker
                 value={form.startDate || ''}
-                onChange={(event) => setForm({ ...form, startDate: event.target.value || null })}
-                className="mt-1 block w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                onChange={(date) => setForm({ ...form, startDate: date || null })}
+                placeholder="Set start date"
               />
-            </label>
-            <label className="text-xs font-medium text-zinc-600 dark:text-zinc-300">
-              End date
-              <input
-                type="date"
+            </div>
+            <div className="space-y-1">
+              <label className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                <Calendar size={12} /> End date
+              </label>
+              <SimpleDatePicker
                 value={form.endDate || ''}
-                onChange={(event) => setForm({ ...form, endDate: event.target.value || null })}
-                className="mt-1 block w-full rounded-md border border-zinc-300 bg-white px-2 py-2 text-sm dark:border-zinc-700 dark:bg-zinc-900"
+                onChange={(date) => setForm({ ...form, endDate: date || null })}
+                placeholder="Set end date"
               />
-            </label>
+            </div>
           </div>
           <div className="flex gap-2 justify-end">
             <Button size="sm" variant="ghost" onClick={() => setForm(null)}>

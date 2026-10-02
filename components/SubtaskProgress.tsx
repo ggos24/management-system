@@ -24,18 +24,18 @@ const Bar: React.FC<{ done: number; total: number }> = ({ done, total }) => (
 );
 
 const Ring: React.FC<{ done: number; total: number }> = ({ done, total }) => {
-  const circumference = 10 * Math.PI;
+  const circumference = 13 * Math.PI;
   const share = total ? done / total : 0;
   return (
-    <svg width="12" height="12" viewBox="0 0 12 12" className="flex-shrink-0 -rotate-90" aria-hidden>
-      <circle cx="6" cy="6" r="5" fill="none" strokeWidth="2" className="stroke-zinc-200 dark:stroke-zinc-700" />
+    <svg width="16" height="16" viewBox="0 0 16 16" className="flex-shrink-0 -rotate-90" aria-hidden>
+      <circle cx="8" cy="8" r="6.5" fill="none" strokeWidth="2.5" className="stroke-zinc-200 dark:stroke-zinc-700" />
       {share > 0 && (
         <circle
-          cx="6"
-          cy="6"
-          r="5"
+          cx="8"
+          cy="8"
+          r="6.5"
           fill="none"
-          strokeWidth="2"
+          strokeWidth="2.5"
           strokeLinecap={share < 1 ? 'round' : 'butt'}
           strokeDasharray={circumference}
           strokeDashoffset={circumference * (1 - share)}
@@ -94,7 +94,7 @@ export const SubtaskProgress: React.FC<{
       aria-label={`Subtasks: ${done} of ${total} done`}
       aria-expanded={expanded}
       className={cn(
-        'inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium tabular-nums transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800',
+        'inline-flex items-center gap-1 whitespace-nowrap rounded px-1 py-0.5 text-xs font-medium tabular-nums transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800',
         done === total ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-500 dark:text-zinc-400',
         expanded && 'bg-zinc-100 dark:bg-zinc-800',
         className,
