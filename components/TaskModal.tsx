@@ -35,12 +35,12 @@ import { CustomSelect } from './CustomSelect';
 import { TagSelect } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
-import { SubtaskSummaryBar } from './SubtaskProgress';
+import { TaskSubtasksSection } from './TaskSubtasksSection';
 import { Button, Input, Label, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useDataStore, resolvePersonFieldConfig } from '../stores/dataStore';
 import { useAuthStore } from '../stores/authStore';
-import { Task, TaskComment, TaskActivity, CustomProperty } from '../types';
+import { Task, TaskSubtask, TaskComment, TaskActivity, CustomProperty } from '../types';
 import { cn } from '../lib/cn';
 import { toggleSubtaskInHtml } from '../lib/subtasks';
 import { formatDateEU, toDateOnly } from '../lib/utils';
@@ -93,12 +93,14 @@ export const TaskModal: React.FC = () => {
     linkTaskToTeam,
     updateLinkedTaskFields,
     teamPersonFieldConfig,
-    toggleSubtask,
+    toggleDescriptionChecklist,
   } = useDataStore();
 
   const currentUser = useAuthStore((s) => s.currentUser);
   const isRelatedOnly = currentUser?.accessScope === 'related_only';
   const contextTeamId = taskModalData.viewingTeamId || taskModalData.teamId || '';
+  const [draftSubtasks, setDraftSubtasks] = useState<TaskSubtask[]>([]);
+  const [savingTask, setSavingTask] = useState(false);
 
   const sortedMembers = useMemo(
     () => [...members].sort((a, b) => (a.id === currentUser?.id ? -1 : b.id === currentUser?.id ? 1 : 0)),
@@ -115,8 +117,11 @@ export const TaskModal: React.FC = () => {
   }, [isTaskModalOpen]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const hasUnsavedChanges = useCallback(() => {
-    return initialDataRef.current !== '' && JSON.stringify(taskModalData) !== initialDataRef.current;
-  }, [taskModalData]);
+    return (
+      (initialDataRef.current !== '' && JSON.stringify(taskModalData) !== initialDataRef.current) ||
+      (!taskModalData.id && draftSubtasks.length > 0)
+    );
+  }, [taskModalData, draftSubtasks]);
 
   const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
 
@@ -133,7 +138,7 @@ export const TaskModal: React.FC = () => {
     } catch {
       return false;
     }
-    const saved = toggleSubtask(taskModalData.id, index, key);
+    const saved = toggleDescriptionChecklist(taskModalData.id, index, key);
     // Not in the stored description yet (a row added in this draft) — it saves with the rest.
     if (saved === null) return false;
 
@@ -155,6 +160,7 @@ export const TaskModal: React.FC = () => {
       setIsUnsavedConfirmOpen(true);
       return;
     }
+    setDraftSubtasks([]);
     setIsTaskModalOpen(false);
   }, [hasUnsavedChanges, isRelatedOnly, setIsTaskModalOpen]);
 
@@ -403,11 +409,11 @@ export const TaskModal: React.FC = () => {
   }, [comments.length]);
 
   const taskParticipantIds = useMemo(() => {
-    if (!taskModalData.id || !taskModalData.teamId) return new Set<string>();
+    if (!taskModalData.teamId) return new Set<string>();
     return new Set(
       collectTaskParticipantIds(
         {
-          id: taskModalData.id,
+          id: taskModalData.id || '',
           teamId: taskModalData.teamId,
           assigneeIds: taskModalData.assigneeIds || [],
           contentInfo: taskModalData.contentInfo,
@@ -727,7 +733,7 @@ export const TaskModal: React.FC = () => {
     }
   };
 
-  const handleSaveTask = () => {
+  const handleSaveTask = async () => {
     if (isRelatedOnly) return;
     if (!taskModalData.title?.trim()) {
       toast.error('Title is required');
@@ -737,7 +743,10 @@ export const TaskModal: React.FC = () => {
     const taskId = isNew ? crypto.randomUUID() : taskModalData.id!;
     const dataToSave = isNew ? { ...taskModalData, id: taskId } : taskModalData;
 
-    saveTask(dataToSave, teams);
+    setSavingTask(true);
+    const saved = await saveTask(dataToSave, teams, isNew ? draftSubtasks : []);
+    setSavingTask(false);
+    if (!saved) return;
 
     // Link to foreign workspaces (derived from selected placements)
     if (isNew && pendingLinkedTeamIds.length > 0) {
@@ -746,6 +755,7 @@ export const TaskModal: React.FC = () => {
       }
     }
 
+    setDraftSubtasks([]);
     setIsTaskModalOpen(false);
   };
 
@@ -997,7 +1007,9 @@ export const TaskModal: React.FC = () => {
             <Button variant="ghost" onClick={handleClose}>
               Cancel
             </Button>
-            <Button onClick={handleSaveTask}>{taskModalData.id ? 'Save Changes' : 'Create Task'}</Button>
+            <Button onClick={() => void handleSaveTask()} disabled={savingTask}>
+              {savingTask ? 'Saving…' : taskModalData.id ? 'Save Changes' : 'Create Task'}
+            </Button>
           </>
         )
       }
@@ -1046,7 +1058,6 @@ export const TaskModal: React.FC = () => {
                 </h2>
                 {copyTitleButton}
               </div>
-              <SubtaskSummaryBar description={taskModalData.description} />
               {readOnlyDescription.hasContent ? (
                 <div
                   className="rte-content min-h-20 break-words text-sm text-zinc-700 dark:text-zinc-300 [&_a]:text-blue-500 [&_a]:underline [&_h2]:my-2 [&_h2]:text-xl [&_h2]:font-bold [&_h3]:my-1 [&_h3]:text-lg [&_h3]:font-semibold [&_ol]:ml-4 [&_ol]:list-decimal [&_ul]:ml-4 [&_ul]:list-disc"
@@ -1055,6 +1066,15 @@ export const TaskModal: React.FC = () => {
               ) : (
                 <div className="min-h-20 text-sm text-zinc-400">No description</div>
               )}
+              <TaskSubtasksSection
+                taskId={taskModalData.id}
+                deleted={Boolean(taskModalData.deletedAt)}
+                readOnly
+                currentUserId={currentUser?.id || ''}
+                members={members}
+                draftSubtasks={draftSubtasks}
+                onDraftChange={setDraftSubtasks}
+              />
               <div className="grid grid-cols-1 gap-5 rounded-lg border border-zinc-200 bg-zinc-50 p-5 dark:border-zinc-800 dark:bg-zinc-900/50 md:grid-cols-2">
                 <ReadOnlyTaskField label="Section">
                   {getStatusName(teamStatuses, contextTeamId, readOnlyStatusId ?? null) || '—'}
@@ -1151,7 +1171,6 @@ export const TaskModal: React.FC = () => {
             </div>
 
             <div className="space-y-2">
-              <SubtaskSummaryBar description={taskModalData.description} />
               <RichTextEditor
                 value={taskModalData.description || ''}
                 onChange={(html) => setTaskModalData({ ...taskModalData, description: html })}
@@ -1161,6 +1180,18 @@ export const TaskModal: React.FC = () => {
                 onChecklistToggle={handleChecklistToggle}
               />
             </div>
+
+            <TaskSubtasksSection
+              taskId={taskModalData.id}
+              deleted={Boolean(taskModalData.deletedAt)}
+              readOnly={false}
+              currentUserId={currentUser?.id || ''}
+              members={members.filter(
+                (member) => member.accessScope !== 'related_only' || taskParticipantIds.has(member.id),
+              )}
+              draftSubtasks={draftSubtasks}
+              onDraftChange={setDraftSubtasks}
+            />
 
             <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 md:gap-x-8 gap-y-4 md:gap-y-5">
@@ -2091,6 +2122,7 @@ export const TaskModal: React.FC = () => {
               variant="ghost"
               onClick={() => {
                 setIsUnsavedConfirmOpen(false);
+                setDraftSubtasks([]);
                 setIsTaskModalOpen(false);
               }}
             >
@@ -2099,7 +2131,7 @@ export const TaskModal: React.FC = () => {
             <Button
               onClick={() => {
                 setIsUnsavedConfirmOpen(false);
-                handleSaveTask();
+                void handleSaveTask();
               }}
             >
               Save

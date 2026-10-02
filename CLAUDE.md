@@ -67,7 +67,8 @@ npm run format       # Format all files with Prettier
 │   ├── ToolsView.tsx    Admin-only Tools hub (card grid under /tools)
 │   ├── AccreditationsTool.tsx  Journalist accreditations register + expiry tracking (Tools)
 │   ├── SubscriptionsTool.tsx   Paid services register, payment ledger, spend summary (Tools)
-│   ├── SubtaskProgress.tsx     Subtask chip + tick-in-place popover (cards/table), summary bar (TaskModal)
+│   ├── SubtaskProgress.tsx     Structured subtask progress chip, inline list, summary bar
+│   ├── TaskSubtasksSection.tsx Subtask creation and editing inside TaskModal
 │   └── ...              Other: Avatar, CustomSelect, MultiSelect, TagSelect, SimpleDatePicker, etc.
 ├── stores/              Zustand stores
 │   ├── authStore.ts     Session, current user, auth state
@@ -134,7 +135,7 @@ Fire-and-forget pattern. `notify()` inserts DB notification AND sends Telegram v
 
 ### Subtasks
 
-Subtasks are the checklist rows of a task description (`data-checklist` / `data-checked` in `tasks.description`) — there is no table of their own, and progress is always derived from the HTML via `lib/subtasks.ts`. `dataStore.toggleSubtask()` flips one row and saves it immediately (from the card/table popover and from a checkbox click in TaskModal, which also patches its unsaved-changes baseline). A save whose only description change is ticks logs `subtask` activity entries instead of `description` and sends no "updated description" notification.
+Structured subtasks live in `public.task_subtasks`, linked to a task, with an optional assignee, automatic creation timestamp, optional planned start/end dates, and completion state. Progress counts only these rows. `TaskSubtasksSection` manages them in TaskModal; `SubtaskProgress` and `SubtaskList` render inline expansion on cards and table rows. A new task and its draft subtasks save atomically through `save_task_with_subtasks`. Full-access users manage all fields; a related-only user with task access can toggle completion only on a subtask assigned to them through `set_task_subtask_completion`. Realtime refetches `task_subtasks` after changes. Description checklists remain interactive HTML in `tasks.description` via `toggleDescriptionChecklist`, but never contribute to structured subtask progress or subtask completion activity.
 
 ### Permissions
 

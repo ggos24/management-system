@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { toast } from 'sonner';
 import {
   Task,
+  TaskSubtask,
   TeamStatus,
   StatusCategory,
   TeamType,
@@ -63,7 +64,7 @@ import { CustomSelect } from './CustomSelect';
 import { TagSelect } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
-import { SubtaskProgress } from './SubtaskProgress';
+import { SubtaskList, SubtaskProgress } from './SubtaskProgress';
 import { Button, Divider } from './ui';
 import { useAuthStore } from '../stores/authStore';
 
@@ -404,6 +405,7 @@ const ColumnMenu: React.FC<{
 
 interface WorkspaceProps {
   tasks: Task[];
+  taskSubtasks: TaskSubtask[];
   teamFilter: TeamType | 'all';
   teamName: string;
   members: Member[];
@@ -414,8 +416,7 @@ interface WorkspaceProps {
   onTaskClick: (task: Task) => void;
 
   onUpdateTask: (task: Task) => void;
-  /** Tick a description checklist row straight from a card or table row. */
-  onToggleSubtask?: (taskId: string, index: number, key: string) => void;
+  onToggleTaskSubtask: (id: string, completed: boolean) => void;
   teamStatuses: Record<string, TeamStatus[]>;
   onAddStatus: (teamId: string, name: string) => void;
   onRenameStatus: (teamId: string, statusId: string, newName: string) => void;
@@ -449,6 +450,7 @@ type ContextualTask = Task & { viewingTeamId?: string };
 
 const Workspace: React.FC<WorkspaceProps> = ({
   tasks,
+  taskSubtasks,
   teamFilter,
   teamName,
   members,
@@ -458,7 +460,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
   searchQuery,
   onTaskClick,
   onUpdateTask,
-  onToggleSubtask,
+  onToggleTaskSubtask,
   teamStatuses,
   onAddStatus,
   onRenameStatus,
@@ -514,12 +516,37 @@ const Workspace: React.FC<WorkspaceProps> = ({
     [getTaskContextTeamId, usesAclContexts],
   );
 
-  const getSubtaskToggle = useCallback(
-    (task: Task): ((index: number, key: string) => void) | undefined =>
-      !isRelatedOnly && onToggleSubtask && !task.deletedAt
-        ? (index, key) => onToggleSubtask(task.id, index, key)
-        : undefined,
-    [isRelatedOnly, onToggleSubtask],
+  const [expandedSubtaskKey, setExpandedSubtaskKey] = useState<string | null>(null);
+  const subtasksByTaskId = useMemo(() => {
+    const map = new Map<string, TaskSubtask[]>();
+    for (const subtask of taskSubtasks) {
+      const items = map.get(subtask.taskId) || [];
+      items.push(subtask);
+      map.set(subtask.taskId, items);
+    }
+    return map;
+  }, [taskSubtasks]);
+  const getTaskSubtasks = (task: Task) => subtasksByTaskId.get(task.id) || [];
+  const isSubtaskExpanded = (task: ContextualTask) => expandedSubtaskKey === getTaskRenderKey(task);
+  const toggleExpandedSubtasks = (task: ContextualTask) => {
+    const key = getTaskRenderKey(task);
+    setExpandedSubtaskKey((current) => (current === key ? null : key));
+  };
+  const renderSubtaskList = (task: Task) => (
+    <SubtaskList
+      subtasks={getTaskSubtasks(task)}
+      members={members}
+      currentUserId={currentUserId}
+      canEditAll={!isRelatedOnly && !task.deletedAt}
+      onToggle={onToggleTaskSubtask}
+    />
+  );
+  const renderSubtaskProgress = (task: ContextualTask) => (
+    <SubtaskProgress
+      subtasks={getTaskSubtasks(task)}
+      expanded={isSubtaskExpanded(task)}
+      onExpand={() => toggleExpandedSubtasks(task)}
+    />
   );
 
   const openTask = useCallback(
@@ -1713,10 +1740,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                   </div>
                                                 );
                                               })()}
-                                            <SubtaskProgress
-                                              description={task.description}
-                                              onToggle={getSubtaskToggle(task)}
-                                            />
+                                            {renderSubtaskProgress(task)}
                                             <div className="ml-auto flex -space-x-1.5">
                                               {assignees.length > 0 ? (
                                                 assignees
@@ -1742,6 +1766,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               )}
                                             </div>
                                           </div>
+                                          {isSubtaskExpanded(task) && getTaskSubtasks(task).length > 0 && (
+                                            <div className="mt-2">{renderSubtaskList(task)}</div>
+                                          )}
                                         </div>
                                       );
                                     })}
@@ -2017,7 +2044,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                         </div>
                                       );
                                     })()}
-                                  <SubtaskProgress description={task.description} onToggle={getSubtaskToggle(task)} />
+                                  {renderSubtaskProgress(task)}
                                   <div className="ml-auto flex -space-x-1.5">
                                     {assignees.length > 0 ? (
                                       assignees
@@ -2043,6 +2070,9 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     )}
                                   </div>
                                 </div>
+                                {isSubtaskExpanded(task) && getTaskSubtasks(task).length > 0 && (
+                                  <div className="mt-2">{renderSubtaskList(task)}</div>
+                                )}
                               </div>
                             );
                           })}
@@ -2336,8 +2366,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       {formatDateEU(toDateOnly(task.dueDate))}
                                     </span>
                                   )}
-                                  <SubtaskProgress description={task.description} onToggle={getSubtaskToggle(task)} />
+                                  {renderSubtaskProgress(task)}
                                 </div>
+                                {isSubtaskExpanded(task) && getTaskSubtasks(task).length > 0 && (
+                                  <div className="mt-2">{renderSubtaskList(task)}</div>
+                                )}
                               </div>
                             );
                           })
@@ -2382,6 +2415,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   />
                                 </th>
                               )}
+                              <th className="w-16 p-1" aria-label="Subtasks" />
                               {sectionTableColumns.map((tc) => {
                                 const isProp = tc.key.startsWith('prop:');
                                 const prop = isProp ? resolvedProps.find((p) => p.id === tc.key.slice(5)) : undefined;
@@ -2483,161 +2517,411 @@ const Workspace: React.FC<WorkspaceProps> = ({
                               sortTasks(colTasks).map((task) => {
                                 const isDragOver = dragOverTaskId === task.id;
                                 return (
-                                  <tr
-                                    key={getTaskRenderKey(task)}
-                                    draggable={!isRelatedOnly && !indent && !sortColumn}
-                                    onDragStart={
-                                      isRelatedOnly || indent ? undefined : (e) => handleDragStart(e, task.id, col.id)
-                                    }
-                                    onDragOver={
-                                      isRelatedOnly || indent
-                                        ? undefined
-                                        : (e) => !sortColumn && handleTaskDragOver(e, task.id)
-                                    }
-                                    onDragLeave={isRelatedOnly || indent ? undefined : handleTaskDragLeave}
-                                    onDrop={
-                                      isRelatedOnly || indent ? undefined : (e) => handleDropOnTask(e, task.id, col.id)
-                                    }
-                                    className={`hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group ${!isRelatedOnly && !indent && !sortColumn ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} relative ${selectedTaskIds.has(task.id) ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
-                                    style={
-                                      isDragOver && !sortColumn
-                                        ? {
-                                            borderTop:
-                                              dragPosition === 'above' ? '2px solid rgb(59 130 246)' : undefined,
-                                            borderBottom:
-                                              dragPosition === 'below' ? '2px solid rgb(59 130 246)' : undefined,
-                                          }
-                                        : undefined
-                                    }
-                                    onClick={() => openTask(task)}
-                                  >
-                                    {!isRelatedOnly && !indent && (
-                                      <td className="p-3 w-10" onClick={(e) => e.stopPropagation()}>
-                                        <input
-                                          type="checkbox"
-                                          checked={selectedTaskIds.has(task.id)}
-                                          onChange={(e) =>
-                                            toggleTaskSelection(
-                                              task.id,
-                                              e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey,
-                                            )
-                                          }
-                                          className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
-                                        />
-                                      </td>
-                                    )}
-                                    {/* Data-driven cells */}
-                                    {sectionTableColumns.map((tc) => {
-                                      switch (tc.key) {
-                                        case 'title':
-                                          return (
-                                            <td
-                                              key={tc.key}
-                                              className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 max-w-[280px]"
-                                            >
-                                              <div className="flex items-center gap-2 overflow-hidden">
-                                                {!isRelatedOnly && !indent && !sortColumn && (
-                                                  <GripVertical
-                                                    size={12}
-                                                    className="text-zinc-300 opacity-100 md:opacity-0 md:group-hover:opacity-100 flex-shrink-0"
-                                                  />
-                                                )}
-                                                {isLinkedCopy(task) && (
-                                                  <Link2 size={12} className="text-blue-500 flex-shrink-0" />
-                                                )}
-                                                <span className="truncate">{task.title}</span>
-                                              </div>
-                                            </td>
-                                          );
-                                        case 'type':
-                                          return (
-                                            <td key={tc.key} className="p-3">
-                                              {task.contentInfo?.type ? (
-                                                <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded w-fit">
-                                                  {task.contentInfo.type}
-                                                </span>
-                                              ) : (
-                                                <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
-                                              )}
-                                            </td>
-                                          );
-                                        case 'assignee':
-                                        case 'editor':
-                                        case 'designer': {
-                                          const personKey = tc.key as 'assignee' | 'editor' | 'designer';
-                                          const selectedIds =
-                                            personKey === 'assignee'
-                                              ? task.assigneeIds
-                                              : personKey === 'editor'
-                                                ? task.contentInfo?.editorIds || []
-                                                : task.contentInfo?.designerIds || [];
-                                          const handleChange = (ids: string[]) => {
-                                            if (personKey === 'assignee') {
-                                              onUpdateTask({ ...task, assigneeIds: ids });
-                                            } else if (personKey === 'editor') {
-                                              onUpdateTask({
-                                                ...task,
-                                                contentInfo: { ...task.contentInfo!, editorIds: ids },
-                                              });
-                                            } else {
-                                              onUpdateTask({
-                                                ...task,
-                                                contentInfo: { ...task.contentInfo!, designerIds: ids },
-                                              });
+                                  <React.Fragment key={getTaskRenderKey(task)}>
+                                    <tr
+                                      draggable={!isRelatedOnly && !indent && !sortColumn}
+                                      onDragStart={
+                                        isRelatedOnly || indent ? undefined : (e) => handleDragStart(e, task.id, col.id)
+                                      }
+                                      onDragOver={
+                                        isRelatedOnly || indent
+                                          ? undefined
+                                          : (e) => !sortColumn && handleTaskDragOver(e, task.id)
+                                      }
+                                      onDragLeave={isRelatedOnly || indent ? undefined : handleTaskDragLeave}
+                                      onDrop={
+                                        isRelatedOnly || indent
+                                          ? undefined
+                                          : (e) => handleDropOnTask(e, task.id, col.id)
+                                      }
+                                      className={`hover:bg-zinc-50 dark:hover:bg-zinc-900/80 transition-colors group ${!isRelatedOnly && !indent && !sortColumn ? 'cursor-grab active:cursor-grabbing' : 'cursor-pointer'} relative ${selectedTaskIds.has(task.id) ? 'bg-blue-50 dark:bg-blue-950/30' : ''}`}
+                                      style={
+                                        isDragOver && !sortColumn
+                                          ? {
+                                              borderTop:
+                                                dragPosition === 'above' ? '2px solid rgb(59 130 246)' : undefined,
+                                              borderBottom:
+                                                dragPosition === 'below' ? '2px solid rgb(59 130 246)' : undefined,
                                             }
-                                          };
-                                          const personIcon =
-                                            personKey === 'editor' ? Eye : personKey === 'designer' ? Paintbrush : User;
-                                          const selectedPeople = members.filter((member) =>
-                                            selectedIds.includes(member.id),
-                                          );
-                                          if (isRelatedOnly) {
+                                          : undefined
+                                      }
+                                      onClick={() => openTask(task)}
+                                    >
+                                      {!isRelatedOnly && !indent && (
+                                        <td className="p-3 w-10" onClick={(e) => e.stopPropagation()}>
+                                          <input
+                                            type="checkbox"
+                                            checked={selectedTaskIds.has(task.id)}
+                                            onChange={(e) =>
+                                              toggleTaskSelection(
+                                                task.id,
+                                                e.nativeEvent instanceof MouseEvent && e.nativeEvent.shiftKey,
+                                              )
+                                            }
+                                            className="rounded border-zinc-300 dark:border-zinc-600 text-blue-600 focus:ring-blue-500 cursor-pointer"
+                                          />
+                                        </td>
+                                      )}
+                                      <td className="px-1 py-2" onClick={(e) => e.stopPropagation()}>
+                                        {renderSubtaskProgress(task)}
+                                      </td>
+                                      {/* Data-driven cells */}
+                                      {sectionTableColumns.map((tc) => {
+                                        switch (tc.key) {
+                                          case 'title':
+                                            return (
+                                              <td
+                                                key={tc.key}
+                                                className="p-3 font-medium text-zinc-900 dark:text-zinc-100 border-r border-transparent group-hover:border-zinc-100 dark:group-hover:border-zinc-800 max-w-[280px]"
+                                              >
+                                                <div className="flex items-center gap-2 overflow-hidden">
+                                                  {!isRelatedOnly && !indent && !sortColumn && (
+                                                    <GripVertical
+                                                      size={12}
+                                                      className="text-zinc-300 opacity-100 md:opacity-0 md:group-hover:opacity-100 flex-shrink-0"
+                                                    />
+                                                  )}
+                                                  {isLinkedCopy(task) && (
+                                                    <Link2 size={12} className="text-blue-500 flex-shrink-0" />
+                                                  )}
+                                                  <span className="truncate">{task.title}</span>
+                                                </div>
+                                              </td>
+                                            );
+                                          case 'type':
                                             return (
                                               <td key={tc.key} className="p-3">
-                                                {selectedPeople.length > 0 ? (
-                                                  <div className="flex flex-col gap-1">
-                                                    {selectedPeople.map((person) => (
-                                                      <div key={person.id} className="flex items-center gap-1.5">
-                                                        <Avatar
-                                                          src={person.avatar}
-                                                          alt={person.name}
-                                                          size="sm"
-                                                          className="flex-shrink-0"
-                                                        />
-                                                        <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
-                                                          {person.name}
-                                                        </span>
-                                                      </div>
-                                                    ))}
-                                                  </div>
+                                                {task.contentInfo?.type ? (
+                                                  <span className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded w-fit">
+                                                    {task.contentInfo.type}
+                                                  </span>
                                                 ) : (
-                                                  <span className="text-xs text-zinc-400">—</span>
+                                                  <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
+                                                )}
+                                              </td>
+                                            );
+                                          case 'assignee':
+                                          case 'editor':
+                                          case 'designer': {
+                                            const personKey = tc.key as 'assignee' | 'editor' | 'designer';
+                                            const selectedIds =
+                                              personKey === 'assignee'
+                                                ? task.assigneeIds
+                                                : personKey === 'editor'
+                                                  ? task.contentInfo?.editorIds || []
+                                                  : task.contentInfo?.designerIds || [];
+                                            const handleChange = (ids: string[]) => {
+                                              if (personKey === 'assignee') {
+                                                onUpdateTask({ ...task, assigneeIds: ids });
+                                              } else if (personKey === 'editor') {
+                                                onUpdateTask({
+                                                  ...task,
+                                                  contentInfo: { ...task.contentInfo!, editorIds: ids },
+                                                });
+                                              } else {
+                                                onUpdateTask({
+                                                  ...task,
+                                                  contentInfo: { ...task.contentInfo!, designerIds: ids },
+                                                });
+                                              }
+                                            };
+                                            const personIcon =
+                                              personKey === 'editor'
+                                                ? Eye
+                                                : personKey === 'designer'
+                                                  ? Paintbrush
+                                                  : User;
+                                            const selectedPeople = members.filter((member) =>
+                                              selectedIds.includes(member.id),
+                                            );
+                                            if (isRelatedOnly) {
+                                              return (
+                                                <td key={tc.key} className="p-3">
+                                                  {selectedPeople.length > 0 ? (
+                                                    <div className="flex flex-col gap-1">
+                                                      {selectedPeople.map((person) => (
+                                                        <div key={person.id} className="flex items-center gap-1.5">
+                                                          <Avatar
+                                                            src={person.avatar}
+                                                            alt={person.name}
+                                                            size="sm"
+                                                            className="flex-shrink-0"
+                                                          />
+                                                          <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
+                                                            {person.name}
+                                                          </span>
+                                                        </div>
+                                                      ))}
+                                                    </div>
+                                                  ) : (
+                                                    <span className="text-xs text-zinc-400">—</span>
+                                                  )}
+                                                </td>
+                                              );
+                                            }
+                                            return (
+                                              <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                                <MultiSelect
+                                                  icon={personIcon}
+                                                  label=""
+                                                  options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
+                                                  selected={selectedIds}
+                                                  onChange={handleChange}
+                                                  placeholder="—"
+                                                  className="min-w-0"
+                                                  compact
+                                                  searchable
+                                                  highlightValue={currentUserId}
+                                                  renderTrigger={(onClick, sIds) => {
+                                                    const people = members.filter((m) => sIds.includes(m.id));
+                                                    return (
+                                                      <div
+                                                        onClick={onClick}
+                                                        className="flex flex-col gap-1 cursor-pointer rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-h-[24px]"
+                                                      >
+                                                        {people.length > 0 ? (
+                                                          people.map((p) => (
+                                                            <div key={p.id} className="flex items-center gap-1.5">
+                                                              <Avatar
+                                                                src={p.avatar}
+                                                                alt={p.name}
+                                                                size="sm"
+                                                                className="flex-shrink-0"
+                                                              />
+                                                              <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
+                                                                {p.name}
+                                                              </span>
+                                                            </div>
+                                                          ))
+                                                        ) : (
+                                                          <span className="text-xs text-zinc-400">—</span>
+                                                        )}
+                                                      </div>
+                                                    );
+                                                  }}
+                                                />
+                                              </td>
+                                            );
+                                          }
+                                          case 'priority':
+                                            return (
+                                              <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                                {isRelatedOnly ? (
+                                                  <span
+                                                    className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[task.priority] || ''}`}
+                                                  >
+                                                    <span
+                                                      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority] || ''}`}
+                                                    />
+                                                    {task.priority}
+                                                  </span>
+                                                ) : (
+                                                  <CustomSelect
+                                                    compact
+                                                    options={[
+                                                      { value: 'low', label: 'Low' },
+                                                      { value: 'medium', label: 'Medium' },
+                                                      { value: 'high', label: 'High' },
+                                                    ]}
+                                                    value={task.priority}
+                                                    onChange={(val) =>
+                                                      onUpdateTask({ ...task, priority: val as Priority })
+                                                    }
+                                                    renderValue={(val) => (
+                                                      <span
+                                                        className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[val] || ''}`}
+                                                      >
+                                                        <span
+                                                          className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[val] || ''}`}
+                                                        />
+                                                        {val}
+                                                      </span>
+                                                    )}
+                                                  />
+                                                )}
+                                              </td>
+                                            );
+                                          case 'deadline': {
+                                            const deadlineCategory: DeadlineStatusCategory = isIgnoredTable
+                                              ? 'ignored'
+                                              : isDoneTable
+                                                ? 'completed'
+                                                : isBacklogTable
+                                                  ? 'backlog'
+                                                  : 'active';
+                                            return (
+                                              <td
+                                                key={tc.key}
+                                                className="px-2 py-2"
+                                                onClick={(e) => e.stopPropagation()}
+                                              >
+                                                <div className="flex items-center gap-1">
+                                                  {isRelatedOnly ? (
+                                                    <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                                      {task.dueDate ? formatDateEU(toDateOnly(task.dueDate)) : '—'}
+                                                    </span>
+                                                  ) : (
+                                                    <SimpleDatePicker
+                                                      value={toDateOnly(task.dueDate)}
+                                                      onChange={(date) =>
+                                                        onUpdateTask({
+                                                          ...task,
+                                                          dueDate: toDateOnly(date),
+                                                        })
+                                                      }
+                                                      placeholder="Set date"
+                                                      renderTrigger={(onClick, value, placeholder) => (
+                                                        <DeadlineDateTrigger
+                                                          value={value}
+                                                          placeholder={placeholder}
+                                                          onClick={onClick}
+                                                          statusCategory={deadlineCategory}
+                                                          doneDate={task.doneDate ?? null}
+                                                        />
+                                                      )}
+                                                    />
+                                                  )}
+                                                </div>
+                                              </td>
+                                            );
+                                          }
+                                          case 'done':
+                                            return (
+                                              <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                                {isRelatedOnly ? (
+                                                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
+                                                    {task.doneDate ? formatDateEU(toDateOnly(task.doneDate)) : '—'}
+                                                  </span>
+                                                ) : (
+                                                  <SimpleDatePicker
+                                                    value={toDateOnly(task.doneDate)}
+                                                    onChange={(date) =>
+                                                      onUpdateTask({
+                                                        ...task,
+                                                        doneDate: date ? toDateOnly(date) : null,
+                                                      })
+                                                    }
+                                                    placeholder="Set date"
+                                                    renderTrigger={(onClick, value) => (
+                                                      <button
+                                                        type="button"
+                                                        onClick={onClick}
+                                                        className="rounded px-1.5 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
+                                                      >
+                                                        {value ? formatDateEU(value) : 'Set date'}
+                                                      </button>
+                                                    )}
+                                                  />
+                                                )}
+                                              </td>
+                                            );
+                                          case 'created': {
+                                            // Read-only — stamped by the DB on insert.
+                                            const created = task.createdAt ? new Date(task.createdAt) : null;
+                                            const createdValid = created && !isNaN(created.getTime());
+                                            return (
+                                              <td key={tc.key} className="p-3">
+                                                {createdValid ? (
+                                                  <span
+                                                    className="text-xs text-zinc-500 dark:text-zinc-400"
+                                                    title={created.toLocaleString()}
+                                                  >
+                                                    {formatDateEU(task.createdAt)}
+                                                  </span>
+                                                ) : (
+                                                  <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
                                                 )}
                                               </td>
                                             );
                                           }
-                                          return (
-                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                              <MultiSelect
-                                                icon={personIcon}
-                                                label=""
-                                                options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
-                                                selected={selectedIds}
-                                                onChange={handleChange}
-                                                placeholder="—"
-                                                className="min-w-0"
-                                                compact
-                                                searchable
-                                                highlightValue={currentUserId}
-                                                renderTrigger={(onClick, sIds) => {
-                                                  const people = members.filter((m) => sIds.includes(m.id));
-                                                  return (
-                                                    <div
-                                                      onClick={onClick}
-                                                      className="flex flex-col gap-1 cursor-pointer rounded px-1 py-0.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition-colors min-h-[24px]"
-                                                    >
-                                                      {people.length > 0 ? (
-                                                        people.map((p) => (
+                                          case 'links':
+                                            return (
+                                              <td key={tc.key} className="p-3">
+                                                {task.links && task.links.length > 0 ? (
+                                                  <div className="flex items-center gap-1">
+                                                    {task.links.slice(0, 3).map((link, i) => {
+                                                      let hostname = '';
+                                                      try {
+                                                        hostname = new URL(link.url).hostname;
+                                                      } catch {
+                                                        /* ignore */
+                                                      }
+                                                      return (
+                                                        <a
+                                                          key={i}
+                                                          href={link.url}
+                                                          target="_blank"
+                                                          rel="noopener noreferrer"
+                                                          onClick={(e) => e.stopPropagation()}
+                                                          title={link.title || link.url}
+                                                          className="flex-shrink-0 w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center justify-center transition-colors"
+                                                        >
+                                                          <img
+                                                            src={
+                                                              hostname ? getFaviconUrl(link.url, hostname) : undefined
+                                                            }
+                                                            alt=""
+                                                            className="w-3.5 h-3.5"
+                                                            onError={(e) => {
+                                                              const img = e.target as HTMLImageElement;
+                                                              img.style.display = 'none';
+                                                              img.parentElement!.innerHTML =
+                                                                '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
+                                                            }}
+                                                          />
+                                                        </a>
+                                                      );
+                                                    })}
+                                                    {task.links.length > 3 && (
+                                                      <span className="text-[11px] text-zinc-400 flex-shrink-0">
+                                                        +{task.links.length - 3}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                ) : (
+                                                  <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
+                                                )}
+                                              </td>
+                                            );
+                                          case 'placements':
+                                            return (
+                                              <td key={tc.key} className="p-3">
+                                                {task.placements.length > 0 ? (
+                                                  <div className="flex flex-col gap-1">
+                                                    {task.placements.slice(0, 2).map((p, i) => (
+                                                      <span
+                                                        key={`${p}-${i}`}
+                                                        className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded w-fit"
+                                                      >
+                                                        {p}
+                                                      </span>
+                                                    ))}
+                                                    {task.placements.length > 2 && (
+                                                      <span className="text-[11px] text-zinc-400">
+                                                        +{task.placements.length - 2}
+                                                      </span>
+                                                    )}
+                                                  </div>
+                                                ) : (
+                                                  <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
+                                                )}
+                                              </td>
+                                            );
+                                          default: {
+                                            // Custom properties
+                                            if (tc.key.startsWith('prop:')) {
+                                              const propId = tc.key.slice(5);
+                                              const prop = resolvedProps.find((p) => p.id === propId);
+                                              const fieldValues = getTaskFieldsInTeam(task);
+                                              const val = fieldValues[propId];
+                                              if (prop?.type === 'person' && val) {
+                                                const personIds = Array.isArray(val) ? val : [val];
+                                                const people = members.filter((m) => personIds.includes(m.id));
+                                                return (
+                                                  <td key={tc.key} className="p-3">
+                                                    {people.length > 0 ? (
+                                                      <div className="flex flex-col gap-1">
+                                                        {people.map((p) => (
                                                           <div key={p.id} className="flex items-center gap-1.5">
                                                             <Avatar
                                                               src={p.avatar}
@@ -2649,317 +2933,89 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                               {p.name}
                                                             </span>
                                                           </div>
-                                                        ))
-                                                      ) : (
-                                                        <span className="text-xs text-zinc-400">—</span>
-                                                      )}
-                                                    </div>
-                                                  );
-                                                }}
-                                              />
-                                            </td>
-                                          );
-                                        }
-                                        case 'priority':
-                                          return (
-                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                              {isRelatedOnly ? (
-                                                <span
-                                                  className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[task.priority] || ''}`}
-                                                >
-                                                  <span
-                                                    className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority] || ''}`}
-                                                  />
-                                                  {task.priority}
-                                                </span>
-                                              ) : (
-                                                <CustomSelect
-                                                  compact
-                                                  options={[
-                                                    { value: 'low', label: 'Low' },
-                                                    { value: 'medium', label: 'Medium' },
-                                                    { value: 'high', label: 'High' },
-                                                  ]}
-                                                  value={task.priority}
-                                                  onChange={(val) =>
-                                                    onUpdateTask({ ...task, priority: val as Priority })
-                                                  }
-                                                  renderValue={(val) => (
-                                                    <span
-                                                      className={`inline-flex items-center gap-1.5 text-xs capitalize ${PRIORITY_COLORS[val] || ''}`}
-                                                    >
-                                                      <span
-                                                        className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[val] || ''}`}
-                                                      />
-                                                      {val}
-                                                    </span>
-                                                  )}
-                                                />
-                                              )}
-                                            </td>
-                                          );
-                                        case 'deadline': {
-                                          const deadlineCategory: DeadlineStatusCategory = isIgnoredTable
-                                            ? 'ignored'
-                                            : isDoneTable
-                                              ? 'completed'
-                                              : isBacklogTable
-                                                ? 'backlog'
-                                                : 'active';
-                                          return (
-                                            <td key={tc.key} className="px-2 py-2" onClick={(e) => e.stopPropagation()}>
-                                              <div className="flex items-center gap-1">
-                                                {isRelatedOnly ? (
-                                                  <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                                                    {task.dueDate ? formatDateEU(toDateOnly(task.dueDate)) : '—'}
-                                                  </span>
-                                                ) : (
-                                                  <SimpleDatePicker
-                                                    value={toDateOnly(task.dueDate)}
-                                                    onChange={(date) =>
-                                                      onUpdateTask({
-                                                        ...task,
-                                                        dueDate: toDateOnly(date),
-                                                      })
-                                                    }
-                                                    placeholder="Set date"
-                                                    renderTrigger={(onClick, value, placeholder) => (
-                                                      <DeadlineDateTrigger
-                                                        value={value}
-                                                        placeholder={placeholder}
-                                                        onClick={onClick}
-                                                        statusCategory={deadlineCategory}
-                                                        doneDate={task.doneDate ?? null}
-                                                      />
-                                                    )}
-                                                  />
-                                                )}
-                                                <SubtaskProgress
-                                                  description={task.description}
-                                                  onToggle={getSubtaskToggle(task)}
-                                                />
-                                              </div>
-                                            </td>
-                                          );
-                                        }
-                                        case 'done':
-                                          return (
-                                            <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                              {isRelatedOnly ? (
-                                                <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                                                  {task.doneDate ? formatDateEU(toDateOnly(task.doneDate)) : '—'}
-                                                </span>
-                                              ) : (
-                                                <SimpleDatePicker
-                                                  value={toDateOnly(task.doneDate)}
-                                                  onChange={(date) =>
-                                                    onUpdateTask({
-                                                      ...task,
-                                                      doneDate: date ? toDateOnly(date) : null,
-                                                    })
-                                                  }
-                                                  placeholder="Set date"
-                                                  renderTrigger={(onClick, value) => (
-                                                    <button
-                                                      type="button"
-                                                      onClick={onClick}
-                                                      className="rounded px-1.5 py-0.5 text-xs text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800 dark:hover:text-zinc-100"
-                                                    >
-                                                      {value ? formatDateEU(value) : 'Set date'}
-                                                    </button>
-                                                  )}
-                                                />
-                                              )}
-                                            </td>
-                                          );
-                                        case 'created': {
-                                          // Read-only — stamped by the DB on insert.
-                                          const created = task.createdAt ? new Date(task.createdAt) : null;
-                                          const createdValid = created && !isNaN(created.getTime());
-                                          return (
-                                            <td key={tc.key} className="p-3">
-                                              {createdValid ? (
-                                                <span
-                                                  className="text-xs text-zinc-500 dark:text-zinc-400"
-                                                  title={created.toLocaleString()}
-                                                >
-                                                  {formatDateEU(task.createdAt)}
-                                                </span>
-                                              ) : (
-                                                <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
-                                              )}
-                                            </td>
-                                          );
-                                        }
-                                        case 'links':
-                                          return (
-                                            <td key={tc.key} className="p-3">
-                                              {task.links && task.links.length > 0 ? (
-                                                <div className="flex items-center gap-1">
-                                                  {task.links.slice(0, 3).map((link, i) => {
-                                                    let hostname = '';
-                                                    try {
-                                                      hostname = new URL(link.url).hostname;
-                                                    } catch {
-                                                      /* ignore */
-                                                    }
-                                                    return (
-                                                      <a
-                                                        key={i}
-                                                        href={link.url}
-                                                        target="_blank"
-                                                        rel="noopener noreferrer"
-                                                        onClick={(e) => e.stopPropagation()}
-                                                        title={link.title || link.url}
-                                                        className="flex-shrink-0 w-6 h-6 rounded bg-zinc-100 dark:bg-zinc-800 hover:bg-zinc-200 dark:hover:bg-zinc-700 flex items-center justify-center transition-colors"
-                                                      >
-                                                        <img
-                                                          src={hostname ? getFaviconUrl(link.url, hostname) : undefined}
-                                                          alt=""
-                                                          className="w-3.5 h-3.5"
-                                                          onError={(e) => {
-                                                            const img = e.target as HTMLImageElement;
-                                                            img.style.display = 'none';
-                                                            img.parentElement!.innerHTML =
-                                                              '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-zinc-400"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>';
-                                                          }}
-                                                        />
-                                                      </a>
-                                                    );
-                                                  })}
-                                                  {task.links.length > 3 && (
-                                                    <span className="text-[11px] text-zinc-400 flex-shrink-0">
-                                                      +{task.links.length - 3}
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              ) : (
-                                                <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
-                                              )}
-                                            </td>
-                                          );
-                                        case 'placements':
-                                          return (
-                                            <td key={tc.key} className="p-3">
-                                              {task.placements.length > 0 ? (
-                                                <div className="flex flex-col gap-1">
-                                                  {task.placements.slice(0, 2).map((p, i) => (
-                                                    <span
-                                                      key={`${p}-${i}`}
-                                                      className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded w-fit"
-                                                    >
-                                                      {p}
-                                                    </span>
-                                                  ))}
-                                                  {task.placements.length > 2 && (
-                                                    <span className="text-[11px] text-zinc-400">
-                                                      +{task.placements.length - 2}
-                                                    </span>
-                                                  )}
-                                                </div>
-                                              ) : (
-                                                <span className="text-zinc-300 dark:text-zinc-600 text-sm">—</span>
-                                              )}
-                                            </td>
-                                          );
-                                        default: {
-                                          // Custom properties
-                                          if (tc.key.startsWith('prop:')) {
-                                            const propId = tc.key.slice(5);
-                                            const prop = resolvedProps.find((p) => p.id === propId);
-                                            const fieldValues = getTaskFieldsInTeam(task);
-                                            const val = fieldValues[propId];
-                                            if (prop?.type === 'person' && val) {
-                                              const personIds = Array.isArray(val) ? val : [val];
-                                              const people = members.filter((m) => personIds.includes(m.id));
-                                              return (
-                                                <td key={tc.key} className="p-3">
-                                                  {people.length > 0 ? (
-                                                    <div className="flex flex-col gap-1">
-                                                      {people.map((p) => (
-                                                        <div key={p.id} className="flex items-center gap-1.5">
-                                                          <Avatar
-                                                            src={p.avatar}
-                                                            alt={p.name}
-                                                            size="sm"
-                                                            className="flex-shrink-0"
-                                                          />
-                                                          <span className="text-xs text-zinc-700 dark:text-zinc-300 truncate">
-                                                            {p.name}
-                                                          </span>
-                                                        </div>
-                                                      ))}
-                                                    </div>
-                                                  ) : (
-                                                    <span className="text-xs text-zinc-400">-</span>
-                                                  )}
-                                                </td>
-                                              );
-                                            }
-                                            if (prop?.type === 'tags') {
-                                              const tagVals: string[] = Array.isArray(val) ? val : val ? [val] : [];
-                                              if (isRelatedOnly) {
-                                                return (
-                                                  <td key={tc.key} className="p-3">
-                                                    {tagVals.length > 0 ? (
-                                                      <div className="flex flex-wrap gap-1">
-                                                        {tagVals.slice(0, 3).map((tag) => (
-                                                          <span
-                                                            key={tag}
-                                                            className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
-                                                          >
-                                                            {tag}
-                                                          </span>
                                                         ))}
                                                       </div>
                                                     ) : (
-                                                      <span className="text-xs text-zinc-400">—</span>
+                                                      <span className="text-xs text-zinc-400">-</span>
                                                     )}
                                                   </td>
                                                 );
                                               }
+                                              if (prop?.type === 'tags') {
+                                                const tagVals: string[] = Array.isArray(val) ? val : val ? [val] : [];
+                                                if (isRelatedOnly) {
+                                                  return (
+                                                    <td key={tc.key} className="p-3">
+                                                      {tagVals.length > 0 ? (
+                                                        <div className="flex flex-wrap gap-1">
+                                                          {tagVals.slice(0, 3).map((tag) => (
+                                                            <span
+                                                              key={tag}
+                                                              className="text-[10px] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
+                                                            >
+                                                              {tag}
+                                                            </span>
+                                                          ))}
+                                                        </div>
+                                                      ) : (
+                                                        <span className="text-xs text-zinc-400">—</span>
+                                                      )}
+                                                    </td>
+                                                  );
+                                                }
+                                                return (
+                                                  <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
+                                                    <TagSelect
+                                                      tags={prop.options || []}
+                                                      selected={tagVals}
+                                                      tagColors={prop.optionColors || {}}
+                                                      onChange={(tags) =>
+                                                        onUpdateTask({
+                                                          ...task,
+                                                          customFieldValues: {
+                                                            ...task.customFieldValues,
+                                                            [propId]: tags,
+                                                          },
+                                                        })
+                                                      }
+                                                      compact
+                                                      maxVisible={3}
+                                                    />
+                                                  </td>
+                                                );
+                                              }
                                               return (
-                                                <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
-                                                  <TagSelect
-                                                    tags={prop.options || []}
-                                                    selected={tagVals}
-                                                    tagColors={prop.optionColors || {}}
-                                                    onChange={(tags) =>
-                                                      onUpdateTask({
-                                                        ...task,
-                                                        customFieldValues: {
-                                                          ...task.customFieldValues,
-                                                          [propId]: tags,
-                                                        },
-                                                      })
-                                                    }
-                                                    compact
-                                                    maxVisible={3}
-                                                  />
+                                                <td
+                                                  key={tc.key}
+                                                  className="p-3 text-xs text-zinc-600 dark:text-zinc-400 truncate"
+                                                >
+                                                  {val ? String(val) : '-'}
                                                 </td>
                                               );
                                             }
-                                            return (
-                                              <td
-                                                key={tc.key}
-                                                className="p-3 text-xs text-zinc-600 dark:text-zinc-400 truncate"
-                                              >
-                                                {val ? String(val) : '-'}
-                                              </td>
-                                            );
+                                            return <td key={tc.key} className="p-3" />;
                                           }
-                                          return <td key={tc.key} className="p-3" />;
                                         }
-                                      }
-                                    })}
-                                    <td className="p-3"></td>
-                                  </tr>
+                                      })}
+                                      <td className="p-3"></td>
+                                    </tr>
+                                    {isSubtaskExpanded(task) && getTaskSubtasks(task).length > 0 && (
+                                      <tr className="bg-zinc-50/60 dark:bg-zinc-900/60">
+                                        <td
+                                          colSpan={sectionTableColumns.length + (isRelatedOnly || indent ? 2 : 3)}
+                                          className="px-4 py-2"
+                                        >
+                                          {renderSubtaskList(task)}
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </React.Fragment>
                                 );
                               })
                             ) : (
                               <tr>
                                 <td
-                                  colSpan={sectionTableColumns.length + (indent ? 1 : 2)}
+                                  colSpan={sectionTableColumns.length + (isRelatedOnly || indent ? 2 : 3)}
                                   className="p-4 text-center text-xs text-zinc-400 italic"
                                 >
                                   No tasks in this step
@@ -2973,7 +3029,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 onClick={() => onAddTask({ statusId: col.id })}
                               >
                                 <td
-                                  colSpan={sectionTableColumns.length + (indent ? 1 : 2)}
+                                  colSpan={sectionTableColumns.length + (isRelatedOnly || indent ? 2 : 3)}
                                   className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium"
                                 >
                                   <span className="flex items-center gap-2">

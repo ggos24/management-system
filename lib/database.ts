@@ -1,6 +1,7 @@
 import { supabase } from './supabase';
 import {
   Task,
+  TaskSubtask,
   Team,
   Member,
   Absence,
@@ -273,6 +274,57 @@ export async function fetchTasks(): Promise<Task[]> {
   return (taskRows || []).map((row) => mapTask(row, assigneesByTask[row.id] || [], placementsByTask[row.id] || []));
 }
 
+function mapTaskSubtask(row: any): TaskSubtask {
+  return {
+    id: row.id,
+    taskId: row.task_id,
+    title: row.title,
+    assigneeId: row.assignee_id,
+    createdAt: row.created_at,
+    startDate: row.start_date,
+    endDate: row.end_date,
+    completed: row.completed,
+  };
+}
+
+export async function fetchTaskSubtasks(): Promise<TaskSubtask[]> {
+  const rows = await fetchAllPaged<any>(() =>
+    supabase.from('task_subtasks').select('*').order('created_at').order('id'),
+  );
+  return rows.map(mapTaskSubtask);
+}
+
+export async function upsertTaskSubtask(subtask: TaskSubtask): Promise<TaskSubtask> {
+  const { data, error } = await supabase
+    .from('task_subtasks')
+    .upsert({
+      id: subtask.id,
+      task_id: subtask.taskId,
+      title: subtask.title.trim(),
+      assignee_id: subtask.assigneeId,
+      start_date: subtask.startDate,
+      end_date: subtask.endDate,
+    })
+    .select('*')
+    .single();
+  if (error) throw error;
+  return mapTaskSubtask(data);
+}
+
+export async function deleteTaskSubtask(id: string): Promise<void> {
+  const { error } = await supabase.from('task_subtasks').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function setTaskSubtaskCompletion(id: string, completed: boolean): Promise<TaskSubtask> {
+  const { data, error } = await supabase.rpc('set_task_subtask_completion', {
+    p_subtask_id: id,
+    p_completed: completed,
+  });
+  if (error) throw error;
+  return mapTaskSubtask(data);
+}
+
 /** Fetch one task through RLS for deep links. Returns null when missing or unauthorized. */
 export async function fetchTaskById(taskId: string): Promise<Task | null> {
   const [{ data: taskRow, error: taskError }, { data: assigneeRows, error: assigneeError }, placementRows] =
@@ -523,6 +575,43 @@ export async function saveTaskWithRelations(task: Task) {
     p_task: taskRow,
     p_assignee_ids: task.assigneeIds,
     p_placement_names: task.placements,
+  });
+  if (error) throw error;
+  return data;
+}
+
+/** Persist a new task and its draft subtasks in one database transaction. */
+export async function saveTaskWithSubtasks(task: Task, subtasks: TaskSubtask[]) {
+  const taskRow = {
+    id: task.id,
+    title: task.title,
+    description: task.description,
+    team_id: task.teamId,
+    status_id: task.statusId,
+    priority: task.priority,
+    due_date: task.dueDate ? toDateOnly(task.dueDate) : null,
+    done_date: task.doneDate ? toDateOnly(task.doneDate) : null,
+    content_type: task.contentInfo?.type || null,
+    notes: task.contentInfo?.notes || null,
+    editor_ids: task.contentInfo?.editorIds || [],
+    designer_ids: task.contentInfo?.designerIds || [],
+    links: task.links || [],
+    files: task.contentInfo?.files || [],
+    custom_field_values: task.customFieldValues || {},
+    sort_order: task.sortOrder ?? 0,
+  };
+  const { data, error } = await supabase.rpc('save_task_with_subtasks', {
+    p_task: taskRow,
+    p_assignee_ids: task.assigneeIds,
+    p_placement_names: task.placements,
+    p_subtasks: subtasks.map(({ id, title, assigneeId, startDate, endDate, completed }) => ({
+      id,
+      title,
+      assigneeId,
+      startDate,
+      endDate,
+      completed,
+    })),
   });
   if (error) throw error;
   return data;

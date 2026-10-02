@@ -52,6 +52,11 @@ export function useRealtimeSync() {
     fetchForCurrentSession(db.fetchDeletedTaskCount, setDeletedTaskCount, { fullOnly: true });
   }, 300);
 
+  const debouncedFetchTaskSubtasks = useDebouncedCallback(() => {
+    const { setTaskSubtasks } = storeRef.current.getState();
+    fetchForCurrentSession(db.fetchTaskSubtasks, setTaskSubtasks);
+  }, 300);
+
   const debouncedFetchTickets = useDebouncedCallback(() => {
     const { setTickets } = storeRef.current.getState();
     fetchForCurrentSession(db.fetchTickets, setTickets, { fullOnly: true });
@@ -191,6 +196,9 @@ export function useRealtimeSync() {
       .on('postgres_changes', { event: '*', schema: 'public', table: 'tasks' }, () => {
         debouncedFetchTasks();
         if (useAuthStore.getState().currentUser?.accessScope === 'related_only') debouncedFetchMembers();
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_subtasks' }, () => {
+        debouncedFetchTaskSubtasks();
       })
       .on('postgres_changes', { event: '*', schema: 'public', table: 'task_comments' }, () => {
         if (useAuthStore.getState().currentUser?.accessScope === 'related_only') debouncedFetchMembers();

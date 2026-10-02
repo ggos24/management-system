@@ -119,11 +119,12 @@ const MyWorkspaceRoute: React.FC = () => {
   const currentUser = useAuthStore((s) => s.currentUser)!;
   const {
     tasks,
+    taskSubtasks,
     members,
     teams,
     updateTaskStatus,
     updateTask,
-    toggleSubtask,
+    toggleTaskSubtask,
     teamStatuses,
     addStatus,
     renameStatus,
@@ -151,11 +152,12 @@ const MyWorkspaceRoute: React.FC = () => {
   } = useDataStore(
     useShallow((s) => ({
       tasks: s.tasks,
+      taskSubtasks: s.taskSubtasks,
       members: s.members,
       teams: s.teams,
       updateTaskStatus: s.updateTaskStatus,
       updateTask: s.updateTask,
-      toggleSubtask: s.toggleSubtask,
+      toggleTaskSubtask: s.toggleTaskSubtask,
       teamStatuses: s.teamStatuses,
       addStatus: s.addStatus,
       renameStatus: s.renameStatus,
@@ -196,6 +198,7 @@ const MyWorkspaceRoute: React.FC = () => {
   return (
     <Workspace
       tasks={tasks}
+      taskSubtasks={taskSubtasks}
       teamFilter="my-work"
       teamName="My Workspace"
       members={members}
@@ -205,7 +208,7 @@ const MyWorkspaceRoute: React.FC = () => {
       searchQuery={searchQuery}
       onTaskClick={openTaskModal}
       onUpdateTask={updateTask}
-      onToggleSubtask={toggleSubtask}
+      onToggleTaskSubtask={toggleTaskSubtask}
       teamStatuses={teamStatuses}
       onAddStatus={addStatus}
       onRenameStatus={renameStatus}
@@ -241,11 +244,12 @@ const TeamWorkspaceRoute: React.FC = () => {
   const currentUser = useAuthStore((s) => s.currentUser)!;
   const {
     tasks,
+    taskSubtasks,
     members,
     teams,
     updateTaskStatus,
     updateTask,
-    toggleSubtask,
+    toggleTaskSubtask,
     teamStatuses,
     addStatus,
     renameStatus,
@@ -272,11 +276,12 @@ const TeamWorkspaceRoute: React.FC = () => {
   } = useDataStore(
     useShallow((s) => ({
       tasks: s.tasks,
+      taskSubtasks: s.taskSubtasks,
       members: s.members,
       teams: s.teams,
       updateTaskStatus: s.updateTaskStatus,
       updateTask: s.updateTask,
-      toggleSubtask: s.toggleSubtask,
+      toggleTaskSubtask: s.toggleTaskSubtask,
       teamStatuses: s.teamStatuses,
       addStatus: s.addStatus,
       renameStatus: s.renameStatus,
@@ -319,6 +324,7 @@ const TeamWorkspaceRoute: React.FC = () => {
     <Workspace
       key={team.id}
       tasks={tasks}
+      taskSubtasks={taskSubtasks}
       teamFilter={team.id}
       teamName={team.name}
       members={members}
@@ -328,7 +334,7 @@ const TeamWorkspaceRoute: React.FC = () => {
       searchQuery={searchQuery}
       onTaskClick={(task) => openTaskModal({ ...task, viewingTeamId: team.id })}
       onUpdateTask={updateTask}
-      onToggleSubtask={toggleSubtask}
+      onToggleTaskSubtask={toggleTaskSubtask}
       teamStatuses={teamStatuses}
       onAddStatus={addStatus}
       onRenameStatus={renameStatus}

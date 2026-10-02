@@ -84,6 +84,17 @@ export interface Task {
   deletedBy?: string | null;
 }
 
+export interface TaskSubtask {
+  id: string;
+  taskId: string;
+  title: string;
+  assigneeId: string | null;
+  createdAt: string;
+  startDate: string | null;
+  endDate: string | null;
+  completed: boolean;
+}
+
 export interface Absence {
   id: string;
   memberId: string;

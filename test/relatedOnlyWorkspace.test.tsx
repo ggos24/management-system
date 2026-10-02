@@ -55,6 +55,7 @@ describe('related-only Workspace', () => {
     useAuthStore.setState({ currentUser: currentMember });
     resetAuth = () => useAuthStore.setState({ currentUser: null });
     const onTaskClick = vi.fn();
+    const onToggleTaskSubtask = vi.fn();
 
     render(
       <Workspace
@@ -63,6 +64,19 @@ describe('related-only Workspace', () => {
           task('no-status-task', 'No status task'),
           task('hidden-task', 'Hidden task'),
         ]}
+        taskSubtasks={[
+          {
+            id: 'subtask-1',
+            taskId: 'visible-task',
+            title: 'Prepare brief',
+            assigneeId: currentMember.id,
+            createdAt: '2026-10-01T10:00:00Z',
+            startDate: null,
+            endDate: null,
+            completed: false,
+          },
+        ]}
+        onToggleTaskSubtask={onToggleTaskSubtask}
         taskAccessContexts={[
           { taskId: 'visible-task', contextTeamId: 'linked-team' },
           { taskId: 'no-status-task', contextTeamId: 'linked-team' },
@@ -122,12 +136,29 @@ describe('related-only Workspace', () => {
     expect(screen.queryByText('Hidden task')).not.toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'New' })).not.toBeInTheDocument();
 
+    const tableProgress = screen
+      .getAllByRole('button', { name: 'Subtasks: 0 of 1 done' })
+      .find((button) => button.closest('table'))!;
+    fireEvent.click(tableProgress);
+    const expandedRow = tableProgress.closest('tr')?.nextElementSibling;
+    expect(expandedRow?.textContent).toContain('Prepare brief');
+    expect(onTaskClick).not.toHaveBeenCalled();
+    fireEvent.click(expandedRow!.querySelector('[role="checkbox"]')!);
+    expect(onToggleTaskSubtask).toHaveBeenCalledWith('subtask-1', true);
+
     fireEvent.click(visibleTaskRows[0]);
     expect(onTaskClick).toHaveBeenCalledWith(expect.objectContaining({ viewingTeamId: 'linked-team' }));
 
     fireEvent.click(screen.getByRole('button', { name: /board/i }));
     expect(screen.getAllByText('No status task').length).toBeGreaterThan(0);
     expect(screen.getAllByText('No status').length).toBeGreaterThan(0);
+    const boardProgress = screen.getByRole('button', { name: 'Subtasks: 0 of 1 done' });
+    expect(screen.getAllByText('Prepare brief').length).toBeGreaterThan(0);
+    fireEvent.click(boardProgress);
+    expect(screen.queryByText('Prepare brief')).not.toBeInTheDocument();
+    fireEvent.click(boardProgress);
+    expect(screen.getAllByText('Prepare brief').length).toBeGreaterThan(0);
+    expect(onTaskClick).toHaveBeenCalledTimes(1);
   });
 
   it('preserves the internal My Workspace involvement filter and one-row-per-task behavior', async () => {
@@ -144,6 +175,8 @@ describe('related-only Workspace', () => {
     render(
       <Workspace
         tasks={[involvedTask, task('mentioned-only', 'Mentioned only')]}
+        taskSubtasks={[]}
+        onToggleTaskSubtask={vi.fn()}
         taskAccessContexts={[
           { taskId: 'visible-task', contextTeamId: 'linked-team' },
           { taskId: 'visible-task', contextTeamId: 'second-linked-team' },

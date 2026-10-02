@@ -1,13 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React from 'react';
 import { Check, ListChecks } from 'lucide-react';
+import type { Member, TaskSubtask } from '../types';
 import { cn } from '../lib/cn';
-import { parseSubtasks } from '../lib/subtasks';
-import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
+import { formatDateEU } from '../lib/utils';
+import { subtaskProgress } from '../lib/taskSubtasks';
 
-const Bar: React.FC<{ done: number; total: number; className?: string }> = ({ done, total, className }) => (
+const Bar: React.FC<{ done: number; total: number }> = ({ done, total }) => (
   <span
-    className={cn('block h-1 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden', className)}
+    className="block h-1 flex-1 max-w-48 rounded-full bg-zinc-200 dark:bg-zinc-700 overflow-hidden"
     role="progressbar"
     aria-valuemin={0}
     aria-valuemax={total}
@@ -23,32 +23,19 @@ const Bar: React.FC<{ done: number; total: number; className?: string }> = ({ do
   </span>
 );
 
-/**
- * A pie-style ring: the arc is the share done. It says "progress" in the width of one glyph,
- * where a bar needed its own run of space beside the count.
- */
-const Ring: React.FC<{ done: number; total: number; size?: number }> = ({ done, total, size = 12 }) => {
-  const stroke = 2;
-  const r = (size - stroke) / 2;
-  const circumference = 2 * Math.PI * r;
+const Ring: React.FC<{ done: number; total: number }> = ({ done, total }) => {
+  const circumference = 10 * Math.PI;
   const share = total ? done / total : 0;
   return (
-    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`} className="flex-shrink-0 -rotate-90" aria-hidden>
-      <circle
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        strokeWidth={stroke}
-        className="stroke-zinc-200 dark:stroke-zinc-700"
-      />
+    <svg width="12" height="12" viewBox="0 0 12 12" className="flex-shrink-0 -rotate-90" aria-hidden>
+      <circle cx="6" cy="6" r="5" fill="none" strokeWidth="2" className="stroke-zinc-200 dark:stroke-zinc-700" />
       {share > 0 && (
         <circle
-          cx={size / 2}
-          cy={size / 2}
-          r={r}
+          cx="6"
+          cy="6"
+          r="5"
           fill="none"
-          strokeWidth={stroke}
+          strokeWidth="2"
           strokeLinecap={share < 1 ? 'round' : 'butt'}
           strokeDasharray={circumference}
           strokeDashoffset={circumference * (1 - share)}
@@ -62,172 +49,132 @@ const Ring: React.FC<{ done: number; total: number; size?: number }> = ({ done, 
   );
 };
 
-/** "Subtasks 2/5" with a bar — the header line above a task description. */
-export const SubtaskSummaryBar: React.FC<{ description: string | null | undefined; className?: string }> = ({
-  description,
+export const SubtaskSummaryBar: React.FC<{ subtasks: TaskSubtask[]; className?: string }> = ({
+  subtasks,
   className,
 }) => {
-  const summary = parseSubtasks(description);
-  if (!summary) return null;
-  const complete = summary.done === summary.total;
+  if (!subtasks.length) return null;
+  const { done, total } = subtaskProgress(subtasks);
   return (
     <div className={cn('flex items-center gap-3', className)}>
-      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400 flex-shrink-0">
-        <ListChecks size={14} className={complete ? 'text-emerald-500' : undefined} />
-        Subtasks
-        <span className={complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-900 dark:text-zinc-100'}>
-          {summary.done}/{summary.total}
+      <span className="inline-flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
+        <ListChecks size={14} className={done === total ? 'text-emerald-500' : undefined} />
+        Subtasks{' '}
+        <span className="tabular-nums text-zinc-900 dark:text-zinc-100">
+          {done}/{total}
         </span>
       </span>
-      <Bar done={summary.done} total={summary.total} className="flex-1 max-w-48" />
+      <Bar done={done} total={total} />
     </div>
   );
 };
 
-interface SubtaskProgressProps {
-  description: string | null | undefined;
-  /** Omit for a read-only list (no write access, or the task is in the bin). */
-  onToggle?: (index: number, key: string) => void;
+export const SubtaskProgress: React.FC<{
+  subtasks: TaskSubtask[];
+  expanded: boolean;
+  onExpand: () => void;
   className?: string;
-}
-
-// The chip sits inside clickable, draggable cards and table rows. React bubbles events from a
-// portal to its React ancestors, so the popover has to stop them too, not just the chip.
-const stop = (e: React.SyntheticEvent) => e.stopPropagation();
-
-/** Subtask count chip for cards and table cells; opens the checklist to tick items in place. */
-export const SubtaskProgress: React.FC<SubtaskProgressProps> = ({ description, onToggle, className }) => {
-  const [open, setOpen] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
-  const popoverRef = useRef<HTMLDivElement>(null);
-  const summary = parseSubtasks(description);
-
-  const position = useViewportPortalPosition({
-    isOpen: open && !!summary,
-    triggerRef,
-    fixedWidth: 272,
-    estimatedHeight: 260,
-  });
-
-  useEffect(() => {
-    if (!open) return;
-    const onPointerDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (popoverRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
-      setOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setOpen(false);
-    };
-    document.addEventListener('mousedown', onPointerDown);
-    document.addEventListener('keydown', onKeyDown);
-    return () => {
-      document.removeEventListener('mousedown', onPointerDown);
-      document.removeEventListener('keydown', onKeyDown);
-    };
-  }, [open]);
-
-  if (!summary) return null;
-  const complete = summary.done === summary.total;
-
+}> = ({ subtasks, expanded, onExpand, className }) => {
+  if (!subtasks.length) return null;
+  const { done, total } = subtaskProgress(subtasks);
   return (
-    <>
-      <button
-        ref={triggerRef}
-        type="button"
-        draggable={false}
-        onClick={(e) => {
-          e.stopPropagation();
-          setOpen((v) => !v);
-        }}
-        onMouseDown={stop}
-        onPointerDown={stop}
-        title={`Subtasks: ${summary.done} of ${summary.total} done`}
-        aria-label={`Subtasks: ${summary.done} of ${summary.total} done`}
-        aria-expanded={open}
-        className={cn(
-          'inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium tabular-nums transition-colors',
-          'hover:bg-zinc-100 dark:hover:bg-zinc-800',
-          complete ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-500 dark:text-zinc-400',
-          open && 'bg-zinc-100 dark:bg-zinc-800',
-          className,
-        )}
-      >
-        <Ring done={summary.done} total={summary.total} />
-        {summary.done}/{summary.total}
-      </button>
-      {open &&
-        position &&
-        createPortal(
-          <div
-            ref={popoverRef}
-            role="dialog"
-            aria-label="Subtasks"
-            onClick={stop}
-            onMouseDown={stop}
-            onPointerDown={stop}
-            onDoubleClick={stop}
-            style={{
-              position: 'fixed',
-              top: position.top,
-              left: position.left,
-              width: position.width,
-              maxHeight: position.maxHeight,
-              transform: position.flipUp ? 'translateY(-100%)' : undefined,
-            }}
-            className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-lg shadow-xl z-[10000] flex flex-col overflow-hidden cursor-default"
-          >
-            <div className="px-3 pt-2.5 pb-2 border-b border-zinc-100 dark:border-zinc-800">
-              <div className="flex items-center justify-between text-xs font-medium text-zinc-500 dark:text-zinc-400 mb-1.5">
-                <span>Subtasks</span>
-                <span
-                  className={
-                    complete
-                      ? 'text-emerald-600 dark:text-emerald-400'
-                      : 'text-zinc-900 dark:text-zinc-100 tabular-nums'
-                  }
+    <button
+      type="button"
+      draggable={false}
+      onClick={(event) => {
+        event.stopPropagation();
+        onExpand();
+      }}
+      onMouseDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      onDragStart={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      aria-label={`Subtasks: ${done} of ${total} done`}
+      aria-expanded={expanded}
+      className={cn(
+        'inline-flex items-center gap-1 rounded px-1 py-0.5 text-[10px] font-medium tabular-nums transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800',
+        done === total ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-500 dark:text-zinc-400',
+        expanded && 'bg-zinc-100 dark:bg-zinc-800',
+        className,
+      )}
+    >
+      <Ring done={done} total={total} /> {done}/{total}
+    </button>
+  );
+};
+
+export const SubtaskList: React.FC<{
+  subtasks: TaskSubtask[];
+  members: Member[];
+  currentUserId: string;
+  canEditAll: boolean;
+  onToggle: (id: string, completed: boolean) => void;
+}> = ({ subtasks, members, currentUserId, canEditAll, onToggle }) => {
+  const { done, total } = subtaskProgress(subtasks);
+  return (
+    <div
+      className="rounded-md bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-2 cursor-default"
+      onClick={(event) => event.stopPropagation()}
+      onMouseDown={(event) => event.stopPropagation()}
+      onPointerDown={(event) => event.stopPropagation()}
+      onDoubleClick={(event) => event.stopPropagation()}
+      onDragStart={(event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      draggable={false}
+    >
+      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 px-2 py-1">
+        Subtasks · {done}/{total}
+      </div>
+      <ul className="space-y-0.5">
+        {subtasks.map((item) => {
+          const assignee = members.find((member) => member.id === item.assigneeId);
+          const canToggle = canEditAll || item.assigneeId === currentUserId;
+          return (
+            <li
+              key={item.id}
+              className="flex items-start gap-2 rounded px-2 py-1.5 text-xs hover:bg-white dark:hover:bg-zinc-800"
+            >
+              <button
+                type="button"
+                role="checkbox"
+                aria-label={`Complete ${item.title}`}
+                aria-checked={item.completed}
+                disabled={!canToggle}
+                onClick={() => onToggle(item.id, !item.completed)}
+                className={cn(
+                  'mt-px flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border',
+                  item.completed
+                    ? 'border-emerald-500 bg-emerald-500 text-white'
+                    : 'border-zinc-400 dark:border-zinc-600',
+                  !canToggle && 'opacity-50',
+                )}
+              >
+                {item.completed && <Check size={11} strokeWidth={3} />}
+              </button>
+              <div className="min-w-0 flex-1">
+                <div
+                  className={cn(
+                    'break-words text-zinc-800 dark:text-zinc-200',
+                    item.completed && 'line-through text-zinc-400',
+                  )}
                 >
-                  {summary.done}/{summary.total}
-                </span>
+                  {item.title}
+                </div>
+                <div className="flex flex-wrap gap-x-3 text-[10px] text-zinc-500 dark:text-zinc-400">
+                  {assignee && <span>{assignee.name}</span>}
+                  {item.startDate && <span>Start {formatDateEU(item.startDate)}</span>}
+                  {item.endDate && <span>End {formatDateEU(item.endDate)}</span>}
+                  <span>Created {formatDateEU(item.createdAt)}</span>
+                </div>
               </div>
-              <Bar done={summary.done} total={summary.total} />
-            </div>
-            <ul className="overflow-y-auto py-1">
-              {summary.items.map((item) => (
-                <li key={`${item.index}:${item.key}`}>
-                  <button
-                    type="button"
-                    role="checkbox"
-                    aria-checked={item.done}
-                    disabled={!onToggle}
-                    onClick={() => onToggle?.(item.index, item.key)}
-                    className="w-full flex items-start gap-2 px-3 py-1.5 text-left text-xs enabled:hover:bg-zinc-50 dark:enabled:hover:bg-zinc-800 disabled:cursor-default"
-                  >
-                    <span
-                      className={cn(
-                        'mt-px flex h-3.5 w-3.5 flex-shrink-0 items-center justify-center rounded border-[1.5px]',
-                        item.done
-                          ? 'border-emerald-500 bg-emerald-500 text-white'
-                          : 'border-zinc-400 dark:border-zinc-600',
-                      )}
-                    >
-                      {item.done && <Check size={10} strokeWidth={3} />}
-                    </span>
-                    <span
-                      className={cn(
-                        'min-w-0 flex-1 wrap-anywhere',
-                        item.done ? 'line-through text-zinc-400' : 'text-zinc-800 dark:text-zinc-200',
-                      )}
-                    >
-                      {item.text || <span className="italic text-zinc-400">Empty item</span>}
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          </div>,
-          document.body,
-        )}
-    </>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
   );
 };

@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { toast } from 'sonner';
 import {
   Task,
+  TaskSubtask,
   Team,
   Member,
   Absence,
@@ -41,7 +42,7 @@ import { supabase } from '../lib/supabase';
 import { PERSON_FIELD_DEFAULT_LABELS, isAdmin, TICKET_STATUS_META } from '../constants';
 import { getStatusName } from '../lib/statusUtils';
 import { newDescriptionMentionIds } from '../lib/mentions';
-import { diffSubtaskChecks, toggleSubtaskInHtml } from '../lib/subtasks';
+import { toggleSubtaskInHtml } from '../lib/subtasks';
 
 export type PersonFieldConfigEntry = { label: string | null; hidden: boolean };
 export type PersonFieldConfigMap = Record<string, Partial<Record<PersonFieldKey, PersonFieldConfigEntry>>>;
@@ -158,15 +159,7 @@ function diffTaskFields(
     entries.push({ field: 'dueDate', oldValue: oldTask.dueDate || null, newValue: newTask.dueDate || null });
   }
   if (oldTask.description !== newTask.description) {
-    // A tick is logged as the subtask it touched, not as a rewrite of the description.
-    const ticks = diffSubtaskChecks(oldTask.description, newTask.description);
-    if (ticks) {
-      for (const tick of ticks) {
-        entries.push({ field: 'subtask', oldValue: tick.text, newValue: tick.done ? 'done' : 'open' });
-      }
-    } else {
-      entries.push({ field: 'description' });
-    }
+    entries.push({ field: 'description' });
   }
   if (JSON.stringify(oldTask.assigneeIds) !== JSON.stringify(newTask.assigneeIds)) {
     entries.push({
@@ -304,8 +297,7 @@ function notifyTaskSaved(oldTask: Task | null, task: Task) {
   if (oldTask.title !== task.title) changes.push('title');
   if (oldTask.priority !== task.priority) changes.push('priority');
   if (oldTask.dueDate !== task.dueDate) changes.push('due date');
-  // Ticking subtasks stays quiet — it is progress, recorded in the activity log, not news.
-  if (oldTask.description !== task.description && !diffSubtaskChecks(oldTask.description, task.description)) {
+  if (oldTask.description !== task.description) {
     changes.push('description');
   }
   if (JSON.stringify(oldTask.placements) !== JSON.stringify(task.placements)) changes.push('placements');
@@ -534,6 +526,7 @@ function notify(recipientId: string, type: NotificationType, message: string, en
 
 interface DataState {
   tasks: Task[];
+  taskSubtasks: TaskSubtask[];
   tickets: Ticket[];
   equipmentItems: EquipmentItem[];
   // Open checkouts plus any closed one still flagged for repair. The current
@@ -568,6 +561,7 @@ interface DataState {
   // Setters
   setTaskTeamLinks: (links: TaskTeamLink[]) => void;
   setTasks: (tasks: Task[]) => void;
+  setTaskSubtasks: (subtasks: TaskSubtask[]) => void;
   setTickets: (tickets: Ticket[]) => void;
   setEquipmentItems: (items: EquipmentItem[]) => void;
   setEquipmentCheckouts: (checkouts: EquipmentCheckout[]) => void;
@@ -621,11 +615,14 @@ interface DataState {
   // Task actions
   updateTaskStatus: (taskId: string, newStatusId: string | null, teamContext?: string) => void;
   updateTask: (updatedTask: Task) => void;
-  /** Flip one description checklist row and save it. Returns the saved description, or null. */
-  toggleSubtask: (taskId: string, index: number, key: string) => string | null;
+  /** Description checkboxes remain independent of structured subtasks. */
+  toggleDescriptionChecklist: (taskId: string, index: number, key: string) => string | null;
+  saveTaskSubtask: (subtask: TaskSubtask) => Promise<boolean>;
+  deleteTaskSubtask: (id: string) => Promise<boolean>;
+  toggleTaskSubtask: (id: string, completed: boolean) => Promise<boolean>;
   deleteTask: (taskId: string) => void;
   addTask: (task: Task) => void;
-  saveTask: (taskData: Partial<Task>, teams: Team[]) => void;
+  saveTask: (taskData: Partial<Task>, teams: Team[], draftSubtasks?: TaskSubtask[]) => Promise<boolean>;
   reorderTaskInStatus: (taskId: string, targetTaskId: string, position: 'before' | 'after') => void;
 
   // Support ticket actions
@@ -765,6 +762,7 @@ interface DataState {
 
 export const useDataStore = create<DataState>((set, get) => ({
   tasks: [],
+  taskSubtasks: [],
   tickets: [],
   equipmentItems: [],
   equipmentCheckouts: [],
@@ -796,6 +794,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   // Setters
   setTaskTeamLinks: (links) => set({ taskTeamLinks: links }),
   setTasks: (tasks) => set({ tasks }),
+  setTaskSubtasks: (taskSubtasks) => set({ taskSubtasks }),
   setTickets: (tickets) => set({ tickets }),
   setEquipmentItems: (equipmentItems) => set({ equipmentItems }),
   setEquipmentCheckouts: (equipmentCheckouts) => set({ equipmentCheckouts }),
@@ -898,6 +897,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   resetData: () =>
     set({
       tasks: [],
+      taskSubtasks: [],
       tickets: [],
       equipmentItems: [],
       equipmentCheckouts: [],
@@ -1194,7 +1194,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       .catch(() => set({ tasks: prev }));
   },
 
-  toggleSubtask: (taskId, index, key) => {
+  toggleDescriptionChecklist: (taskId, index, key) => {
     if (!hasFullAccess()) return null;
     const task = get().tasks.find((t) => t.id === taskId);
     if (!task || task.deletedAt) return null;
@@ -1202,6 +1202,63 @@ export const useDataStore = create<DataState>((set, get) => ({
     if (description === null) return null;
     get().updateTask({ ...task, description });
     return description;
+  },
+
+  saveTaskSubtask: async (subtask) => {
+    if (!hasFullAccess()) return false;
+    const title = subtask.title.trim();
+    if (!title || (subtask.startDate && subtask.endDate && subtask.startDate > subtask.endDate)) return false;
+    const previous = get().taskSubtasks;
+    const existing = previous.find((item) => item.id === subtask.id);
+    const optimistic = { ...subtask, title, completed: existing?.completed ?? false };
+    set({
+      taskSubtasks: previous.some((item) => item.id === subtask.id)
+        ? previous.map((item) => (item.id === subtask.id ? optimistic : item))
+        : [...previous, optimistic],
+    });
+    try {
+      const saved = await db.upsertTaskSubtask(optimistic);
+      set({ taskSubtasks: get().taskSubtasks.map((item) => (item.id === saved.id ? saved : item)) });
+      return true;
+    } catch (error) {
+      console.error(error);
+      set({ taskSubtasks: previous });
+      toast.error('Failed to save subtask');
+      return false;
+    }
+  },
+
+  deleteTaskSubtask: async (id) => {
+    if (!hasFullAccess()) return false;
+    const previous = get().taskSubtasks;
+    set({ taskSubtasks: previous.filter((item) => item.id !== id) });
+    try {
+      await db.deleteTaskSubtask(id);
+      return true;
+    } catch (error) {
+      console.error(error);
+      set({ taskSubtasks: previous });
+      toast.error('Failed to delete subtask');
+      return false;
+    }
+  },
+
+  toggleTaskSubtask: async (id, completed) => {
+    const previous = get().taskSubtasks;
+    const subtask = previous.find((item) => item.id === id);
+    const user = useAuthStore.getState().currentUser;
+    if (!subtask || !user || (!hasFullAccess() && subtask.assigneeId !== user.id)) return false;
+    set({ taskSubtasks: previous.map((item) => (item.id === id ? { ...item, completed } : item)) });
+    try {
+      const saved = await db.setTaskSubtaskCompletion(id, completed);
+      set({ taskSubtasks: get().taskSubtasks.map((item) => (item.id === id ? saved : item)) });
+      return true;
+    } catch (error) {
+      console.error(error);
+      set({ taskSubtasks: previous });
+      toast.error('Failed to update subtask');
+      return false;
+    }
   },
 
   deleteTask: (taskId) => {
@@ -1291,9 +1348,8 @@ export const useDataStore = create<DataState>((set, get) => ({
     db.updateTaskSortOrders(updates).catch(() => set({ tasks }));
   },
 
-  saveTask: (taskData, teams) => {
-    if (!hasFullAccess()) return;
-    if (!taskData.title) return;
+  saveTask: async (taskData, teams, draftSubtasks = []) => {
+    if (!hasFullAccess() || !taskData.title) return false;
 
     const existingTask = taskData.id ? get().tasks.find((t) => t.id === taskData.id) : null;
     const isNew = !existingTask;
@@ -1333,24 +1389,38 @@ export const useDataStore = create<DataState>((set, get) => ({
       createdAt: existingTask?.createdAt ?? new Date().toISOString(),
     };
 
+    const previousTasks = get().tasks;
+    const previousSubtasks = get().taskSubtasks;
     if (isNew) {
       set({ tasks: [...get().tasks, newTask] });
     } else {
       set({ tasks: get().tasks.map((t) => (t.id === newTask.id ? newTask : t)) });
     }
 
-    db.saveTaskWithRelations(newTask)
-      .then(() => {
-        if (isNew) {
-          logAction('Task Created', `Created task "${newTask.title}"`, 'task');
-          logTaskActivity(newTask.id, [{ field: 'created' }]);
-        } else {
-          logAction('Task Updated', `Updated task "${newTask.title}"`, 'task');
-          if (existingTask) logTaskActivity(newTask.id, diffTaskFields(existingTask, newTask));
-        }
-        notifyTaskSaved(existingTask || null, newTask);
-      })
-      .catch(() => toast.error('Failed to save task'));
+    if (isNew && draftSubtasks.length) {
+      set({ taskSubtasks: [...previousSubtasks, ...draftSubtasks.map((item) => ({ ...item, taskId: newTask.id }))] });
+    }
+    try {
+      if (isNew && draftSubtasks.length) {
+        await db.saveTaskWithSubtasks(newTask, draftSubtasks);
+      } else {
+        await db.saveTaskWithRelations(newTask);
+      }
+      if (isNew) {
+        logAction('Task Created', `Created task "${newTask.title}"`, 'task');
+        logTaskActivity(newTask.id, [{ field: 'created' }]);
+      } else {
+        logAction('Task Updated', `Updated task "${newTask.title}"`, 'task');
+        if (existingTask) logTaskActivity(newTask.id, diffTaskFields(existingTask, newTask));
+      }
+      notifyTaskSaved(existingTask || null, newTask);
+      return true;
+    } catch (error) {
+      console.error(error);
+      set({ tasks: previousTasks, taskSubtasks: previousSubtasks });
+      toast.error('Failed to save task');
+      return false;
+    }
   },
 
   // Absence/Shift actions
@@ -2667,6 +2737,7 @@ export const useDataStore = create<DataState>((set, get) => ({
         db.fetchTeamPersonFieldConfig(), // 9
         db.fetchAllNotificationPreferences(), // 10
         db.fetchTaskAccessContexts(), // 11
+        db.fetchTaskSubtasks(), // 12
       ]);
       const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
         result.status === 'fulfilled' ? result.value : fallback;
@@ -2680,6 +2751,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       set({
         teams: getValue(results[0], []),
         tasks: getValue(results[1], []),
+        taskSubtasks: getValue(results[12], [] as TaskSubtask[]),
         members: getValue(results[2], [profileResult]),
         teamStatuses: getValue(results[3], {} as Record<string, TeamStatus[]>),
         teamTypes: getValue(results[4], {} as Record<string, string[]>),
@@ -2728,6 +2800,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       // skip the requests instead of issuing them.
       isAdmin(profileResult.role) ? db.fetchAccreditations() : Promise.resolve([] as Accreditation[]), // 25
       isAdmin(profileResult.role) ? db.fetchSubscriptions() : Promise.resolve([] as Subscription[]), // 26
+      db.fetchTaskSubtasks(), // 27
     ]);
 
     const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
@@ -2763,6 +2836,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       sidebarTeamOrders: sidebarOrders,
       scheduleTeamOrders: scheduleOrders,
       tasks: getValue(results[1], []),
+      taskSubtasks: getValue(results[27], [] as TaskSubtask[]),
       members: getValue(results[2], []),
       absences: getValue(results[3], []),
       shifts: getValue(results[4], []),

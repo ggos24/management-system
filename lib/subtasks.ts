@@ -1,8 +1,8 @@
 import { DESCRIPTION_MENTION_ATTR } from './mentions';
 
 /**
- * Subtasks are the checklist rows of a task description — there is no table of their own.
- * The description HTML is the single source of truth, so progress is always derived from it.
+ * Legacy description checklist helpers. These rows remain interactive text in
+ * tasks.description and do not contribute to structured task_subtasks progress.
  */
 
 /** Marks a checklist row. State lives in `data-checked` so it survives serialization. */
