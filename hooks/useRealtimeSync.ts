@@ -2,7 +2,7 @@ import { useEffect, useRef, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
 import { useDataStore } from '../stores/dataStore';
 import { useUiStore } from '../stores/uiStore';
-import { captureAuthSession, isAuthSessionCurrent, useAuthStore } from '../stores/authStore';
+import { captureAuthSession, DataReloadError, isAuthSessionCurrent, useAuthStore } from '../stores/authStore';
 import * as db from '../lib/database';
 import { toast } from 'sonner';
 import { isAdmin } from '../constants';
@@ -34,6 +34,10 @@ function fetchForCurrentSession<T>(
     .catch(console.error);
 }
 
+// Backoff for retrying a session reload that did not complete: 2s, 4s, 8s, 16s, then every 30s.
+const RELOAD_RETRY_BASE_MS = 2_000;
+const RELOAD_RETRY_MAX_MS = 30_000;
+
 function loadNotificationsForCurrentSession(): void {
   const snapshot = captureAuthSession();
   if (!snapshot.authUserId || !snapshot.profileId) return;
@@ -43,6 +47,7 @@ function loadNotificationsForCurrentSession(): void {
 export function useRealtimeSync() {
   const storeRef = useRef(useDataStore);
   const reloadRetryTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
+  const reloadRetryAttemptRef = useRef(0);
   const retryReloadRef = useRef<() => void>(() => undefined);
   const currentUserId = useAuthStore((s) => s.currentUser?.id);
 
@@ -150,6 +155,7 @@ export function useRealtimeSync() {
       .reloadData()
       .then(() => {
         clearTimeout(reloadRetryTimerRef.current);
+        reloadRetryAttemptRef.current = 0;
         toast.dismiss('task-access-retry');
         if (!authUserId || useAuthStore.getState().session?.user.id !== authUserId || !wasTaskOpen || !openTaskId)
           return;
@@ -170,18 +176,25 @@ export function useRealtimeSync() {
       })
       .catch((error) => {
         console.error(error);
-        if (authUserId && useAuthStore.getState().session?.user.id === authUserId) {
-          const currentUser = useAuthStore.getState().currentUser;
-          if (currentUser?.accessScope === 'related_only') {
-            // Access may have been revoked while disconnected. A failed ACL
-            // reconciliation must not leave the old restricted bundle usable.
-            useDataStore.getState().resetData();
-            useUiStore.setState({ isTaskModalOpen: false, taskModalData: {} });
-            toast.error('Unable to verify task access. Retrying…', { id: 'task-access-retry' });
-            clearTimeout(reloadRetryTimerRef.current);
-            reloadRetryTimerRef.current = setTimeout(() => retryReloadRef.current(), 2_000);
-          }
+        if (!authUserId || useAuthStore.getState().session?.user.id !== authUserId) return;
+        const currentUser = useAuthStore.getState().currentUser;
+        // A partial reload already confirmed the profile and loaded the restricted
+        // bundle under current RLS; any other failure left task access unverified.
+        const accessVerified = error instanceof DataReloadError && error.reason === 'partial';
+        if (currentUser?.accessScope === 'related_only' && !accessVerified) {
+          // Access may have been revoked while disconnected. A failed ACL
+          // reconciliation must not leave the old restricted bundle usable.
+          useDataStore.getState().resetData();
+          useUiStore.setState({ isTaskModalOpen: false, taskModalData: {} });
+          toast.error('Unable to verify task access. Retrying…', { id: 'task-access-retry' });
         }
+        // Full-access data that failed to reload kept its previous value, but it
+        // may be missing changes made while this tab was disconnected (realtime
+        // does not replay them), so keep retrying until a reload completes.
+        const delay = Math.min(RELOAD_RETRY_BASE_MS * 2 ** reloadRetryAttemptRef.current, RELOAD_RETRY_MAX_MS);
+        reloadRetryAttemptRef.current += 1;
+        clearTimeout(reloadRetryTimerRef.current);
+        reloadRetryTimerRef.current = setTimeout(() => retryReloadRef.current(), delay);
       });
   }, 300);
 

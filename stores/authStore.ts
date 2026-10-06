@@ -26,6 +26,23 @@ export interface AuthSessionSnapshot {
  */
 export type TelegramGateState = 'not_linked' | 'no_access';
 
+/**
+ * Thrown by reloadData() when the refreshed bundle was not fully loaded, so the
+ * caller can retry. `profile`: the caller's own profile could not be read, so
+ * nothing was reconciled and task access is unverified. `partial`: the profile
+ * and access scope were confirmed, but some slices failed and kept their
+ * previous value.
+ */
+export class DataReloadError extends Error {
+  readonly reason: 'profile' | 'partial';
+
+  constructor(reason: 'profile' | 'partial') {
+    super(reason === 'profile' ? 'Could not load the signed-in profile' : 'Some workspace data failed to reload');
+    this.name = 'DataReloadError';
+    this.reason = reason;
+  }
+}
+
 interface AuthState {
   session: Session | null;
   currentUser: Member | null;
@@ -78,7 +95,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!shouldCommit()) return;
       try {
         set({ profileError: null });
-        const profile = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
+        // A slice that fails here stays empty; the reload that follows once the
+        // realtime access channel subscribes fills it in.
+        const { profile } = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
         if (!shouldCommit()) return;
         if (!profile) {
           set({ profileError: 'No profile found for this account. Please contact an administrator.' });
@@ -111,13 +130,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const generation = ++authEpoch;
     const shouldCommit = () => isAuthLoadCurrent(generation, authUserId);
     const previousScope = get().currentUser?.accessScope;
-    const profile = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
-    if (!profile || !shouldCommit()) return;
+    const { profile, complete } = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
+    // Superseded by a newer reload or a sign-out: that one owns the outcome.
+    if (!shouldCommit()) return;
+    if (!profile) throw new DataReloadError('profile');
     if (previousScope && previousScope !== profile.accessScope) {
       useUiStore.getState().resetSessionUi();
     }
     set({ currentUser: profile, profileError: null });
     await useUiStore.getState().loadNotifications(shouldCommit);
+    if (!complete) throw new DataReloadError('partial');
   },
 
   clearSessionState: () => {

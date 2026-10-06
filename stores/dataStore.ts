@@ -20,6 +20,7 @@ import {
   UserRole,
   PersonFieldKey,
   TeamPersonFieldConfig,
+  TeamHiddenColumn,
   Ticket,
   TicketComment,
   TicketStatus,
@@ -57,6 +58,24 @@ export function resolvePersonFieldConfig(
     label: entry?.label || PERSON_FIELD_DEFAULT_LABELS[fieldKey],
     hidden: entry?.hidden ?? false,
   };
+}
+
+function buildPersonFieldConfigMap(rows: TeamPersonFieldConfig[]): PersonFieldConfigMap {
+  const map: PersonFieldConfigMap = {};
+  for (const row of rows) {
+    if (!map[row.teamId]) map[row.teamId] = {};
+    map[row.teamId][row.fieldKey] = { label: row.label, hidden: row.hidden };
+  }
+  return map;
+}
+
+function buildHiddenColumnsMap(rows: TeamHiddenColumn[]): Record<string, string[]> {
+  const map: Record<string, string[]> = {};
+  for (const row of rows) {
+    if (!map[row.teamId]) map[row.teamId] = [];
+    map[row.teamId].push(row.columnKey);
+  }
+  return map;
 }
 
 // Auto-stamp/clear doneDate when crossing the `completed` status-category boundary.
@@ -757,7 +776,14 @@ interface DataState {
   ) => void;
 
   // Load all data
-  loadAllData: (authUserId: string, shouldCommit?: () => boolean) => Promise<Member | null>;
+  loadAllData: (authUserId: string, shouldCommit?: () => boolean) => Promise<DataLoadResult>;
+}
+
+export interface DataLoadResult {
+  /** The signed-in profile; null when it could not be read or the load was superseded. */
+  profile: Member | null;
+  /** False when any slice failed to load. A failed slice keeps the value it already had. */
+  complete: boolean;
 }
 
 export const useDataStore = create<DataState>((set, get) => ({
@@ -2718,7 +2744,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   loadAllData: async (authUserId, shouldCommit = () => true) => {
     // Profile is critical - must succeed
     const profileResult = await db.findProfileByAuthId(authUserId);
-    if (!profileResult || !shouldCommit()) return null;
+    if (!profileResult || !shouldCommit()) return { profile: null, complete: false };
 
     if (profileResult.accessScope === 'related_only') {
       // Clear full-workspace state before loading the restricted bundle so a
@@ -2741,13 +2767,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       ]);
       const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
         result.status === 'fulfilled' ? result.value : fallback;
-      const personFieldRows = getValue(results[9], [] as TeamPersonFieldConfig[]);
-      const personFieldMap: PersonFieldConfigMap = {};
-      for (const row of personFieldRows) {
-        if (!personFieldMap[row.teamId]) personFieldMap[row.teamId] = {};
-        personFieldMap[row.teamId][row.fieldKey] = { label: row.label, hidden: row.hidden };
-      }
-      if (!shouldCommit()) return null;
+      if (!shouldCommit()) return { profile: null, complete: false };
       set({
         teams: getValue(results[0], []),
         tasks: getValue(results[1], []),
@@ -2759,14 +2779,14 @@ export const useDataStore = create<DataState>((set, get) => ({
         allPlacements: getValue(results[6], [] as string[]),
         taskTeamLinks: getValue(results[7], [] as TaskTeamLink[]),
         teamPlacements: getValue(results[8], {} as Record<string, string[]>),
-        teamPersonFieldConfig: personFieldMap,
+        teamPersonFieldConfig: buildPersonFieldConfigMap(getValue(results[9], [] as TeamPersonFieldConfig[])),
         notificationPreferences: getValue(results[10], [] as NotificationPreference[]),
         taskAccessContexts: getValue(results[11], [] as TaskAccessContext[]),
       });
       results.forEach((result, index) => {
         if (result.status === 'rejected') console.error(`Restricted data fetch [${index}] failed:`, result.reason);
       });
-      return profileResult;
+      return { profile: profileResult, complete: results.every((result) => result.status === 'fulfilled') };
     }
 
     // Use Promise.allSettled for remaining data - partial failure is OK
@@ -2803,63 +2823,63 @@ export const useDataStore = create<DataState>((set, get) => ({
       db.fetchTaskSubtasks(), // 27
     ]);
 
-    const getValue = <T>(result: PromiseSettledResult<T>, fallback: T): T =>
-      result.status === 'fulfilled' ? result.value : fallback;
+    if (!shouldCommit()) return { profile: null, complete: false };
 
-    const teamStatusesMap = getValue(results[6], {} as Record<string, TeamStatus[]>);
-    const sidebarOrders = getValue(results[15], {} as Record<string, number>);
-    const scheduleOrders = getValue(results[16], {} as Record<string, number>);
-    const hiddenColumnsRows = getValue(results[17], [] as { teamId: string; columnKey: string }[]);
-    const hiddenColumnsMap: Record<string, string[]> = {};
-    for (const row of hiddenColumnsRows) {
-      if (!hiddenColumnsMap[row.teamId]) hiddenColumnsMap[row.teamId] = [];
-      hiddenColumnsMap[row.teamId].push(row.columnKey);
-    }
-    const personFieldRows = getValue(results[18], [] as TeamPersonFieldConfig[]);
-    const personFieldMap: PersonFieldConfigMap = {};
-    for (const row of personFieldRows) {
-      if (!personFieldMap[row.teamId]) personFieldMap[row.teamId] = {};
-      personFieldMap[row.teamId][row.fieldKey] = { label: row.label, hidden: row.hidden };
-    }
-
-    if (!shouldCommit()) return null;
+    // A slice whose fetch failed keeps what the store already holds — never an
+    // empty fallback. This bundle is reloaded on every realtime reconnect, which
+    // is typically the moment a laptop wakes up or a long-idle tab comes back and
+    // the network is at its flakiest; replacing a healthy board with [] there left
+    // tables empty until a manual page reload. On the first load the store is
+    // still empty, so keeping it is the same as falling back to empty. The store
+    // is read only now, after the awaits, so optimistic updates made while the
+    // bundle loaded are what gets kept.
+    const current = get();
+    const keep = <T>(result: PromiseSettledResult<T>, previous: T): T =>
+      result.status === 'fulfilled' ? result.value : previous;
 
     // Sort teams by user's sidebar order, falling back to default sort_order
-    const teams = getValue(results[0], []);
-    const hasUserOrder = Object.keys(sidebarOrders).length > 0;
-    if (hasUserOrder) {
-      teams.sort((a, b) => (sidebarOrders[a.id] ?? 9999) - (sidebarOrders[b.id] ?? 9999));
+    const sidebarOrders = keep(results[15], current.sidebarTeamOrders);
+    let teams = current.teams;
+    if (results[0].status === 'fulfilled') {
+      teams = results[0].value;
+      if (Object.keys(sidebarOrders).length > 0) {
+        teams.sort((a, b) => (sidebarOrders[a.id] ?? 9999) - (sidebarOrders[b.id] ?? 9999));
+      }
     }
 
     set({
       teams,
       sidebarTeamOrders: sidebarOrders,
-      scheduleTeamOrders: scheduleOrders,
-      tasks: getValue(results[1], []),
-      taskSubtasks: getValue(results[27], [] as TaskSubtask[]),
-      members: getValue(results[2], []),
-      absences: getValue(results[3], []),
-      shifts: getValue(results[4], []),
-      logs: getValue(results[5], []),
-      teamStatuses: teamStatusesMap,
-      teamTypes: getValue(results[7], {}),
-      permissions: getValue(results[8], {}),
-      teamProperties: getValue(results[9], {}),
-      allPlacements: getValue(results[10], []),
-      integrations: getValue(results[11], {}),
-      deletedTaskCount: getValue(results[12], 0),
-      taskTeamLinks: getValue(results[13], []),
-      teamPlacements: getValue(results[14], {} as Record<string, string[]>),
-      teamHiddenColumns: hiddenColumnsMap,
-      teamPersonFieldConfig: personFieldMap,
-      notificationPreferences: getValue(results[19], [] as NotificationPreference[]),
-      tickets: getValue(results[20], [] as Ticket[]),
-      taskAccessContexts: getValue(results[21], [] as TaskAccessContext[]),
-      equipmentItems: getValue(results[22], [] as EquipmentItem[]),
-      equipmentCheckouts: getValue(results[23], [] as EquipmentCheckout[]),
-      equipmentVerifications: getValue(results[24], [] as EquipmentVerification[]),
-      accreditations: getValue(results[25], [] as Accreditation[]),
-      subscriptions: getValue(results[26], [] as Subscription[]),
+      scheduleTeamOrders: keep(results[16], current.scheduleTeamOrders),
+      tasks: keep(results[1], current.tasks),
+      taskSubtasks: keep(results[27], current.taskSubtasks),
+      members: keep(results[2], current.members),
+      absences: keep(results[3], current.absences),
+      shifts: keep(results[4], current.shifts),
+      logs: keep(results[5], current.logs),
+      teamStatuses: keep(results[6], current.teamStatuses),
+      teamTypes: keep(results[7], current.teamTypes),
+      permissions: keep(results[8], current.permissions),
+      teamProperties: keep(results[9], current.teamProperties),
+      allPlacements: keep(results[10], current.allPlacements),
+      integrations: keep(results[11], current.integrations),
+      deletedTaskCount: keep(results[12], current.deletedTaskCount),
+      taskTeamLinks: keep(results[13], current.taskTeamLinks),
+      teamPlacements: keep(results[14], current.teamPlacements),
+      teamHiddenColumns:
+        results[17].status === 'fulfilled' ? buildHiddenColumnsMap(results[17].value) : current.teamHiddenColumns,
+      teamPersonFieldConfig:
+        results[18].status === 'fulfilled'
+          ? buildPersonFieldConfigMap(results[18].value)
+          : current.teamPersonFieldConfig,
+      notificationPreferences: keep(results[19], current.notificationPreferences),
+      tickets: keep(results[20], current.tickets),
+      taskAccessContexts: keep(results[21], current.taskAccessContexts),
+      equipmentItems: keep(results[22], current.equipmentItems),
+      equipmentCheckouts: keep(results[23], current.equipmentCheckouts),
+      equipmentVerifications: keep(results[24], current.equipmentVerifications),
+      accreditations: keep(results[25], current.accreditations),
+      subscriptions: keep(results[26], current.subscriptions),
       deletedTasks: [],
     });
 
@@ -2873,6 +2893,6 @@ export const useDataStore = create<DataState>((set, get) => ({
       }
     });
 
-    return profileResult;
+    return { profile: profileResult, complete: results.every((result) => result.status === 'fulfilled') };
   },
 }));
