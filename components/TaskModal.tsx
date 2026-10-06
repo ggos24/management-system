@@ -36,6 +36,7 @@ import { TagSelect } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
 import { TaskSubtasksSection } from './TaskSubtasksSection';
+import { SUBTASKS_ENABLED } from '../lib/features';
 import { Button, Input, Label, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useDataStore, resolvePersonFieldConfig } from '../stores/dataStore';
@@ -1066,15 +1067,17 @@ export const TaskModal: React.FC = () => {
               ) : (
                 <div className="min-h-20 text-sm text-zinc-400">No description</div>
               )}
-              <TaskSubtasksSection
-                taskId={taskModalData.id}
-                deleted={Boolean(taskModalData.deletedAt)}
-                readOnly
-                currentUserId={currentUser?.id || ''}
-                members={members}
-                draftSubtasks={draftSubtasks}
-                onDraftChange={setDraftSubtasks}
-              />
+              {SUBTASKS_ENABLED && (
+                <TaskSubtasksSection
+                  taskId={taskModalData.id}
+                  deleted={Boolean(taskModalData.deletedAt)}
+                  readOnly
+                  currentUserId={currentUser?.id || ''}
+                  members={members}
+                  draftSubtasks={draftSubtasks}
+                  onDraftChange={setDraftSubtasks}
+                />
+              )}
               <div className="grid grid-cols-1 gap-5 rounded-lg border border-zinc-200 bg-zinc-50 p-5 dark:border-zinc-800 dark:bg-zinc-900/50 md:grid-cols-2">
                 <ReadOnlyTaskField label="Section">
                   {getStatusName(teamStatuses, contextTeamId, readOnlyStatusId ?? null) || '—'}
@@ -1181,17 +1184,19 @@ export const TaskModal: React.FC = () => {
               />
             </div>
 
-            <TaskSubtasksSection
-              taskId={taskModalData.id}
-              deleted={Boolean(taskModalData.deletedAt)}
-              readOnly={false}
-              currentUserId={currentUser?.id || ''}
-              members={members.filter(
-                (member) => member.accessScope !== 'related_only' || taskParticipantIds.has(member.id),
-              )}
-              draftSubtasks={draftSubtasks}
-              onDraftChange={setDraftSubtasks}
-            />
+            {SUBTASKS_ENABLED && (
+              <TaskSubtasksSection
+                taskId={taskModalData.id}
+                deleted={Boolean(taskModalData.deletedAt)}
+                readOnly={false}
+                currentUserId={currentUser?.id || ''}
+                members={members.filter(
+                  (member) => member.accessScope !== 'related_only' || taskParticipantIds.has(member.id),
+                )}
+                draftSubtasks={draftSubtasks}
+                onDraftChange={setDraftSubtasks}
+              />
+            )}
 
             <div className="bg-zinc-50 dark:bg-zinc-900/50 border border-zinc-200 dark:border-zinc-800 rounded-lg p-5">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 md:gap-x-8 gap-y-4 md:gap-y-5">

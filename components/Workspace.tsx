@@ -65,6 +65,7 @@ import { TagSelect } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
 import { SubtaskList, SubtaskProgress } from './SubtaskProgress';
+import { SUBTASKS_ENABLED } from '../lib/features';
 import { Button, Divider } from './ui';
 import { useAuthStore } from '../stores/authStore';
 
@@ -526,7 +527,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
     }
     return map;
   }, [taskSubtasks]);
-  const getTaskSubtasks = (task: Task) => subtasksByTaskId.get(task.id) || [];
+  // With the feature off every task reads as having no subtasks, which hides the ring and the list.
+  const getTaskSubtasks = (task: Task) => (SUBTASKS_ENABLED ? subtasksByTaskId.get(task.id) || [] : []);
   const isSubtaskExpanded = (task: ContextualTask) => expandedSubtaskKey === getTaskRenderKey(task);
   const toggleExpandedSubtasks = (task: ContextualTask) => {
     const key = getTaskRenderKey(task);
@@ -2415,7 +2417,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                   />
                                 </th>
                               )}
-                              <th className="w-12 px-0.5" aria-label="Subtasks" />
+                              {SUBTASKS_ENABLED && <th className="w-12 px-0.5" aria-label="Subtasks" />}
                               {sectionTableColumns.map((tc) => {
                                 const isProp = tc.key.startsWith('prop:');
                                 const prop = isProp ? resolvedProps.find((p) => p.id === tc.key.slice(5)) : undefined;
@@ -2562,9 +2564,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                           />
                                         </td>
                                       )}
-                                      <td className="w-12 px-0.5 py-2" onClick={(e) => e.stopPropagation()}>
-                                        {renderSubtaskProgress(task)}
-                                      </td>
+                                      {SUBTASKS_ENABLED && (
+                                        <td className="w-12 px-0.5 py-2" onClick={(e) => e.stopPropagation()}>
+                                          {renderSubtaskProgress(task)}
+                                        </td>
+                                      )}
                                       {/* Data-driven cells */}
                                       {sectionTableColumns.map((tc) => {
                                         switch (tc.key) {
@@ -3002,7 +3006,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     {isSubtaskExpanded(task) && getTaskSubtasks(task).length > 0 && (
                                       <tr className="bg-zinc-50/60 dark:bg-zinc-900/60">
                                         <td
-                                          colSpan={sectionTableColumns.length + (isRelatedOnly || indent ? 2 : 3)}
+                                          colSpan={
+                                            sectionTableColumns.length +
+                                            (isRelatedOnly || indent ? 1 : 2) +
+                                            Number(SUBTASKS_ENABLED)
+                                          }
                                           className="px-4 py-2"
                                         >
                                           {renderSubtaskList(task)}
@@ -3015,7 +3023,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             ) : (
                               <tr>
                                 <td
-                                  colSpan={sectionTableColumns.length + (isRelatedOnly || indent ? 2 : 3)}
+                                  colSpan={
+                                    sectionTableColumns.length +
+                                    (isRelatedOnly || indent ? 1 : 2) +
+                                    Number(SUBTASKS_ENABLED)
+                                  }
                                   className="p-4 text-center text-xs text-zinc-400 italic"
                                 >
                                   No tasks in this step
@@ -3029,7 +3041,11 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                 onClick={() => onAddTask({ statusId: col.id })}
                               >
                                 <td
-                                  colSpan={sectionTableColumns.length + (isRelatedOnly || indent ? 2 : 3)}
+                                  colSpan={
+                                    sectionTableColumns.length +
+                                    (isRelatedOnly || indent ? 1 : 2) +
+                                    Number(SUBTASKS_ENABLED)
+                                  }
                                   className="p-2 pl-3 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-300 text-xs font-medium"
                                 >
                                   <span className="flex items-center gap-2">

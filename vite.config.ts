@@ -4,102 +4,114 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { VitePWA } from 'vite-plugin-pwa';
 
-export default defineConfig({
-  server: {
-    port: 3000,
-    host: '0.0.0.0',
-  },
-  plugins: [
-    react(),
-    tailwindcss(),
-    VitePWA({
-      registerType: 'autoUpdate',
-      injectRegister: false,
-      strategies: 'generateSW',
-      devOptions: { enabled: false },
-      includeAssets: ['favicon.ico', 'logo.svg', 'apple-touch-icon-180x180.png'],
-      manifest: {
-        name: 'UNITIES',
-        short_name: 'UNITIES',
-        description: 'Team management & content pipeline',
-        theme_color: '#000000',
-        background_color: '#000000',
-        display: 'standalone',
-        orientation: 'any',
-        scope: '/',
-        start_url: '/',
-        id: '/',
-        icons: [
-          { src: 'pwa-64x64.png', sizes: '64x64', type: 'image/png' },
-          { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
-          { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
-          { src: 'maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
-        ],
-      },
-      workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [
-          /^\/api\//,
-          // The Mini App must never boot from a stale precached shell: with
-          // skipWaiting the page still renders, just with old behaviour and no
-          // error. It needs the network anyway, so always fetch it fresh.
-          /^\/equipment\//,
-          // Sticker redirects live server-side in vercel.json. If the service
-          // worker answers this navigation with the cached shell, the request
-          // never reaches the server and the QR opens the site instead of
-          // Telegram — which is exactly how it failed in the field.
-          /^\/e\//i,
-        ],
-        cleanupOutdatedCaches: true,
-        clientsClaim: true,
-        skipWaiting: true,
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }) => url.origin === 'https://fonts.googleapis.com',
-            handler: 'StaleWhileRevalidate',
-            options: { cacheName: 'google-fonts-stylesheets' },
-          },
-          {
-            urlPattern: ({ url }) => url.origin === 'https://fonts.gstatic.com',
-            handler: 'CacheFirst',
-            options: {
-              cacheName: 'google-fonts-webfonts',
-              expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
-              cacheableResponse: { statuses: [0, 200] },
-            },
-          },
-        ],
-      },
-    }),
-  ],
-  resolve: {
-    alias: {
-      '@': path.resolve(__dirname, '.'),
+export default defineConfig(({ command }) => {
+  // Subtasks are hidden in production until they have been tested on previews — see lib/features.ts.
+  // Fail closed: a build is only "on" when Vercel says it is a preview, so a production build that
+  // somehow lacks VERCEL_ENV still ships without them.
+  const subtasksEnabled = process.env.VITE_FEATURE_SUBTASKS
+    ? process.env.VITE_FEATURE_SUBTASKS === 'true'
+    : command === 'serve' || Boolean(process.env.VITEST) || process.env.VERCEL_ENV === 'preview';
+
+  return {
+    define: {
+      __SUBTASKS_ENABLED__: JSON.stringify(subtasksEnabled),
     },
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks: {
-          'vendor-recharts': ['recharts'],
-          'vendor-supabase': ['@supabase/supabase-js'],
-          'vendor-tiptap': [
-            '@tiptap/react',
-            '@tiptap/starter-kit',
-            '@tiptap/extension-link',
-            '@tiptap/extension-table',
-            '@tiptap/extension-table-row',
-            '@tiptap/extension-table-cell',
-            '@tiptap/extension-table-header',
+    server: {
+      port: 3000,
+      host: '0.0.0.0',
+    },
+    plugins: [
+      react(),
+      tailwindcss(),
+      VitePWA({
+        registerType: 'autoUpdate',
+        injectRegister: false,
+        strategies: 'generateSW',
+        devOptions: { enabled: false },
+        includeAssets: ['favicon.ico', 'logo.svg', 'apple-touch-icon-180x180.png'],
+        manifest: {
+          name: 'UNITIES',
+          short_name: 'UNITIES',
+          description: 'Team management & content pipeline',
+          theme_color: '#000000',
+          background_color: '#000000',
+          display: 'standalone',
+          orientation: 'any',
+          scope: '/',
+          start_url: '/',
+          id: '/',
+          icons: [
+            { src: 'pwa-64x64.png', sizes: '64x64', type: 'image/png' },
+            { src: 'pwa-192x192.png', sizes: '192x192', type: 'image/png' },
+            { src: 'pwa-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+            { src: 'maskable-icon-512x512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
           ],
+        },
+        workbox: {
+          globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+          navigateFallback: '/index.html',
+          navigateFallbackDenylist: [
+            /^\/api\//,
+            // The Mini App must never boot from a stale precached shell: with
+            // skipWaiting the page still renders, just with old behaviour and no
+            // error. It needs the network anyway, so always fetch it fresh.
+            /^\/equipment\//,
+            // Sticker redirects live server-side in vercel.json. If the service
+            // worker answers this navigation with the cached shell, the request
+            // never reaches the server and the QR opens the site instead of
+            // Telegram — which is exactly how it failed in the field.
+            /^\/e\//i,
+          ],
+          cleanupOutdatedCaches: true,
+          clientsClaim: true,
+          skipWaiting: true,
+          runtimeCaching: [
+            {
+              urlPattern: ({ url }) => url.origin === 'https://fonts.googleapis.com',
+              handler: 'StaleWhileRevalidate',
+              options: { cacheName: 'google-fonts-stylesheets' },
+            },
+            {
+              urlPattern: ({ url }) => url.origin === 'https://fonts.gstatic.com',
+              handler: 'CacheFirst',
+              options: {
+                cacheName: 'google-fonts-webfonts',
+                expiration: { maxEntries: 20, maxAgeSeconds: 60 * 60 * 24 * 365 },
+                cacheableResponse: { statuses: [0, 200] },
+              },
+            },
+          ],
+        },
+      }),
+    ],
+    resolve: {
+      alias: {
+        '@': path.resolve(__dirname, '.'),
+      },
+    },
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks: {
+            'vendor-recharts': ['recharts'],
+            'vendor-supabase': ['@supabase/supabase-js'],
+            'vendor-tiptap': [
+              '@tiptap/react',
+              '@tiptap/starter-kit',
+              '@tiptap/extension-link',
+              '@tiptap/extension-table',
+              '@tiptap/extension-table-row',
+              '@tiptap/extension-table-cell',
+              '@tiptap/extension-table-header',
+            ],
+          },
         },
       },
     },
-  },
-  test: {
-    globals: true,
-    environment: 'jsdom',
-    setupFiles: ['./test/setup.ts'],
-  },
+    test: {
+      globals: true,
+      environment: 'jsdom',
+      setupFiles: ['./test/setup.ts'],
+    },
+  };
 });
