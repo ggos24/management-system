@@ -10,6 +10,7 @@ import {
 } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
 import { AuthGuard } from './components/AuthGuard';
+import { AccountErrorScreen, AuthLoadingScreen } from './components/AuthScreens';
 import AppLayout from './layouts/AppLayout';
 import LoginPage from './components/LoginPage';
 import { RouteError } from './components/RouteError';
@@ -415,9 +416,11 @@ const BinRoute: React.FC = () => {
   return <Bin />;
 };
 
-const LoginRoute: React.FC = () => {
+export const LoginRoute: React.FC = () => {
   const session = useAuthStore((s) => s.session);
   const currentUser = useAuthStore((s) => s.currentUser);
+  const isLoading = useAuthStore((s) => s.isLoading);
+  const profileError = useAuthStore((s) => s.profileError);
   const location = useLocation();
 
   // Only redirect if fully authenticated (session + profile loaded)
@@ -425,6 +428,19 @@ const LoginRoute: React.FC = () => {
     const next = safeRedirectPath(new URLSearchParams(location.search).get('next'));
     return <Navigate to={next ?? '/workspace'} replace />;
   }
+
+  // Signed in on this page and now loading the profile. Show the same screens
+  // AuthGuard would: otherwise a slow or failed load leaves the finished login
+  // form on screen with no sign of what is happening.
+  if (session && profileError) {
+    const retry = () => {
+      const state = useAuthStore.getState();
+      state.setIsLoading(true);
+      void state.initData(session.user.id);
+    };
+    return <AccountErrorScreen message={profileError} onRetry={retry} />;
+  }
+  if (session && isLoading) return <AuthLoadingScreen />;
 
   return (
     <LoginPage

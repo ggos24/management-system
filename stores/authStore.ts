@@ -1,9 +1,9 @@
 import { create } from 'zustand';
 import type { Session } from '@supabase/supabase-js';
 import { Member } from '../types';
-import { supabase } from '../lib/supabase';
+import { signOutOnThisDevice, supabase } from '../lib/supabase';
 import * as db from '../lib/database';
-import { useDataStore } from './dataStore';
+import { useDataStore, type DataLoadResult } from './dataStore';
 import { useUiStore } from './uiStore';
 
 // Serialise bootstraps so an old account's slower response cannot overwrite a
@@ -186,8 +186,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const generation = nextAuthEpoch();
     const shouldCommit = () => isAuthLoadCurrent(generation, authUserId);
     const previousScope = get().currentUser?.accessScope;
-    const { profile, complete } = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
-    // Superseded by a newer reload or a sign-out: that one owns the outcome.
+    // Superseded by a newer reload or a sign-out (checked after every await
+    // below): that one owns the outcome and the retry schedule, so this one
+    // reports neither a success nor a failure.
+    let result: DataLoadResult;
+    try {
+      result = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
+    } catch (error) {
+      if (!shouldCommit()) return false;
+      throw error;
+    }
+    const { profile, complete } = result;
     if (!shouldCommit()) return false;
     if (!profile) throw new DataReloadError('profile');
     if (previousScope && previousScope !== profile.accessScope) {
@@ -198,6 +207,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // data committed here are a complete substitute for it.
     set({ currentUser: profile, profileError: null, isLoading: false, isReconnecting: false });
     await useUiStore.getState().loadNotifications(shouldCommit);
+    if (!shouldCommit()) return false;
     if (!complete) throw new DataReloadError('partial');
     return true;
   },
@@ -212,7 +222,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     try {
-      await supabase.auth.signOut();
+      // Offline there is no server to tell, and trying first would only add the
+      // ~25s auth-js spends retrying the token refresh before it gives up.
+      if (navigator.onLine === false) {
+        await signOutOnThisDevice();
+      } else {
+        const { error } = await supabase.auth.signOut();
+        // The server could not be reached, so auth-js kept the session in
+        // storage; make sure it is gone from this device at least.
+        if (error) {
+          console.error('Sign-out did not reach the server; signing out on this device only', error);
+          await signOutOnThisDevice();
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      await signOutOnThisDevice();
     } finally {
       get().clearSessionState();
     }

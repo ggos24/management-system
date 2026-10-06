@@ -131,20 +131,40 @@ describe('session data reload', () => {
     expect(useDataStore.getState().tasks.map((t) => t.id)).toEqual(['task-1', 'task-2']);
   });
 
-  it('does not report a reload that a newer one superseded', async () => {
+  it('does not report a reload that a newer one superseded, even when its profile request fails', async () => {
     mockHealthyBundle({ tasks: [task('task-3')], teams: [team('team-1')] });
-    let releaseFirstProfile!: () => void;
+    let failFirstProfile!: () => void;
     vi.spyOn(db, 'findProfileByAuthId')
-      .mockImplementationOnce(() => new Promise((resolve) => (releaseFirstProfile = () => resolve(null))))
+      // The superseded reload's request hangs on a dead socket, then fails —
+      // findProfileByAuthId throws on request errors.
+      .mockImplementationOnce(
+        () => new Promise((_, reject) => (failFirstProfile = () => reject(new TypeError('Failed to fetch')))),
+      )
       .mockResolvedValue(profile);
 
     const first = useAuthStore.getState().reloadData();
     const second = useAuthStore.getState().reloadData();
-    await second;
-    releaseFirstProfile();
+    await expect(second).resolves.toBe(true);
+    failFirstProfile();
 
     await expect(first).resolves.toBe(false);
     expect(useDataStore.getState().tasks.map((t) => t.id)).toEqual(['task-3']);
+  });
+
+  it('does not report a reload superseded while its notifications load', async () => {
+    mockHealthyBundle({ tasks: [task('task-3')], teams: [team('team-1')] });
+    let releaseNotifications!: () => void;
+    vi.spyOn(db, 'fetchNotifications')
+      .mockImplementationOnce(() => new Promise((resolve) => (releaseNotifications = () => resolve([]))))
+      .mockResolvedValue([]);
+
+    const first = useAuthStore.getState().reloadData();
+    await vi.waitFor(() => expect(releaseNotifications).toBeTypeOf('function'));
+    // A newer reload takes over after the first one already committed its data.
+    await expect(useAuthStore.getState().reloadData()).resolves.toBe(true);
+    releaseNotifications();
+
+    await expect(first).resolves.toBe(false);
   });
 
   it('does not keep slices loaded under a role the user no longer has', async () => {
