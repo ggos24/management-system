@@ -42,8 +42,9 @@ import { useAuthStore } from './authStore';
 import { supabase } from '../lib/supabase';
 import { PERSON_FIELD_DEFAULT_LABELS, isAdmin, TICKET_STATUS_META } from '../constants';
 import { getStatusName } from '../lib/statusUtils';
-import { newDescriptionMentionIds } from '../lib/mentions';
+import { newDescriptionMentionIds, withMentionLabels } from '../lib/mentions';
 import { toggleSubtaskInHtml } from '../lib/subtasks';
+import type { TaskMergeOptions } from '../lib/taskMerge';
 
 export type PersonFieldConfigEntry = { label: string | null; hidden: boolean };
 export type PersonFieldConfigMap = Record<string, Partial<Record<PersonFieldKey, PersonFieldConfigEntry>>>;
@@ -543,6 +544,155 @@ function notify(recipientId: string, type: NotificationType, message: string, en
   }
 }
 
+// --- Concurrent edits ---------------------------------------------------------
+//
+// Every edit of an existing task is merged onto the server's current copy before
+// it is written (lib/taskMerge.ts), instead of writing back the whole copy this
+// tab was holding: that copy may be minutes old, and writing it reverted whatever
+// anyone else had saved in between. The write still goes through the full-row
+// save_task_with_relations RPC, which is the only atomic path for the assignee and
+// placement tables, so a save in another tab that lands between this tab's read
+// and its write (one round trip) can still be lost; a compare-and-set in the RPC
+// would close that, and needs a migration.
+
+/**
+ * The merge, with the description normaliser every merge compares through
+ * (lib/richText.ts). Loaded on the first edit, not with the store: it brings
+ * DOMPurify, and the main chunk is already over Vite's size warning.
+ */
+async function loadTaskMerge() {
+  const [{ mergeTaskEdits, mergeFieldValues }, { sanitizeRichTextHtml }] = await Promise.all([
+    import('../lib/taskMerge'),
+    import('../lib/richText'),
+  ]);
+  const members = useDataStore.getState().members;
+  const options: TaskMergeOptions = {
+    normalizeDescription: (html) => sanitizeRichTextHtml(withMentionLabels(html, members)),
+  };
+  return { mergeTaskEdits, mergeFieldValues, options };
+}
+
+/** A copy of an edited task with dates in the form the store and server use. */
+function asEdited<T extends Partial<Task>>(task: T): T {
+  return {
+    ...task,
+    dueDate: toDateOnly(task.dueDate),
+    doneDate: task.doneDate ? toDateOnly(task.doneDate) : null,
+  };
+}
+
+/**
+ * Run writes to one task one after another within this tab. Each write reads the
+ * server's copy, merges and saves; two overlapping writes would both read the
+ * same copy, and the second would undo the first.
+ */
+const taskWriteQueue = new Map<string, Promise<unknown>>();
+
+function enqueueTaskWrite<T>(taskId: string, write: () => Promise<T>): Promise<T> {
+  const previous = taskWriteQueue.get(taskId) ?? Promise.resolve();
+  const next = previous.then(write, write);
+  const settled = next.catch(() => undefined);
+  taskWriteQueue.set(taskId, settled);
+  void settled.then(() => {
+    if (taskWriteQueue.get(taskId) === settled) taskWriteQueue.delete(taskId);
+  });
+  return next;
+}
+
+function replaceStoreTask(task: Task): void {
+  useDataStore.setState((state) => ({ tasks: state.tasks.map((t) => (t.id === task.id ? task : t)) }));
+}
+
+const FIELD_LABELS: Record<string, string> = {
+  title: 'the title',
+  teamId: 'the team',
+  statusId: 'the status',
+  priority: 'the priority',
+  dueDate: 'the deadline',
+  doneDate: 'the done date',
+  'contentInfo.type': 'the content type',
+  'contentInfo.notes': 'the notes',
+};
+
+/** Merge an edit of an existing task onto the server's copy and save it (see saveTask). */
+async function saveEditedTask(
+  taskData: Partial<Task> & { id: string },
+  options: SaveTaskOptions,
+): Promise<SaveTaskResult> {
+  const get = useDataStore.getState;
+  let theirs: Task | null;
+  let merge: Awaited<ReturnType<typeof loadTaskMerge>>;
+  try {
+    [theirs, merge] = await Promise.all([db.fetchTaskById(taskData.id, { includeDeleted: true }), loadTaskMerge()]);
+  } catch (error) {
+    console.error(error);
+    toast.error('Could not save the task. Check your connection and try again.');
+    return { status: 'failed' };
+  }
+  if (!theirs) {
+    toast.error('This task no longer exists, or you no longer have access to it.');
+    return { status: 'failed' };
+  }
+  if (theirs.deletedAt) {
+    toast.error('Someone moved this task to the bin while you were editing it. Your changes were not saved.');
+    return { status: 'failed' };
+  }
+
+  const storeTask = get().tasks.find((t) => t.id === taskData.id);
+  const base = asEdited(options.base ?? storeTask ?? theirs);
+  const mine = asEdited(taskData);
+  const { task: merged, descriptionConflict, overridden } = merge.mergeTaskEdits(base, mine, theirs, merge.options);
+  if (descriptionConflict) return { status: 'conflict', task: merged, theirs };
+
+  // Auto-stamp/clear doneDate when this save moves the task across a `completed`
+  // status boundary, unless the editor changed the done date themselves.
+  const editorSetDoneDate = (base.doneDate ?? null) !== (mine.doneDate ?? null);
+  const task: Task = editorSetDoneDate
+    ? merged
+    : {
+        ...merged,
+        doneDate: resolveDoneDate(theirs.doneDate, theirs.statusId, merged.statusId, merged.teamId, get().teamStatuses),
+      };
+
+  replaceStoreTask(task);
+  try {
+    await db.saveTaskWithRelations(task);
+  } catch (error) {
+    console.error(error);
+    replaceStoreTask(theirs);
+    toast.error('Failed to save task');
+    return { status: 'failed' };
+  }
+  logAction('Task Updated', `Updated task "${task.title}"`, 'task');
+  // Against the server's copy, so the log and notifications name only what this
+  // save changed, not what someone else had changed in the meantime.
+  logTaskActivity(task.id, diffTaskFields(theirs, task));
+  notifyTaskSaved(theirs, task);
+  if (overridden.length) {
+    const labels = [...new Set(overridden.map((field) => FIELD_LABELS[field] ?? 'a custom field'))];
+    toast.info(`Saved. Someone else had also changed ${labels.join(', ')} — your version was kept.`);
+  }
+  return { status: 'saved', task };
+}
+
+/** Options for saving a task from the editor. */
+export interface SaveTaskOptions {
+  /** The editor is creating this task. It assigns the id itself, so the id cannot tell. */
+  isNew?: boolean;
+  /** The task as the editor last saw it from the server: the base of the merge. */
+  base?: Partial<Task>;
+}
+
+export type SaveTaskResult =
+  | { status: 'saved'; task: Task }
+  /**
+   * Someone else changed the same part of the description. Nothing was written:
+   * `task` is the merge with both versions kept, `theirs` the server's copy it was
+   * merged onto, for the editor to review and save again.
+   */
+  | { status: 'conflict'; task: Task; theirs: Task }
+  | { status: 'failed' };
+
 interface DataState {
   tasks: Task[];
   taskSubtasks: TaskSubtask[];
@@ -641,7 +791,12 @@ interface DataState {
   toggleTaskSubtask: (id: string, completed: boolean) => Promise<boolean>;
   deleteTask: (taskId: string) => void;
   addTask: (task: Task) => void;
-  saveTask: (taskData: Partial<Task>, teams: Team[], draftSubtasks?: TaskSubtask[]) => Promise<boolean>;
+  saveTask: (
+    taskData: Partial<Task>,
+    teams: Team[],
+    draftSubtasks?: TaskSubtask[],
+    options?: SaveTaskOptions,
+  ) => Promise<SaveTaskResult>;
   reorderTaskInStatus: (taskId: string, targetTaskId: string, position: 'before' | 'after') => void;
 
   // Support ticket actions
@@ -1097,47 +1252,70 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   updateLinkedTaskFields: (taskId, teamId, values) => {
     if (!hasFullAccess()) return;
-    const prev = get().taskTeamLinks;
     const task = get().tasks.find((candidate) => candidate.id === taskId);
-    const nextLinks = prev.map((link) =>
-      link.taskId === taskId && link.teamId === teamId ? { ...link, customFieldValues: values } : link,
-    );
-    set({
-      taskTeamLinks: nextLinks,
+    const baseValues =
+      get().taskTeamLinks.find((l) => l.taskId === taskId && l.teamId === teamId)?.customFieldValues || {};
+    const setLinkValues = (next: Record<string, unknown>) =>
+      set({
+        taskTeamLinks: get().taskTeamLinks.map((link) =>
+          link.taskId === taskId && link.teamId === teamId ? { ...link, customFieldValues: next } : link,
+        ),
+      });
+    setLinkValues(values);
+    // Same as a task edit: apply only the keys this edit changed onto the link's
+    // current values, so a field someone else just set is not reverted.
+    void enqueueTaskWrite(taskId, async () => {
+      let current: Record<string, unknown> | null;
+      let merge: Awaited<ReturnType<typeof loadTaskMerge>>;
+      try {
+        [current, merge] = await Promise.all([db.fetchTaskTeamLinkFields(taskId, teamId), loadTaskMerge()]);
+      } catch (error) {
+        console.error(error);
+        setLinkValues(baseValues);
+        toast.error('Failed to save the field. Check your connection and try again.');
+        return;
+      }
+      if (current === null) {
+        setLinkValues(baseValues);
+        toast.error('This task is no longer linked to that team. Your change was not saved.');
+        return;
+      }
+      const merged = merge.mergeFieldValues(baseValues, values, current);
+      setLinkValues(merged);
+      try {
+        await db.updateTaskTeamLinkFields(taskId, teamId, merged);
+      } catch (error) {
+        console.error(error);
+        setLinkValues(current);
+        toast.error('Failed to save the field');
+        return;
+      }
+      const nextLinks = get().taskTeamLinks;
+      if (!task) return;
+      // Against the link's values before this write, so people someone else
+      // assigned meanwhile are not announced as this editor's change.
+      const beforeLinks = nextLinks.map((link) =>
+        link.taskId === taskId && link.teamId === teamId ? { ...link, customFieldValues: current } : link,
+      );
+      const before = getTaskPeopleByContext(task, beforeLinks).filter((person) => person.contextTeamId === teamId);
+      const after = getTaskPeopleByContext(task, nextLinks).filter((person) => person.contextTeamId === teamId);
+      const beforeIds = new Set(before.map((person) => person.profileId));
+      const afterIds = new Set(after.map((person) => person.profileId));
+      const added = after.filter((person) => !beforeIds.has(person.profileId));
+      const removed = before.filter((person) => !afterIds.has(person.profileId));
+      const unchanged = after.filter((person) => beforeIds.has(person.profileId));
+      const actorName = getCurrentUserName();
+      const entityData = { taskId, priority: task.priority };
+      if (added.length > 0) {
+        notifyPeopleByContext(added, 'task_assigned', `${actorName} assigned you to "${task.title}"`, entityData);
+      }
+      if (removed.length > 0) {
+        notifyPeopleByContext(removed, 'task_unassigned', `${actorName} removed you from "${task.title}"`, entityData);
+      }
+      if (unchanged.length > 0) {
+        notifyPeopleByContext(unchanged, 'task_updated', `${actorName} updated fields on "${task.title}"`, entityData);
+      }
     });
-    db.updateTaskTeamLinkFields(taskId, teamId, values)
-      .then(() => {
-        if (!task) return;
-        const before = getTaskPeopleByContext(task, prev).filter((person) => person.contextTeamId === teamId);
-        const after = getTaskPeopleByContext(task, nextLinks).filter((person) => person.contextTeamId === teamId);
-        const beforeIds = new Set(before.map((person) => person.profileId));
-        const afterIds = new Set(after.map((person) => person.profileId));
-        const added = after.filter((person) => !beforeIds.has(person.profileId));
-        const removed = before.filter((person) => !afterIds.has(person.profileId));
-        const unchanged = after.filter((person) => beforeIds.has(person.profileId));
-        const actorName = getCurrentUserName();
-        const entityData = { taskId, priority: task.priority };
-        if (added.length > 0) {
-          notifyPeopleByContext(added, 'task_assigned', `${actorName} assigned you to "${task.title}"`, entityData);
-        }
-        if (removed.length > 0) {
-          notifyPeopleByContext(
-            removed,
-            'task_unassigned',
-            `${actorName} removed you from "${task.title}"`,
-            entityData,
-          );
-        }
-        if (unchanged.length > 0) {
-          notifyPeopleByContext(
-            unchanged,
-            'task_updated',
-            `${actorName} updated fields on "${task.title}"`,
-            entityData,
-          );
-        }
-      })
-      .catch(() => set({ taskTeamLinks: prev }));
   },
 
   // Task actions
@@ -1200,30 +1378,61 @@ export const useDataStore = create<DataState>((set, get) => ({
 
   updateTask: (updatedTask) => {
     if (!hasFullAccess()) return;
-    const prev = get().tasks;
-    const oldTask = prev.find((t) => t.id === updatedTask.id);
+    // The copy the caller edited: its edit is the difference from this.
+    const base = get().tasks.find((t) => t.id === updatedTask.id);
+    if (!base) return;
     // Auto-stamp/clear doneDate on status-category transitions, unless the caller
     // already changed doneDate explicitly (TaskModal manual entry must win).
-    let finalTask = updatedTask;
-    if (oldTask && oldTask.statusId !== updatedTask.statusId && oldTask.doneDate === updatedTask.doneDate) {
+    let edited = updatedTask;
+    if (base.statusId !== updatedTask.statusId && base.doneDate === updatedTask.doneDate) {
       const resolvedDoneDate = resolveDoneDate(
         updatedTask.doneDate,
-        oldTask.statusId,
+        base.statusId,
         updatedTask.statusId,
         updatedTask.teamId,
         get().teamStatuses,
       );
       if (resolvedDoneDate !== (updatedTask.doneDate ?? null)) {
-        finalTask = { ...updatedTask, doneDate: resolvedDoneDate };
+        edited = { ...updatedTask, doneDate: resolvedDoneDate };
       }
     }
-    set({ tasks: prev.map((t) => (t.id === finalTask.id ? finalTask : t)) });
-    db.saveTaskWithRelations(finalTask)
-      .then(() => {
-        if (oldTask) logTaskActivity(finalTask.id, diffTaskFields(oldTask, finalTask));
-        notifyTaskSaved(oldTask || null, finalTask);
-      })
-      .catch(() => set({ tasks: prev }));
+    replaceStoreTask(edited);
+
+    void enqueueTaskWrite(edited.id, async () => {
+      let theirs: Task | null;
+      let merge: Awaited<ReturnType<typeof loadTaskMerge>>;
+      try {
+        [theirs, merge] = await Promise.all([db.fetchTaskById(edited.id, { includeDeleted: true }), loadTaskMerge()]);
+      } catch (error) {
+        console.error(error);
+        replaceStoreTask(base);
+        toast.error('Failed to save the change. Check your connection and try again.');
+        return;
+      }
+      if (!theirs || theirs.deletedAt) {
+        // Gone or binned meanwhile; the next refetch settles the store.
+        replaceStoreTask(theirs ?? base);
+        toast.error('This task was removed while you changed it. Your change was not saved.');
+        return;
+      }
+      const { task: merged, descriptionConflict } = merge.mergeTaskEdits(base, edited, theirs, merge.options);
+      if (descriptionConflict) {
+        replaceStoreTask(theirs);
+        toast.error('Someone else changed this description at the same moment. Your change was not saved — try again.');
+        return;
+      }
+      replaceStoreTask(merged);
+      try {
+        await db.saveTaskWithRelations(merged);
+      } catch (error) {
+        console.error(error);
+        replaceStoreTask(theirs);
+        toast.error('Failed to save the change');
+        return;
+      }
+      logTaskActivity(merged.id, diffTaskFields(theirs, merged));
+      notifyTaskSaved(theirs, merged);
+    });
   },
 
   toggleDescriptionChecklist: (taskId, index, key) => {
@@ -1380,29 +1589,25 @@ export const useDataStore = create<DataState>((set, get) => ({
     db.updateTaskSortOrders(updates).catch(() => set({ tasks }));
   },
 
-  saveTask: async (taskData, teams, draftSubtasks = []) => {
-    if (!hasFullAccess() || !taskData.title) return false;
+  saveTask: async (taskData, teams, draftSubtasks = [], options = {}) => {
+    if (!hasFullAccess() || !taskData.title) return { status: 'failed' };
 
-    const existingTask = taskData.id ? get().tasks.find((t) => t.id === taskData.id) : null;
-    const isNew = !existingTask;
+    const storeTask = taskData.id ? get().tasks.find((t) => t.id === taskData.id) : undefined;
+    const isNew = options.isNew ?? !storeTask;
+    if (!isNew && taskData.id) {
+      return enqueueTaskWrite(taskData.id, () => saveEditedTask(taskData as Partial<Task> & { id: string }, options));
+    }
+
     const incomingTeamId = taskData.teamId || teams[0]?.id || '';
-    // statusId comes from taskData (the picker writes a uuid). For brand-new tasks
-    // with no explicit pick, default to the first available status of the home team.
+    // statusId comes from taskData (the picker writes a uuid). With no explicit
+    // pick, default to the first available status of the home team.
     const teamStatusList = get().teamStatuses[incomingTeamId] || [];
     const incomingStatusId = taskData.statusId ?? teamStatusList[0]?.id ?? null;
-    // Auto-stamp/clear doneDate when the save crosses a `completed` category boundary,
-    // unless the caller supplied an explicit doneDate that differs from the existing.
-    const callerDoneDate = taskData.doneDate ? toDateOnly(taskData.doneDate) : null;
-    const callerOverrodeDoneDate = isNew ? !!taskData.doneDate : (existingTask?.doneDate ?? null) !== callerDoneDate;
-    const resolvedDoneDate = callerOverrodeDoneDate
-      ? callerDoneDate
-      : resolveDoneDate(
-          existingTask?.doneDate ?? null,
-          existingTask?.statusId,
-          incomingStatusId,
-          incomingTeamId,
-          get().teamStatuses,
-        );
+    // Auto-stamp doneDate when a new task starts in a `completed` status, unless
+    // the caller supplied one.
+    const resolvedDoneDate = taskData.doneDate
+      ? toDateOnly(taskData.doneDate)
+      : resolveDoneDate(null, undefined, incomingStatusId, incomingTeamId, get().teamStatuses);
     const newTask: Task = {
       id: taskData.id || crypto.randomUUID(),
       title: taskData.title!,
@@ -1418,40 +1623,34 @@ export const useDataStore = create<DataState>((set, get) => ({
       contentInfo: taskData.contentInfo || { type: 'Editorial', editorIds: [], designerIds: [] },
       customFieldValues: taskData.customFieldValues || {},
       // DB stamps created_at on insert; keep an optimistic value until the next refetch.
-      createdAt: existingTask?.createdAt ?? new Date().toISOString(),
+      createdAt: new Date().toISOString(),
     };
 
-    const previousTasks = get().tasks;
-    const previousSubtasks = get().taskSubtasks;
-    if (isNew) {
-      set({ tasks: [...get().tasks, newTask] });
-    } else {
-      set({ tasks: get().tasks.map((t) => (t.id === newTask.id ? newTask : t)) });
-    }
-
-    if (isNew && draftSubtasks.length) {
-      set({ taskSubtasks: [...previousSubtasks, ...draftSubtasks.map((item) => ({ ...item, taskId: newTask.id }))] });
+    const draftIds = new Set(draftSubtasks.map((item) => item.id));
+    set({ tasks: [...get().tasks, newTask] });
+    if (draftSubtasks.length) {
+      set({ taskSubtasks: [...get().taskSubtasks, ...draftSubtasks.map((item) => ({ ...item, taskId: newTask.id }))] });
     }
     try {
-      if (isNew && draftSubtasks.length) {
+      if (draftSubtasks.length) {
         await db.saveTaskWithSubtasks(newTask, draftSubtasks);
       } else {
         await db.saveTaskWithRelations(newTask);
       }
-      if (isNew) {
-        logAction('Task Created', `Created task "${newTask.title}"`, 'task');
-        logTaskActivity(newTask.id, [{ field: 'created' }]);
-      } else {
-        logAction('Task Updated', `Updated task "${newTask.title}"`, 'task');
-        if (existingTask) logTaskActivity(newTask.id, diffTaskFields(existingTask, newTask));
-      }
-      notifyTaskSaved(existingTask || null, newTask);
-      return true;
+      logAction('Task Created', `Created task "${newTask.title}"`, 'task');
+      logTaskActivity(newTask.id, [{ field: 'created' }]);
+      notifyTaskSaved(null, newTask);
+      return { status: 'saved', task: newTask };
     } catch (error) {
       console.error(error);
-      set({ tasks: previousTasks, taskSubtasks: previousSubtasks });
+      // Undo only what this save added: realtime may have brought in other
+      // people's changes since, and restoring a snapshot would drop them.
+      set({
+        tasks: get().tasks.filter((t) => t.id !== newTask.id),
+        taskSubtasks: get().taskSubtasks.filter((item) => !draftIds.has(item.id)),
+      });
       toast.error('Failed to save task');
-      return false;
+      return { status: 'failed' };
     }
   },
 

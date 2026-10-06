@@ -46,6 +46,16 @@ describe('login route after signing in', () => {
     expect(screen.getByText('Sign in to your account')).toBeInTheDocument();
   });
 
+  it('keeps the form from signing in while a sign-out is still clearing the old session', async () => {
+    const { useAuthStore } = await import('../stores/authStore');
+    useAuthStore.setState({ session: null, currentUser: null, isLoading: false, isSigningOut: true });
+
+    await renderLogin();
+
+    expect(screen.getByRole('button', { name: 'Signing out…' })).toBeDisabled();
+    useAuthStore.setState({ isSigningOut: false });
+  });
+
   it('shows the loading screen while the profile loads, instead of the finished form', async () => {
     const { useAuthStore } = await import('../stores/authStore');
     useAuthStore.setState({ session: { user: { id: 'auth-1' } } as never, isLoading: true, isReconnecting: true });

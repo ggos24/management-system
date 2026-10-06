@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Session } from '@supabase/supabase-js';
 import { Member } from '../types';
-import { signOutOnThisDevice, supabase } from '../lib/supabase';
+import { signOutMustWaitForRefresh, signOutOnThisDevice, supabase } from '../lib/supabase';
 import * as db from '../lib/database';
 import { useDataStore, type DataLoadResult } from './dataStore';
 import { useUiStore } from './uiStore';
@@ -80,6 +80,9 @@ interface AuthState {
   // The stored session could not be confirmed because the network or auth server
   // is unreachable; useAuth keeps retrying while the loading screen says so.
   isReconnecting: boolean;
+  // A sign-out has left the app but auth-js is still clearing the session; the
+  // login form waits for it, so a new sign-in cannot be undone by the old one.
+  isSigningOut: boolean;
   profileError: string | null;
   needsPasswordSetup: boolean;
   telegramGate: TelegramGateState | null;
@@ -103,6 +106,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   currentUser: null,
   isLoading: true,
   isReconnecting: false,
+  isSigningOut: false,
   profileError: null,
   needsPasswordSetup: (() => {
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -221,10 +225,16 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 
   logout: async () => {
+    if (get().isSigningOut) return;
+    set({ isSigningOut: true });
+    // Leave the app at once. The auth-js work below can take a while (it may
+    // have to wait for a refresh already in flight), and the login form shows
+    // "Signing out…" until it is done.
+    get().clearSessionState();
     try {
-      // Offline there is no server to tell, and trying first would only add the
-      // ~25s auth-js spends retrying the token refresh before it gives up.
-      if (navigator.onLine === false) {
+      // Offline, or while token refreshes fail, telling the server first would
+      // only add the ~25s auth-js spends retrying the refresh before giving up.
+      if (navigator.onLine === false || signOutMustWaitForRefresh()) {
         await signOutOnThisDevice();
       } else {
         const { error } = await supabase.auth.signOut();
@@ -239,7 +249,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       console.error(error);
       await signOutOnThisDevice();
     } finally {
-      get().clearSessionState();
+      set({ isSigningOut: false });
     }
   },
 }));

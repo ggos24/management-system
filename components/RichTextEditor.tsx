@@ -1,11 +1,11 @@
 import React, { useRef, useEffect, useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import DOMPurify from 'dompurify';
 import { Bold, Italic, List, ListOrdered, CheckSquare, Link as LinkIcon, Strikethrough } from 'lucide-react';
 import { Avatar } from './Avatar';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
 import { DESCRIPTION_MENTION_ATTR, getDescriptionMentionLabel, withMentionLabels } from '../lib/mentions';
-import { CHECKED_ATTR, CHECKLIST_ATTR, flattenChecklists, subtaskKey, upgradeLegacyChecklists } from '../lib/subtasks';
+import { CHECKED_ATTR, CHECKLIST_ATTR, subtaskKey } from '../lib/subtasks';
+import { sanitizeRichTextHtml } from '../lib/richText';
 
 /** A person the "@" picker can offer. */
 export interface MentionCandidate {
@@ -28,91 +28,11 @@ interface RichTextEditorProps {
   onChecklistToggle?: (index: number, key: string) => boolean;
 }
 
-const ALLOWED_TAGS = [
-  'a',
-  'b',
-  'strong',
-  'i',
-  'em',
-  'u',
-  's',
-  'strike',
-  'del',
-  'code',
-  'pre',
-  'p',
-  'br',
-  'div',
-  'span',
-  'h1',
-  'h2',
-  'h3',
-  'h4',
-  'h5',
-  'h6',
-  'ul',
-  'ol',
-  'li',
-  'blockquote',
-];
-
-const ALLOWED_ATTR = ['href', 'target', 'rel', 'style'];
-
 /** Block types that own their own line and must never be turned into a checklist row. */
 const NON_ROW_HOSTS = /^(?:UL|OL|LI|H1|H2|H3|H4|H5|H6)$/;
 
-// text-decoration is included because `data-checked` is the only representation of "done": a
-// pasted line-through would otherwise strike a row permanently, with no way to clear it.
-const STRIP_STYLE_PROPS =
-  /(?:^|;)\s*(?:color|background-color|background|font-family|font-size|letter-spacing|text-decoration|text-decoration-line)\s*:[^;]*/gi;
-
-/**
- * Drop the palette and type stack from inline styles, keeping the rest. Pasted markup drags
- * the source's along, and `insertHTML` stamps the caret's own computed values onto whatever
- * it inserts on the paste path — both belong to the editor, not to the content.
- */
-function stripAuthoredStyles(root: ParentNode): void {
-  for (const el of Array.from(root.querySelectorAll('[style]'))) {
-    const cleaned = (el.getAttribute('style') || '')
-      .replace(STRIP_STYLE_PROPS, '')
-      .replace(/^\s*;+\s*/, '')
-      .trim();
-    if (cleaned) el.setAttribute('style', cleaned);
-    else el.removeAttribute('style');
-  }
-}
-
-/**
- * Used on paste *and* on load: stored HTML is only as trustworthy as whatever wrote it,
- * and `innerHTML` assignment still fires inline handlers like `<img onerror>`.
- * `data-*` attributes survive DOMPurify by default, which is what carries checklist state.
- */
-function sanitizeHtml(html: string): string {
-  const clean = DOMPurify.sanitize(upgradeLegacyChecklists(html), { ALLOWED_TAGS, ALLOWED_ATTR });
-  const doc = new DOMParser().parseFromString(clean, 'text/html');
-
-  stripAuthoredStyles(doc.body);
-
-  for (const anchor of Array.from(doc.body.querySelectorAll('a[href]'))) {
-    anchor.setAttribute('target', '_blank');
-    anchor.setAttribute('rel', 'noopener noreferrer');
-  }
-
-  flattenChecklists(doc.body);
-
-  // Anything that is not exactly "true" reads as unchecked, so a hand-edited or
-  // foreign value can never render as a half-state.
-  for (const row of Array.from(doc.body.querySelectorAll<HTMLElement>(`[${CHECKLIST_ATTR}]`))) {
-    row.setAttribute(CHECKED_ATTR, row.getAttribute(CHECKED_ATTR) === 'true' ? 'true' : 'false');
-  }
-
-  return doc.body.innerHTML;
-}
-
 /** Sanitize stored rich text for non-editable renderers. */
-export function sanitizeRichTextHtml(html: string): string {
-  return sanitizeHtml(html);
-}
+export { sanitizeRichTextHtml };
 
 /** Formatting under the caret, mirrored onto the toolbar so toggles read as on/off. */
 interface ToolbarState {
@@ -233,7 +153,13 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   onChecklistToggle,
 }) => {
   const editorRef = useRef<HTMLDivElement>(null);
-  const isInternalChange = useRef(false);
+  // The HTML this editor last reported through onChange. A `value` equal to it is
+  // our own edit coming back, already on screen; anything else came from outside
+  // (another task opened, a colleague's change merged in) and must be shown. A
+  // boolean "internal change" flag used to sit here, and it stuck whenever the
+  // parent did not re-render with the emitted value, silently dropping the next
+  // outside value — with live merging that would mean typing over stale text.
+  const lastEmittedRef = useRef<string | null>(null);
   const [toolbarState, setToolbarState] = useState<ToolbarState>(EMPTY_TOOLBAR_STATE);
   // The picker is anchored to the "@" itself rather than to the editor box: in a description
   // several paragraphs long, a dropdown pinned to the frame can land nowhere near the caret.
@@ -252,11 +178,8 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
   }, [mentionMembers]);
 
   useEffect(() => {
-    if (!editorRef.current || isInternalChange.current) {
-      isInternalChange.current = false;
-      return;
-    }
-    const safe = value ? sanitizeHtml(withMentionLabels(value, mentionMembersRef.current ?? [])) : '';
+    if (!editorRef.current || value === lastEmittedRef.current) return;
+    const safe = value ? sanitizeRichTextHtml(withMentionLabels(value, mentionMembersRef.current ?? [])) : '';
     if (editorRef.current.innerHTML !== safe) {
       editorRef.current.innerHTML = safe;
     }
@@ -326,8 +249,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   const handleInput = () => {
     if (editorRef.current) {
-      isInternalChange.current = true;
-      onChange(editorRef.current.innerHTML);
+      const html = editorRef.current.innerHTML;
+      lastEmittedRef.current = html;
+      onChange(html);
     }
   };
 
@@ -519,7 +443,7 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     const rawHtml = e.clipboardData.getData('text/html');
     const text = e.clipboardData.getData('text/plain');
 
-    const sanitized = rawHtml ? sanitizeHtml(rawHtml) : '';
+    const sanitized = rawHtml ? sanitizeRichTextHtml(rawHtml) : '';
     const hasTextContent =
       sanitized.length > 0 && !!new DOMParser().parseFromString(sanitized, 'text/html').body.textContent?.trim();
 

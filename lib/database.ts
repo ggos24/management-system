@@ -326,10 +326,11 @@ export async function setTaskSubtaskCompletion(id: string, completed: boolean): 
 }
 
 /** Fetch one task through RLS for deep links. Returns null when missing or unauthorized. */
-export async function fetchTaskById(taskId: string): Promise<Task | null> {
+export async function fetchTaskById(taskId: string, options?: { includeDeleted?: boolean }): Promise<Task | null> {
+  const taskQuery = supabase.from('tasks').select('*').eq('id', taskId);
   const [{ data: taskRow, error: taskError }, { data: assigneeRows, error: assigneeError }, placementRows] =
     await Promise.all([
-      supabase.from('tasks').select('*').eq('id', taskId).is('deleted_at', null).maybeSingle(),
+      (options?.includeDeleted ? taskQuery : taskQuery.is('deleted_at', null)).maybeSingle(),
       supabase.from('task_assignees').select('member_id, sort_order').eq('task_id', taskId).order('sort_order'),
       fetchAllPaged<any>(() =>
         supabase
@@ -1622,13 +1623,25 @@ export async function updateTaskTeamLinkStatus(taskId: string, teamId: string, s
   return { error };
 }
 
+/** A linked team's current custom field values for one task, read fresh; null when the link is gone. */
+export async function fetchTaskTeamLinkFields(taskId: string, teamId: string): Promise<Record<string, unknown> | null> {
+  const { data, error } = await supabase
+    .from('task_team_links')
+    .select('custom_field_values')
+    .eq('task_id', taskId)
+    .eq('team_id', teamId)
+    .maybeSingle();
+  if (error) throw error;
+  return data ? data.custom_field_values || {} : null;
+}
+
 export async function updateTaskTeamLinkFields(taskId: string, teamId: string, values: Record<string, any>) {
   const { error } = await supabase
     .from('task_team_links')
     .update({ custom_field_values: values })
     .eq('task_id', taskId)
     .eq('team_id', teamId);
-  return { error };
+  if (error) throw error;
 }
 
 export async function updateTaskTeamLinkSortOrder(taskId: string, teamId: string, sortOrder: number) {

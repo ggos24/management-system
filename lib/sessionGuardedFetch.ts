@@ -29,6 +29,12 @@ export class AuthServerUnavailableError extends Error {
 const RATE_LIMIT_PAUSE_MS = 30_000;
 const MAX_RATE_LIMIT_PAUSE_MS = 5 * 60_000;
 
+/** The client's fetch, plus what it has seen of token refreshes. */
+export type SessionGuardedFetch = typeof fetch & {
+  /** True while refreshes are paused after a 429, or when the latest refresh failed. */
+  isTokenRefreshFailing(): boolean;
+};
+
 function rateLimitPauseMs(response: Response): number {
   const retryAfter = response.headers.get('Retry-After');
   if (retryAfter) {
@@ -74,7 +80,7 @@ export function createSessionGuardedFetch(options: {
   supabaseUrl: string;
   anonKey: string;
   hasSession: () => boolean;
-}): typeof fetch {
+}): SessionGuardedFetch {
   // Normalised the way supabase-js normalises them before building request URLs
   // and headers (it parses the URL and Headers trims values), so a stray
   // newline or an upper-case host in the env does not quietly switch this off.
@@ -83,23 +89,34 @@ export function createSessionGuardedFetch(options: {
   const guardedPrefixes = ['rest/v1/', 'storage/v1/', 'functions/v1/'].map((path) => `${base}/${path}`);
   const tokenEndpoint = `${base}/auth/v1/token?`;
   const anonAuthorization = `Bearer ${options.anonKey.trim()}`;
+  // Timed with the monotonic clock, not Date.now(): the device clock is exactly
+  // what a user corrects when the clock-skew banner asks them to, and a wall-clock
+  // deadline would then stretch the pause by however far the clock moved.
   let refreshPausedUntil = 0;
+  let lastRefreshFailed = false;
 
   const isTokenRefresh = (url: string) =>
     url.startsWith(tokenEndpoint) && new URL(url).searchParams.get('grant_type') === 'refresh_token';
 
   const refreshToken: typeof fetch = async (input, init) => {
-    if (Date.now() < refreshPausedUntil) throw new AuthServerUnavailableError(429);
-    const response = await globalThis.fetch(input, init);
+    if (performance.now() < refreshPausedUntil) throw new AuthServerUnavailableError(429);
+    let response: Response;
+    try {
+      response = await globalThis.fetch(input, init);
+    } catch (error) {
+      lastRefreshFailed = true;
+      throw error;
+    }
+    lastRefreshFailed = response.status === 408 || response.status === 429 || response.status >= 500;
     if (response.status === 429) {
-      refreshPausedUntil = Date.now() + rateLimitPauseMs(response);
+      refreshPausedUntil = performance.now() + rateLimitPauseMs(response);
       throw new AuthServerUnavailableError(429);
     }
-    if (response.status === 408 || response.status >= 500) throw new AuthServerUnavailableError(response.status);
+    if (lastRefreshFailed) throw new AuthServerUnavailableError(response.status);
     return response;
   };
 
-  return (input, init) => {
+  const guardedFetch: typeof fetch = (input, init) => {
     const url = input instanceof Request ? input.url : String(input);
     if (isTokenRefresh(url)) return refreshToken(input, init);
     if (options.hasSession() && guardedPrefixes.some((prefix) => url.startsWith(prefix))) {
@@ -110,4 +127,8 @@ export function createSessionGuardedFetch(options: {
     }
     return globalThis.fetch(input, init);
   };
+
+  return Object.assign(guardedFetch, {
+    isTokenRefreshFailing: () => lastRefreshFailed || performance.now() < refreshPausedUntil,
+  });
 }
