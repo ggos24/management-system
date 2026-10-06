@@ -786,6 +786,43 @@ export interface DataLoadResult {
   complete: boolean;
 }
 
+/** Every data slice at its signed-out value, as fresh objects on each call. */
+function emptyData() {
+  return {
+    tasks: [],
+    taskSubtasks: [],
+    tickets: [],
+    equipmentItems: [],
+    equipmentCheckouts: [],
+    equipmentVerifications: [],
+    accreditations: [],
+    subscriptions: [],
+    teams: [],
+    members: [],
+    absences: [],
+    shifts: [],
+    logs: [],
+    teamStatuses: {},
+    teamTypes: {},
+    teamProperties: {},
+    permissions: {},
+    allPlacements: [],
+    teamPlacements: {},
+    integrations: {},
+    taskTeamLinks: [],
+    deletedTasks: [],
+    deletedTaskCount: 0,
+    sidebarTeamOrders: {},
+    scheduleTeamOrders: {},
+    teamHiddenColumns: {},
+    teamPersonFieldConfig: {},
+    notificationPreferences: [],
+    taskAccessContexts: [],
+  } satisfies Partial<DataState>;
+}
+
+type DataSlices = Pick<DataState, keyof ReturnType<typeof emptyData>>;
+
 export const useDataStore = create<DataState>((set, get) => ({
   tasks: [],
   taskSubtasks: [],
@@ -920,38 +957,7 @@ export const useDataStore = create<DataState>((set, get) => ({
   setTeamHiddenColumns: (hidden) => set({ teamHiddenColumns: hidden }),
   setTeamPersonFieldConfig: (cfg) => set({ teamPersonFieldConfig: cfg }),
   setTaskAccessContexts: (contexts) => set({ taskAccessContexts: contexts }),
-  resetData: () =>
-    set({
-      tasks: [],
-      taskSubtasks: [],
-      tickets: [],
-      equipmentItems: [],
-      equipmentCheckouts: [],
-      equipmentVerifications: [],
-      accreditations: [],
-      subscriptions: [],
-      teams: [],
-      members: [],
-      absences: [],
-      shifts: [],
-      logs: [],
-      teamStatuses: {},
-      teamTypes: {},
-      teamProperties: {},
-      permissions: {},
-      allPlacements: [],
-      teamPlacements: {},
-      integrations: {},
-      taskTeamLinks: [],
-      deletedTasks: [],
-      deletedTaskCount: 0,
-      sidebarTeamOrders: {},
-      scheduleTeamOrders: {},
-      teamHiddenColumns: {},
-      teamPersonFieldConfig: {},
-      notificationPreferences: [],
-      taskAccessContexts: [],
-    }),
+  resetData: () => set(emptyData()),
 
   setPersonFieldConfig: (teamId, fieldKey, patch) => {
     const prev = get().teamPersonFieldConfig;
@@ -2833,7 +2839,16 @@ export const useDataStore = create<DataState>((set, get) => ({
     // still empty, so keeping it is the same as falling back to empty. The store
     // is read only now, after the awaits, so optimistic updates made while the
     // bundle loaded are what gets kept.
-    const current = get();
+    //
+    // Only data loaded for this same user with the same role and scope is kept:
+    // after a demotion, the previous slices may hold rows the new role cannot
+    // see (an admin's view of everyone's tickets), so those fall back to empty.
+    const previousUser = useAuthStore.getState().currentUser;
+    const sameAccess =
+      previousUser?.id === profileResult.id &&
+      previousUser.role === profileResult.role &&
+      previousUser.accessScope === profileResult.accessScope;
+    const current: DataSlices = sameAccess ? get() : emptyData();
     const keep = <T>(result: PromiseSettledResult<T>, previous: T): T =>
       result.status === 'fulfilled' ? result.value : previous;
 

@@ -11,6 +11,15 @@ import { useUiStore } from './uiStore';
 let initPromise: Promise<void> | null = null;
 let initUserId: string | null = null;
 let authEpoch = 0;
+// Wakes initData retry sleeps whose load a new epoch has superseded, so the
+// next load (which awaits the previous one) does not wait out their delay.
+const retrySleepers = new Set<() => void>();
+
+function nextAuthEpoch(): number {
+  authEpoch += 1;
+  for (const wake of [...retrySleepers]) wake();
+  return authEpoch;
+}
 
 // Retrying a first load whose profile request failed (typically a network blip
 // right after the session was confirmed): 2s, 4s, 8s, 16s — about half a minute
@@ -24,10 +33,12 @@ function waitBeforeRetry(ms: number): Promise<void> {
     const done = () => {
       clearTimeout(timer);
       window.removeEventListener('online', done);
+      retrySleepers.delete(done);
       resolve();
     };
     const timer = setTimeout(done, ms);
     window.addEventListener('online', done);
+    retrySleepers.add(done);
   });
 }
 
@@ -81,7 +92,8 @@ interface AuthState {
   setNeedsPasswordSetup: (needs: boolean) => void;
   setTelegramGate: (gate: TelegramGateState | null) => void;
   initData: (authUserId: string) => Promise<void>;
-  reloadData: () => Promise<void>;
+  /** Resolves true once fresh data is committed, false when superseded or signed out. */
+  reloadData: () => Promise<boolean>;
   clearSessionState: () => void;
   logout: () => Promise<void>;
 }
@@ -112,7 +124,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (initPromise && initUserId === authUserId) return initPromise;
 
     const previousInit = initPromise;
-    const generation = ++authEpoch;
+    const generation = nextAuthEpoch();
     initUserId = authUserId;
     const shouldCommit = () => isAuthLoadCurrent(generation, authUserId);
     const nextInit = (async () => {
@@ -170,24 +182,28 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   reloadData: async () => {
     const authUserId = get().session?.user.id;
-    if (!authUserId) return;
-    const generation = ++authEpoch;
+    if (!authUserId) return false;
+    const generation = nextAuthEpoch();
     const shouldCommit = () => isAuthLoadCurrent(generation, authUserId);
     const previousScope = get().currentUser?.accessScope;
     const { profile, complete } = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
     // Superseded by a newer reload or a sign-out: that one owns the outcome.
-    if (!shouldCommit()) return;
+    if (!shouldCommit()) return false;
     if (!profile) throw new DataReloadError('profile');
     if (previousScope && previousScope !== profile.accessScope) {
       useUiStore.getState().resetSessionUi();
     }
-    set({ currentUser: profile, profileError: null });
+    // This reload may have superseded a first load still retrying (its epoch is
+    // now stale, so it will never release the loading screen); the profile and
+    // data committed here are a complete substitute for it.
+    set({ currentUser: profile, profileError: null, isLoading: false, isReconnecting: false });
     await useUiStore.getState().loadNotifications(shouldCommit);
     if (!complete) throw new DataReloadError('partial');
+    return true;
   },
 
   clearSessionState: () => {
-    authEpoch++;
+    nextAuthEpoch();
     initUserId = null;
     useDataStore.getState().resetData();
     useUiStore.getState().resetSessionUi();

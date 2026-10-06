@@ -1,5 +1,12 @@
 import { act, cleanup, renderHook } from '@testing-library/react';
-import { AuthApiError, AuthRetryableFetchError, type AuthChangeEvent, type Session } from '@supabase/supabase-js';
+import {
+  AuthApiError,
+  AuthRetryableFetchError,
+  FunctionsFetchError,
+  FunctionsHttpError,
+  type AuthChangeEvent,
+  type Session,
+} from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
@@ -240,6 +247,53 @@ describe('session check on app start', () => {
     expect(redirect).not.toHaveBeenCalled();
     expect(initData).toHaveBeenCalledWith('auth-1');
     expect(useAuthStore.getState()).toMatchObject({ session, isLoading: true });
+  });
+
+  it('retries a Telegram cold open whose initData exchange could not reach the server', async () => {
+    telegram.webview = true;
+    const { getSession } = mockAuth();
+    // No session until an exchange succeeds: two checks on the failed open, one on the retry.
+    getSession
+      .mockReset()
+      .mockResolvedValueOnce(noSession)
+      .mockResolvedValueOnce(noSession)
+      .mockResolvedValueOnce(noSession)
+      .mockResolvedValue(signedIn);
+    const invoke = vi
+      .spyOn(Object.getPrototypeOf(supabase.functions), 'invoke')
+      .mockResolvedValueOnce({ data: null, error: new FunctionsFetchError(new TypeError('Failed to fetch')) } as never)
+      .mockResolvedValue({
+        data: { status: 'ok', session: { access_token: 'fresh', refresh_token: 'fresh-refresh' } },
+        error: null,
+      } as never);
+    vi.spyOn(supabase.auth, 'setSession').mockResolvedValue(signedIn as never);
+    const { redirect, unsubscribe } = watchLoginRedirects();
+
+    renderHook(() => useAuth());
+    await settle();
+    expect(useAuthStore.getState().isReconnecting).toBe(true);
+    await act(() => vi.advanceTimersByTimeAsync(2_000));
+    unsubscribe();
+
+    expect(invoke).toHaveBeenCalledTimes(2);
+    expect(redirect).not.toHaveBeenCalled();
+    expect(initData).toHaveBeenCalledWith('auth-1');
+  });
+
+  it('does not retry a Telegram exchange the function rejected', async () => {
+    telegram.webview = true;
+    const { getSession } = mockAuth();
+    getSession.mockReset().mockResolvedValue(noSession);
+    const invoke = vi
+      .spyOn(Object.getPrototypeOf(supabase.functions), 'invoke')
+      .mockResolvedValue({ data: null, error: new FunctionsHttpError(new Response('{}', { status: 401 })) } as never);
+
+    renderHook(() => useAuth());
+    await settle();
+    await act(() => vi.advanceTimersByTimeAsync(60_000));
+
+    expect(invoke).toHaveBeenCalledTimes(1);
+    expect(useAuthStore.getState()).toMatchObject({ session: null, isLoading: false, isReconnecting: false });
   });
 
   it('stops retrying when the guard unmounts', async () => {

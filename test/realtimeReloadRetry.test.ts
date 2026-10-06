@@ -1,9 +1,10 @@
-import { renderHook } from '@testing-library/react';
+import { act, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Member } from '../types';
 import { supabase } from '../lib/supabase';
 import { DataReloadError, useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
+import { useUiStore } from '../stores/uiStore';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 
 const member = (accessScope: Member['accessScope']): Member => ({
@@ -53,10 +54,10 @@ describe('realtime reconnect reload', () => {
   it('retries a reload that did not complete, keeping the board in the meantime', async () => {
     const onStatus = fakeRealtime();
     const reloadData = vi
-      .fn<() => Promise<void>>()
+      .fn<() => Promise<boolean>>()
       .mockRejectedValueOnce(new DataReloadError('partial'))
       .mockRejectedValueOnce(new TypeError('Failed to fetch'))
-      .mockResolvedValue(undefined);
+      .mockResolvedValue(true);
     useAuthStore.setState({
       session: { user: { id: 'auth-1' } } as never,
       currentUser: member('full'),
@@ -91,9 +92,9 @@ describe('realtime reconnect reload', () => {
   it('still clears a related-only bundle whose access could not be verified, then retries', async () => {
     const onStatus = fakeRealtime();
     const reloadData = vi
-      .fn<() => Promise<void>>()
+      .fn<() => Promise<boolean>>()
       .mockRejectedValueOnce(new DataReloadError('profile'))
-      .mockResolvedValue(undefined);
+      .mockResolvedValue(true);
     useAuthStore.setState({
       session: { user: { id: 'auth-1' } } as never,
       currentUser: member('related_only'),
@@ -114,9 +115,9 @@ describe('realtime reconnect reload', () => {
   it('keeps a related-only bundle that reloaded under current access but missed a slice', async () => {
     const onStatus = fakeRealtime();
     const reloadData = vi
-      .fn<() => Promise<void>>()
+      .fn<() => Promise<boolean>>()
       .mockRejectedValueOnce(new DataReloadError('partial'))
-      .mockResolvedValue(undefined);
+      .mockResolvedValue(true);
     useAuthStore.setState({
       session: { user: { id: 'auth-1' } } as never,
       currentUser: member('related_only'),
@@ -131,6 +132,83 @@ describe('realtime reconnect reload', () => {
     expect(useDataStore.getState().tasks).toHaveLength(1);
     await vi.advanceTimersByTimeAsync(2_300);
     expect(reloadData).toHaveBeenCalledTimes(2);
+    unmount();
+  });
+
+  it('does not let a superseded reload cancel the retry of the reload that replaced it', async () => {
+    const onStatus = fakeRealtime();
+    let finishFirst!: (committed: boolean) => void;
+    const reloadData = vi
+      .fn<() => Promise<boolean>>()
+      .mockImplementationOnce(() => new Promise((resolve) => (finishFirst = resolve)))
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValue(true);
+    useAuthStore.setState({
+      session: { user: { id: 'auth-1' } } as never,
+      currentUser: member('full'),
+      reloadData,
+    });
+
+    const { unmount } = renderHook(() => useRealtimeSync());
+    onStatus['task-access-profile-1']('SUBSCRIBED');
+    await vi.advanceTimersByTimeAsync(300);
+    // A second reconnect starts a newer reload, which fails and schedules a retry…
+    onStatus['task-access-profile-1']('SUBSCRIBED');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(reloadData).toHaveBeenCalledTimes(2);
+    // …and the first, superseded one finishes afterwards.
+    finishFirst(false);
+    await vi.advanceTimersByTimeAsync(0);
+
+    await vi.advanceTimersByTimeAsync(2_300);
+    expect(reloadData).toHaveBeenCalledTimes(3);
+    unmount();
+  });
+
+  it('closes a task whose access was revoked even when the reload was partial', async () => {
+    const onStatus = fakeRealtime();
+    useAuthStore.setState({
+      session: { user: { id: 'auth-1' } } as never,
+      currentUser: member('related_only'),
+      // The reload commits a bundle without task-1, but another slice failed.
+      reloadData: vi.fn<() => Promise<boolean>>().mockImplementationOnce(async () => {
+        useDataStore.setState({ tasks: [], taskAccessContexts: [] });
+        throw new DataReloadError('partial');
+      }),
+    });
+    useDataStore.setState({
+      tasks: [{ id: 'task-1' } as never],
+      taskAccessContexts: [{ taskId: 'task-1', contextTeamId: 'team-1' }],
+    });
+    useUiStore.setState({ isTaskModalOpen: true, taskModalData: { id: 'task-1', teamId: 'team-1' } });
+
+    const { unmount } = renderHook(() => useRealtimeSync());
+    onStatus['task-access-profile-1']('SUBSCRIBED');
+    await vi.advanceTimersByTimeAsync(300);
+
+    expect(useUiStore.getState().isTaskModalOpen).toBe(false);
+    unmount();
+  });
+
+  it('drops a pending retry when the signed-in account changes', async () => {
+    const onStatus = fakeRealtime();
+    const reloadData = vi.fn<() => Promise<boolean>>().mockRejectedValue(new TypeError('Failed to fetch'));
+    useAuthStore.setState({
+      session: { user: { id: 'auth-1' } } as never,
+      currentUser: member('full'),
+      reloadData,
+    });
+
+    const { unmount } = renderHook(() => useRealtimeSync());
+    onStatus['task-access-profile-1']('SUBSCRIBED');
+    await vi.advanceTimersByTimeAsync(300);
+    expect(reloadData).toHaveBeenCalledTimes(1);
+
+    // Signed out (or switched account) before the retry fires.
+    act(() => useAuthStore.setState({ session: null, currentUser: null }));
+    await vi.advanceTimersByTimeAsync(60_000);
+
+    expect(reloadData).toHaveBeenCalledTimes(1);
     unmount();
   });
 });

@@ -1,5 +1,11 @@
 import { useEffect } from 'react';
-import { isAuthRetryableFetchError, type Session } from '@supabase/supabase-js';
+import {
+  FunctionsFetchError,
+  FunctionsHttpError,
+  FunctionsRelayError,
+  isAuthRetryableFetchError,
+  type Session,
+} from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 import { useUiStore } from '../stores/uiStore';
@@ -18,10 +24,14 @@ import { initTelegramChrome, isTelegramWebview, readInitData } from '../lib/tele
  * stays open, so a crew scanning for twenty minutes is holding a stale payload
  * by design — the minted session then lives on the normal refresh cycle, and a
  * re-exchange only ever happens on the next open. Never wire this to a 401.
+ *
+ * Resolves 'unreachable' when equipment-auth (or the auth server behind
+ * setSession) could not be reached, so boot can try again rather than conclude
+ * the user is signed out — which here means the /login dead end above.
  */
-async function exchangeTelegramSession(): Promise<void> {
+async function exchangeTelegramSession(): Promise<'done' | 'unreachable'> {
   const initData = readInitData();
-  if (!initData) return;
+  if (!initData) return 'done';
 
   void initTelegramChrome();
 
@@ -29,21 +39,39 @@ async function exchangeTelegramSession(): Promise<void> {
     const { data, error } = await supabase.functions.invoke('equipment-auth', { body: { initData } });
     if (error) {
       console.error('equipment-auth invoke failed', error);
-      return;
+      return isUnreachableFunctionError(error) ? 'unreachable' : 'done';
     }
     if (data?.status === 'ok' && data.session?.access_token) {
-      await supabase.auth.setSession({
+      const { error: sessionError } = await supabase.auth.setSession({
         access_token: data.session.access_token,
         refresh_token: data.session.refresh_token,
       });
-      return;
+      if (sessionError) console.error('equipment-auth session could not be stored', sessionError);
+      return sessionError && isAuthRetryableFetchError(sessionError) ? 'unreachable' : 'done';
     }
     if (data?.status === 'not_linked' || data?.status === 'no_access') {
       useAuthStore.getState().setTelegramGate(data.status);
     }
+    return 'done';
   } catch (error) {
+    // Unexpected, so it says nothing about whether the user can sign in.
     console.error('equipment-auth exchange failed', error);
+    return 'unreachable';
   }
+}
+
+/**
+ * The same line auth-js draws for its own requests: no response at all, or a
+ * gateway that could not get one (502/503/504), is worth retrying. Anything the
+ * function itself answered — a rejected initData, a misconfiguration — is not.
+ */
+function isUnreachableFunctionError(error: unknown): boolean {
+  if (error instanceof FunctionsFetchError || error instanceof FunctionsRelayError) return true;
+  if (error instanceof FunctionsHttpError) {
+    const status = (error.context as Response | undefined)?.status;
+    return status === 502 || status === 503 || status === 504;
+  }
+  return false;
 }
 
 // Backoff for re-checking a stored session whose refresh failed on the network:
@@ -104,13 +132,14 @@ export function useAuth() {
     };
 
     const boot = async () => {
+      let exchange: 'done' | 'unreachable' = 'done';
       if (isTelegramWebview()) {
         const { data } = await supabase.auth.getSession();
         // A session already in webview storage is reused; only a cold open pays
         // for the exchange.
-        if (!data.session) await exchangeTelegramSession();
+        if (!data.session) exchange = await exchangeTelegramSession();
       }
-      return supabase.auth.getSession();
+      return { ...(await supabase.auth.getSession()), exchangeUnreachable: exchange === 'unreachable' };
     };
 
     // The stored session could not be confirmed, but nothing says it is invalid —
@@ -136,9 +165,13 @@ export function useAuth() {
     const runBoot = () => {
       bootInFlight = true;
       boot().then(
-        ({ data: { session: current }, error }) => {
+        ({ data: { session: current }, error, exchangeUnreachable }) => {
           bootInFlight = false;
           if (disposed) return;
+          if (!error && !current && exchangeUnreachable) {
+            waitForNetwork(new Error('equipment-auth could not be reached'));
+            return;
+          }
           if (!error) {
             applySession(current);
             return;

@@ -129,4 +129,23 @@ describe('first data load', () => {
     expect(loadAllData).toHaveBeenCalledTimes(1);
     expect(useAuthStore.getState()).toMatchObject({ session: null, currentUser: null, profileError: null });
   });
+
+  it('does not make the next sign-in wait out a superseded retry delay', async () => {
+    mockLoads(networkError());
+
+    void useAuthStore.getState().initData('auth-1');
+    await vi.advanceTimersByTimeAsync(0);
+    // Signed out mid-retry, then straight back in.
+    useAuthStore.getState().clearSessionState();
+    useAuthStore.setState({ session: { user: { id: 'auth-1' } } as never, isLoading: true });
+    let settled = false;
+    void useAuthStore
+      .getState()
+      .initData('auth-1')
+      .then(() => (settled = true));
+    await vi.advanceTimersByTimeAsync(0);
+
+    expect(settled).toBe(true);
+    expect(useAuthStore.getState().currentUser).toEqual(profile);
+  });
 });

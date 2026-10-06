@@ -105,7 +105,7 @@ describe('session data reload', () => {
   it('replaces the board with what the server returned when every fetch succeeds', async () => {
     mockHealthyBundle({ tasks: [task('task-3')], teams: [team('team-1'), team('team-2')] });
 
-    await expect(useAuthStore.getState().reloadData()).resolves.toBeUndefined();
+    await expect(useAuthStore.getState().reloadData()).resolves.toBe(true);
 
     const state = useDataStore.getState();
     expect(state.tasks.map((t) => t.id)).toEqual(['task-3']);
@@ -143,8 +143,31 @@ describe('session data reload', () => {
     await second;
     releaseFirstProfile();
 
-    await expect(first).resolves.toBeUndefined();
+    await expect(first).resolves.toBe(false);
     expect(useDataStore.getState().tasks.map((t) => t.id)).toEqual(['task-3']);
+  });
+
+  it('does not keep slices loaded under a role the user no longer has', async () => {
+    useAuthStore.setState({ currentUser: { ...profile, role: 'admin' } });
+    useDataStore.setState({ tickets: [{ id: 'someone-elses-ticket' } as never] });
+    mockHealthyBundle({ tasks: [], teams: [team('team-1')] });
+    vi.spyOn(db, 'fetchTickets').mockRejectedValue(networkError());
+    vi.spyOn(db, 'fetchTasks').mockRejectedValue(networkError());
+
+    await expect(useAuthStore.getState().reloadData()).rejects.toMatchObject({ reason: 'partial' });
+
+    expect(useDataStore.getState().tickets).toEqual([]);
+    expect(useDataStore.getState().tasks).toEqual([]);
+    expect(useAuthStore.getState().currentUser?.role).toBe('editor');
+  });
+
+  it('releases the loading screen when it commits the profile', async () => {
+    useAuthStore.setState({ isLoading: true, isReconnecting: true });
+    mockHealthyBundle({ tasks: [task('task-1')], teams: [team('team-1')] });
+
+    await useAuthStore.getState().reloadData();
+
+    expect(useAuthStore.getState()).toMatchObject({ isLoading: false, isReconnecting: false });
   });
 
   it('falls back to empty slices on the first load, when there is nothing to keep', async () => {

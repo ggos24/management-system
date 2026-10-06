@@ -150,38 +150,48 @@ export function useRealtimeSync() {
     const openTaskId = uiState.taskModalData.id;
     const openContextTeamId = uiState.taskModalData.viewingTeamId || uiState.taskModalData.teamId;
     const authUserId = useAuthStore.getState().session?.user.id;
+    // Close the task modal if the reloaded data no longer grants the open task.
+    const closeTaskIfAccessLost = () => {
+      if (!authUserId || useAuthStore.getState().session?.user.id !== authUserId || !wasTaskOpen || !openTaskId) return;
+      const dataState = useDataStore.getState();
+      const currentUser = useAuthStore.getState().currentUser;
+      const taskStillVisible = dataState.tasks.some((task) => task.id === openTaskId);
+      const contextStillVisible =
+        currentUser?.accessScope !== 'related_only' ||
+        (!openContextTeamId
+          ? dataState.taskAccessContexts.some((context) => context.taskId === openTaskId)
+          : dataState.taskAccessContexts.some(
+              (context) => context.taskId === openTaskId && context.contextTeamId === openContextTeamId,
+            ));
+      if (!taskStillVisible || !contextStillVisible) {
+        useUiStore.setState({ isTaskModalOpen: false, taskModalData: {} });
+        toast.info('Access to this task was removed');
+      }
+    };
     useAuthStore
       .getState()
       .reloadData()
-      .then(() => {
+      .then((committed) => {
+        // Superseded by a newer reload (or a sign-out): that one owns the retry
+        // schedule and the outcome, so leave both alone.
+        if (!committed) return;
         clearTimeout(reloadRetryTimerRef.current);
         reloadRetryAttemptRef.current = 0;
         toast.dismiss('task-access-retry');
-        if (!authUserId || useAuthStore.getState().session?.user.id !== authUserId || !wasTaskOpen || !openTaskId)
-          return;
-        const dataState = useDataStore.getState();
-        const currentUser = useAuthStore.getState().currentUser;
-        const taskStillVisible = dataState.tasks.some((task) => task.id === openTaskId);
-        const contextStillVisible =
-          currentUser?.accessScope !== 'related_only' ||
-          (!openContextTeamId
-            ? dataState.taskAccessContexts.some((context) => context.taskId === openTaskId)
-            : dataState.taskAccessContexts.some(
-                (context) => context.taskId === openTaskId && context.contextTeamId === openContextTeamId,
-              ));
-        if (!taskStillVisible || !contextStillVisible) {
-          useUiStore.setState({ isTaskModalOpen: false, taskModalData: {} });
-          toast.info('Access to this task was removed');
-        }
+        closeTaskIfAccessLost();
       })
       .catch((error) => {
         console.error(error);
         if (!authUserId || useAuthStore.getState().session?.user.id !== authUserId) return;
         const currentUser = useAuthStore.getState().currentUser;
-        // A partial reload already confirmed the profile and loaded the restricted
+        // A partial reload already confirmed the profile and committed the
         // bundle under current RLS; any other failure left task access unverified.
-        const accessVerified = error instanceof DataReloadError && error.reason === 'partial';
-        if (currentUser?.accessScope === 'related_only' && !accessVerified) {
+        const partial = error instanceof DataReloadError && error.reason === 'partial';
+        if (partial) {
+          // The committed data is current, so the open task is checked against
+          // it exactly as after a complete reload.
+          closeTaskIfAccessLost();
+        } else if (currentUser?.accessScope === 'related_only') {
           // Access may have been revoked while disconnected. A failed ACL
           // reconciliation must not leave the old restricted bundle usable.
           useDataStore.getState().resetData();
@@ -301,6 +311,10 @@ export function useRealtimeSync() {
 
     return () => {
       window.clearInterval(privateAssetRefresh);
+      // A pending reload retry belongs to the account these channels were for;
+      // a sign-out or account switch must not let it fire for the next one.
+      clearTimeout(reloadRetryTimerRef.current);
+      reloadRetryAttemptRef.current = 0;
       supabase.removeChannel(channel);
       if (accessChannel) supabase.removeChannel(accessChannel);
     };
