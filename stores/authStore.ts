@@ -12,6 +12,25 @@ let initPromise: Promise<void> | null = null;
 let initUserId: string | null = null;
 let authEpoch = 0;
 
+// Retrying a first load whose profile request failed (typically a network blip
+// right after the session was confirmed): 2s, 4s, 8s, 16s — about half a minute
+// — before reporting an error. While the browser says it is offline the wait
+// does not count; it ends early as soon as the browser is back online.
+const INIT_RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000];
+const INIT_OFFLINE_RECHECK_MS = 30_000;
+
+function waitBeforeRetry(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const done = () => {
+      clearTimeout(timer);
+      window.removeEventListener('online', done);
+      resolve();
+    };
+    const timer = setTimeout(done, ms);
+    window.addEventListener('online', done);
+  });
+}
+
 export interface AuthSessionSnapshot {
   epoch: number;
   authUserId: string | null;
@@ -101,22 +120,41 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       if (!shouldCommit()) return;
       try {
         set({ profileError: null });
-        // A slice that fails here stays empty; the reload that follows once the
-        // realtime access channel subscribes fills it in.
-        const { profile } = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
+        let profile: Member | null = null;
+        for (let failures = 0; ; ) {
+          try {
+            // A slice that fails here stays empty; the reload that follows once the
+            // realtime access channel subscribes fills it in. Only the profile
+            // lookup throws.
+            ({ profile } = await useDataStore.getState().loadAllData(authUserId, shouldCommit));
+            break;
+          } catch (error) {
+            if (!shouldCommit()) return;
+            const offline = navigator.onLine === false;
+            if (!offline && failures >= INIT_RETRY_DELAYS_MS.length) throw error;
+            console.error('Failed to load the profile, retrying', error);
+            set({ isReconnecting: true });
+            await waitBeforeRetry(offline ? INIT_OFFLINE_RECHECK_MS : INIT_RETRY_DELAYS_MS[failures]);
+            if (!offline) failures += 1;
+            if (!shouldCommit()) return;
+          }
+        }
         if (!shouldCommit()) return;
         if (!profile) {
-          set({ profileError: 'No profile found for this account. Please contact an administrator.' });
+          set({
+            profileError: 'No profile found for this account. Please contact an administrator.',
+            isReconnecting: false,
+          });
           return;
         }
         // Notifications are non-critical. Publish the authenticated profile and
         // release the loading screen before awaiting them, so a realtime reload
         // cannot supersede this epoch and leave the app stuck loading.
-        set({ currentUser: profile, isLoading: false });
+        set({ currentUser: profile, isLoading: false, isReconnecting: false });
         await useUiStore.getState().loadNotifications(shouldCommit);
       } catch {
         if (shouldCommit()) {
-          set({ profileError: 'Failed to load application data. Please try refreshing.' });
+          set({ profileError: 'Failed to load application data. Please try refreshing.', isReconnecting: false });
         }
       } finally {
         if (shouldCommit()) {

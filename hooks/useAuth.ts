@@ -64,13 +64,19 @@ export function useAuth() {
     let disposed = false;
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let retryAttempt = 0;
+    // Whether this hook put the loading screen into "Reconnecting…"; initData
+    // can do the same for its own retries, and that one is not ours to clear.
+    let waiting = false;
 
     const stopRetrying = () => {
       clearTimeout(retryTimer);
       retryTimer = undefined;
       retryAttempt = 0;
       window.removeEventListener('online', retryNow);
-      if (useAuthStore.getState().isReconnecting) useAuthStore.getState().setIsReconnecting(false);
+      if (waiting) {
+        waiting = false;
+        useAuthStore.getState().setIsReconnecting(false);
+      }
     };
 
     const applySession = (next: Session | null) => {
@@ -113,7 +119,10 @@ export function useAuth() {
     // this listener, so the recovered session would never reach the app.
     const waitForNetwork = (reason: unknown) => {
       console.error('Could not confirm the stored session, retrying', reason);
-      if (!useAuthStore.getState().isReconnecting) useAuthStore.getState().setIsReconnecting(true);
+      if (!waiting) {
+        waiting = true;
+        useAuthStore.getState().setIsReconnecting(true);
+      }
       const delay = Math.min(SESSION_RETRY_BASE_MS * 2 ** retryAttempt, SESSION_RETRY_MAX_MS);
       retryAttempt += 1;
       clearTimeout(retryTimer);
