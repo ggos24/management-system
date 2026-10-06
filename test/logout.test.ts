@@ -1,5 +1,6 @@
 import { AuthRetryableFetchError } from '@supabase/supabase-js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as supabaseModule from '../lib/supabase';
 import { AUTH_STORAGE_KEY, supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 
@@ -21,12 +22,58 @@ afterEach(() => {
   vi.restoreAllMocks();
   for (const key of storedKeys) localStorage.removeItem(key);
   useAuthStore.getState().clearSessionState();
+  useAuthStore.setState({ isSigningOut: false });
 });
 
 describe('logout', () => {
-  it('uses the storage key supabase-js itself would use, so existing sessions survive', () => {
+  it('uses the storage key supabase-js itself would use, so existing sessions survive', async () => {
+    const { createClient } = await import('@supabase/supabase-js');
+    // A client left to pick its own key, for whatever URL this run is configured with.
+    const reference = createClient(import.meta.env.VITE_SUPABASE_URL, 'key', {
+      auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    });
+
+    expect(AUTH_STORAGE_KEY).toBe((reference.auth as unknown as { storageKey: string }).storageKey);
     expect((supabase.auth as unknown as { storageKey: string }).storageKey).toBe(AUTH_STORAGE_KEY);
-    expect(AUTH_STORAGE_KEY).toBe('sb-placeholder-auth-token');
+  });
+
+  it('leaves the app at once and keeps the login form waiting until the sign-out is done', async () => {
+    let finish!: () => void;
+    vi.spyOn(supabase.auth, 'signOut').mockImplementation(
+      () => new Promise((resolve) => (finish = () => resolve({ error: null }))),
+    );
+
+    const logout = useAuthStore.getState().logout();
+
+    expect(useAuthStore.getState()).toMatchObject({ session: null, isSigningOut: true });
+    finish();
+    await logout;
+    expect(useAuthStore.getState().isSigningOut).toBe(false);
+  });
+
+  it('ignores a second click while the first sign-out is still running', async () => {
+    let finish!: () => void;
+    const signOut = vi
+      .spyOn(supabase.auth, 'signOut')
+      .mockImplementation(() => new Promise((resolve) => (finish = () => resolve({ error: null }))));
+
+    const first = useAuthStore.getState().logout();
+    await useAuthStore.getState().logout();
+    finish();
+    await first;
+
+    expect(signOut).toHaveBeenCalledTimes(1);
+  });
+
+  it('signs out on this device straight away while token refreshes are failing', async () => {
+    vi.spyOn(supabaseModule, 'signOutMustWaitForRefresh').mockReturnValue(true);
+    const signOut = vi.spyOn(supabase.auth, 'signOut').mockResolvedValue({ error: null });
+
+    await useAuthStore.getState().logout();
+
+    expect(signOut).toHaveBeenCalledTimes(1);
+    expect(signOut).toHaveBeenCalledWith({ scope: 'local' });
+    expect(stillStored()).toEqual([]);
   });
 
   it('signs out on every device when the server is reachable', async () => {
