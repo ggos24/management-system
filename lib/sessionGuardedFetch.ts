@@ -75,10 +75,14 @@ export function createSessionGuardedFetch(options: {
   anonKey: string;
   hasSession: () => boolean;
 }): typeof fetch {
-  const base = options.supabaseUrl.replace(/\/+$/, '');
+  // Normalised the way supabase-js normalises them before building request URLs
+  // and headers (it parses the URL and Headers trims values), so a stray
+  // newline or an upper-case host in the env does not quietly switch this off.
+  const parsed = new URL(options.supabaseUrl.trim());
+  const base = `${parsed.origin}${parsed.pathname.replace(/\/+$/, '')}`;
   const guardedPrefixes = ['rest/v1/', 'storage/v1/', 'functions/v1/'].map((path) => `${base}/${path}`);
   const tokenEndpoint = `${base}/auth/v1/token?`;
-  const anonAuthorization = `Bearer ${options.anonKey}`;
+  const anonAuthorization = `Bearer ${options.anonKey.trim()}`;
   let refreshPausedUntil = 0;
 
   const isTokenRefresh = (url: string) =>

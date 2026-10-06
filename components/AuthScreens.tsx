@@ -1,7 +1,12 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { X } from 'lucide-react';
 import { useAuthStore } from '../stores/authStore';
 import { Button } from './ui';
+
+// How long "Reconnecting…" runs before the user is offered a way out. The wait
+// normally ends on its own once the network is back; this is for the rare
+// server-side failure that never clears, where signing in again is the fix.
+export const SIGN_OUT_OFFER_AFTER_MS = 30_000;
 
 /**
  * Full-screen loader while the session or the profile is being confirmed. Shared
@@ -9,6 +14,20 @@ import { Button } from './ui';
  */
 export const AuthLoadingScreen: React.FC = () => {
   const isReconnecting = useAuthStore((s) => s.isReconnecting);
+  const logout = useAuthStore((s) => s.logout);
+  const [offerSignOut, setOfferSignOut] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
+
+  useEffect(() => {
+    if (!isReconnecting) return;
+    const timer = setTimeout(() => setOfferSignOut(true), SIGN_OUT_OFFER_AFTER_MS);
+    return () => clearTimeout(timer);
+  }, [isReconnecting]);
+
+  const signOut = () => {
+    setSigningOut(true);
+    void logout();
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black">
@@ -19,6 +38,11 @@ export const AuthLoadingScreen: React.FC = () => {
           <p className="mx-auto mt-1 max-w-xs text-xs text-zinc-400 dark:text-zinc-500">
             Waiting for the connection to come back. You are still signed in.
           </p>
+        )}
+        {isReconnecting && offerSignOut && (
+          <Button variant="ghost" className="mt-4" disabled={signingOut} onClick={signOut}>
+            {signingOut ? 'Signing out…' : 'Sign out'}
+          </Button>
         )}
       </div>
     </div>

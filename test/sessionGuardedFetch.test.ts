@@ -71,6 +71,22 @@ describe('session-guarded Supabase fetch', () => {
     expect(realFetch).toHaveBeenCalledTimes(1);
   });
 
+  it('still applies when the env values carry a stray newline or an upper-case host', async () => {
+    const realFetch = vi.fn<typeof fetch>().mockResolvedValue(new Response('[]'));
+    vi.stubGlobal('fetch', realFetch);
+    const guarded = createSessionGuardedFetch({
+      supabaseUrl: 'https://PROJECT.supabase.co/\n',
+      anonKey: `${ANON_KEY}\n`,
+      hasSession: () => true,
+    });
+
+    // What supabase-js actually sends: a parsed URL and a trimmed header.
+    await expect(guarded(`${SUPABASE_URL}/rest/v1/tasks?select=*`, withAuthorization(ANON_KEY))).rejects.toBeInstanceOf(
+      SessionUnavailableError,
+    );
+    expect(realFetch).not.toHaveBeenCalled();
+  });
+
   it('turns the downgraded supabase-js query into an error instead of an empty result', async () => {
     const { createClient } = await import('@supabase/supabase-js');
     const { guarded, realFetch } = guardedFetch(true);

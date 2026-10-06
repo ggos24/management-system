@@ -88,7 +88,7 @@ describe('first data load', () => {
 
   it('waits for the browser to come back online without using up retries', async () => {
     setOnline(false);
-    const loadAllData = mockLoads(networkError(), networkError(), networkError(), networkError(), networkError());
+    const loadAllData = mockLoads(...Array.from({ length: 6 }, networkError));
 
     const init = useAuthStore.getState().initData('auth-1');
     // Five failures while offline, each followed by a long wait.
@@ -96,12 +96,18 @@ describe('first data load', () => {
     expect(loadAllData).toHaveBeenCalledTimes(5);
     expect(useAuthStore.getState()).toMatchObject({ isLoading: true, profileError: null });
 
+    // Back online, and the first request still fails while the network settles:
+    // the full set of retries is still there.
     setOnline(true);
     window.dispatchEvent(new Event('online'));
     await vi.advanceTimersByTimeAsync(0);
+    expect(loadAllData).toHaveBeenCalledTimes(6);
+    expect(useAuthStore.getState()).toMatchObject({ isLoading: true, profileError: null });
+
+    await vi.advanceTimersByTimeAsync(2_000);
     await init;
 
-    expect(loadAllData).toHaveBeenCalledTimes(6);
+    expect(loadAllData).toHaveBeenCalledTimes(7);
     expect(useAuthStore.getState()).toMatchObject({ currentUser: profile, profileError: null });
   });
 

@@ -3,7 +3,7 @@ import type { Session } from '@supabase/supabase-js';
 import { Member } from '../types';
 import { signOutOnThisDevice, supabase } from '../lib/supabase';
 import * as db from '../lib/database';
-import { useDataStore } from './dataStore';
+import { useDataStore, type DataLoadResult } from './dataStore';
 import { useUiStore } from './uiStore';
 
 // Serialise bootstraps so an old account's slower response cannot overwrite a
@@ -186,8 +186,17 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     const generation = nextAuthEpoch();
     const shouldCommit = () => isAuthLoadCurrent(generation, authUserId);
     const previousScope = get().currentUser?.accessScope;
-    const { profile, complete } = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
-    // Superseded by a newer reload or a sign-out: that one owns the outcome.
+    // Superseded by a newer reload or a sign-out (checked after every await
+    // below): that one owns the outcome and the retry schedule, so this one
+    // reports neither a success nor a failure.
+    let result: DataLoadResult;
+    try {
+      result = await useDataStore.getState().loadAllData(authUserId, shouldCommit);
+    } catch (error) {
+      if (!shouldCommit()) return false;
+      throw error;
+    }
+    const { profile, complete } = result;
     if (!shouldCommit()) return false;
     if (!profile) throw new DataReloadError('profile');
     if (previousScope && previousScope !== profile.accessScope) {
@@ -198,6 +207,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     // data committed here are a complete substitute for it.
     set({ currentUser: profile, profileError: null, isLoading: false, isReconnecting: false });
     await useUiStore.getState().loadNotifications(shouldCommit);
+    if (!shouldCommit()) return false;
     if (!complete) throw new DataReloadError('partial');
     return true;
   },
