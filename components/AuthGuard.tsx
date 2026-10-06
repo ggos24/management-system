@@ -5,6 +5,7 @@ import LoginPage from './LoginPage';
 import { useAuth } from '../hooks/useAuth';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useAuthStore } from '../stores/authStore';
+import { Button } from './ui';
 
 export const AuthGuard: React.FC = () => {
   const { session } = useAuth();
@@ -14,6 +15,7 @@ export const AuthGuard: React.FC = () => {
   const {
     currentUser,
     isLoading,
+    isReconnecting,
     profileError,
     needsPasswordSetup,
     setSession,
@@ -29,7 +31,12 @@ export const AuthGuard: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black">
         <div className="text-center">
           <img src="/logo.svg" alt="Logo" className="w-12 h-12 rounded-lg mx-auto mb-4 animate-pulse" />
-          <p className="text-sm text-zinc-500">Loading...</p>
+          <p className="text-sm text-zinc-500">{isReconnecting ? 'Reconnecting…' : 'Loading...'}</p>
+          {isReconnecting && (
+            <p className="mx-auto mt-1 max-w-xs text-xs text-zinc-400 dark:text-zinc-500">
+              Waiting for the connection to come back. You are still signed in.
+            </p>
+          )}
         </div>
       </div>
     );
@@ -95,12 +102,14 @@ export const AuthGuard: React.FC = () => {
           </div>
           <h1 className="text-xl font-bold text-zinc-900 dark:text-white mb-2">Account Error</h1>
           <p className="text-sm text-zinc-500 mb-4">{profileError}</p>
-          <button
-            onClick={() => logout()}
-            className="px-4 py-2 bg-black dark:bg-white text-white dark:text-black rounded-lg text-sm font-bold hover:opacity-90"
-          >
-            Sign Out
-          </button>
+          <div className="flex items-center justify-center gap-2">
+            {/* Offered first: a load that failed on the network is fixed by trying
+                again, and signing out of a working account is not. */}
+            <Button onClick={() => window.location.reload()}>Try again</Button>
+            <Button variant="ghost" onClick={() => logout()}>
+              Sign Out
+            </Button>
+          </div>
         </div>
       </div>
     );

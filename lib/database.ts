@@ -506,14 +506,25 @@ export async function addPlacement(name: string): Promise<void> {
 
 // === Auth helpers ===
 
+/**
+ * The signed-in user's profile, or null when the account genuinely has none.
+ *
+ * A failed request throws instead of returning null: a network error at app
+ * start used to surface as "No profile found for this account. Please contact
+ * an administrator." with only a Sign Out button, for a profile that existed.
+ */
 export async function findProfileByAuthId(authUserId: string): Promise<Member | null> {
-  const { data, error } = await supabase.from('profiles').select('*').eq('auth_user_id', authUserId).single();
-  if (error || !data) return null;
+  const { data, error } = await supabase.from('profiles').select('*').eq('auth_user_id', authUserId).maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
   // Hydrate teamIds + per-team schedule sort_order from the junction
-  const { data: memberships } = await supabase
+  const { data: memberships, error: membershipsError } = await supabase
     .from('team_members')
     .select('team_id, is_primary, sort_order')
     .eq('profile_id', data.id);
+  // Team membership drives what the user can see and edit; a profile that
+  // silently came back without its teams would be worse than a retry.
+  if (membershipsError) throw membershipsError;
   const teamIds: string[] = [];
   const orders: Record<string, number> = {};
   for (const row of memberships || []) {
