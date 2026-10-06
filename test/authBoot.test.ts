@@ -5,6 +5,14 @@ import { supabase } from '../lib/supabase';
 import { useAuth } from '../hooks/useAuth';
 import { useAuthStore } from '../stores/authStore';
 
+const telegram = vi.hoisted(() => ({ webview: false }));
+vi.mock('../lib/telegram', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/telegram')>()),
+  isTelegramWebview: () => telegram.webview,
+  readInitData: () => (telegram.webview ? 'signed-init-data' : null),
+  initTelegramChrome: async () => undefined,
+}));
+
 type GetSessionResult = Awaited<ReturnType<typeof supabase.auth.getSession>>;
 
 const session = { user: { id: 'auth-1' }, access_token: 'jwt' } as Session;
@@ -37,6 +45,19 @@ function mockAuth(...results: Array<GetSessionResult | Error>) {
   return { getSession, signOut };
 }
 
+/**
+ * Records every moment AuthGuard would have redirected to /login (no session,
+ * not loading). In the app that redirect unmounts AuthGuard and with it the
+ * auth listener, so a session that arrives afterwards is lost.
+ */
+function watchLoginRedirects() {
+  const redirect = vi.fn();
+  const unsubscribe = useAuthStore.subscribe((state) => {
+    if (!state.session && !state.isLoading) redirect();
+  });
+  return { redirect, unsubscribe };
+}
+
 /** Lets the boot promise chain settle without moving the clock. */
 const settle = () => act(() => vi.advanceTimersByTimeAsync(0));
 
@@ -49,6 +70,7 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+  telegram.webview = false;
   vi.useRealTimers();
   vi.restoreAllMocks();
   useAuthStore.setState({ initData: originalInitData });
@@ -168,6 +190,56 @@ describe('session check on app start', () => {
     expect(useAuthStore.getState()).toMatchObject({ session: null, isLoading: false, isReconnecting: false });
     await act(() => vi.advanceTimersByTimeAsync(60_000));
     expect(getSession).toHaveBeenCalledTimes(1);
+  });
+
+  it('lets the session check overrule a SIGNED_OUT that arrives while it runs', async () => {
+    const { getSession } = mockAuth();
+    let resolveCheck!: (result: GetSessionResult) => void;
+    getSession.mockReset().mockImplementationOnce(() => new Promise((resolve) => (resolveCheck = resolve)));
+
+    const { redirect, unsubscribe } = watchLoginRedirects();
+    renderHook(() => useAuth());
+    // auth-js drops a revoked stored session during its own start-up…
+    act(() => emitAuthEvent('SIGNED_OUT', null));
+    // …and the check still ends with whatever session exists by then.
+    resolveCheck(signedIn);
+    await settle();
+    unsubscribe();
+
+    expect(redirect).not.toHaveBeenCalled();
+    expect(initData).toHaveBeenCalledWith('auth-1');
+    expect(useAuthStore.getState().session).toEqual(session);
+  });
+
+  it('keeps a Telegram user in the app when their stored session was revoked', async () => {
+    telegram.webview = true;
+    const { getSession } = mockAuth();
+    let resolveStored!: (result: GetSessionResult) => void;
+    getSession
+      .mockReset()
+      // The stored session is rejected and dropped while this check runs…
+      .mockImplementationOnce(() => new Promise((resolve) => (resolveStored = resolve)))
+      // …then the initData exchange mints a fresh one.
+      .mockResolvedValue(signedIn);
+    // `supabase.functions` builds a new client on every access, so stub the shared prototype.
+    vi.spyOn(Object.getPrototypeOf(supabase.functions), 'invoke').mockResolvedValue({
+      data: { status: 'ok', session: { access_token: 'fresh', refresh_token: 'fresh-refresh' } },
+      error: null,
+    } as never);
+    const setSession = vi.spyOn(supabase.auth, 'setSession').mockResolvedValue(signedIn as never);
+
+    const { redirect, unsubscribe } = watchLoginRedirects();
+    renderHook(() => useAuth());
+    act(() => emitAuthEvent('SIGNED_OUT', null));
+    resolveStored(noSession);
+    await settle();
+    unsubscribe();
+
+    expect(setSession).toHaveBeenCalledWith({ access_token: 'fresh', refresh_token: 'fresh-refresh' });
+    // Never bounced to /login on the way, which would unmount the listener.
+    expect(redirect).not.toHaveBeenCalled();
+    expect(initData).toHaveBeenCalledWith('auth-1');
+    expect(useAuthStore.getState()).toMatchObject({ session, isLoading: true });
   });
 
   it('stops retrying when the guard unmounts', async () => {

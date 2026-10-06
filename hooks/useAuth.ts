@@ -67,6 +67,9 @@ export function useAuth() {
     // Whether this hook put the loading screen into "Reconnecting…"; initData
     // can do the same for its own retries, and that one is not ours to clear.
     let waiting = false;
+    // While a session check is running, it alone decides "no session" — see the
+    // event filter below.
+    let bootInFlight = false;
 
     const stopRetrying = () => {
       clearTimeout(retryTimer);
@@ -131,8 +134,10 @@ export function useAuth() {
     };
 
     const runBoot = () => {
+      bootInFlight = true;
       boot().then(
         ({ data: { session: current }, error }) => {
+          bootInFlight = false;
           if (disposed) return;
           if (!error) {
             applySession(current);
@@ -150,6 +155,7 @@ export function useAuth() {
           applySession(null);
         },
         (thrown) => {
+          bootInFlight = false;
           // An unexpected failure says nothing about the session itself.
           if (!disposed) waitForNetwork(thrown);
         },
@@ -172,11 +178,17 @@ export function useAuth() {
         return;
       }
 
-      // An absent initial session is boot()'s call to make. auth-js reports
-      // INITIAL_SESSION as null not only when nobody is signed in but also when
-      // the stored token's refresh failed on the network, with the session still
-      // in storage — clearing state on that would sign a signed-in user out.
-      if (event === 'INITIAL_SESSION' && !next) return;
+      // An absent session is boot()'s call to make while it runs, and an absent
+      // initial session always is. auth-js reports INITIAL_SESSION as null not
+      // only when nobody is signed in but also when the stored token's refresh
+      // failed on the network, with the session still in storage — clearing
+      // state on that would sign a signed-in user out. A SIGNED_OUT during the
+      // check (auth-js dropping a revoked stored session) must wait too: in the
+      // Telegram Mini App the check goes on to mint a fresh session, and acting
+      // on the SIGNED_OUT would first send AuthGuard to /login, unmounting it and
+      // this listener, so that session would never be applied. Whatever the check
+      // concludes, it ends in applySession() or a retry.
+      if (!next && (event === 'INITIAL_SESSION' || bootInFlight)) return;
 
       // Measure device-vs-server clock skew, but ONLY from a provably just-minted
       // token. TOKEN_REFRESHED always carries a brand-new token, so `now - iat` is
