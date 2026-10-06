@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 import type { Session } from '@supabase/supabase-js';
 import { Member } from '../types';
-import { supabase } from '../lib/supabase';
+import { signOutOnThisDevice, supabase } from '../lib/supabase';
 import * as db from '../lib/database';
 import { useDataStore } from './dataStore';
 import { useUiStore } from './uiStore';
@@ -212,7 +212,22 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   logout: async () => {
     try {
-      await supabase.auth.signOut();
+      // Offline there is no server to tell, and trying first would only add the
+      // ~25s auth-js spends retrying the token refresh before it gives up.
+      if (navigator.onLine === false) {
+        await signOutOnThisDevice();
+      } else {
+        const { error } = await supabase.auth.signOut();
+        // The server could not be reached, so auth-js kept the session in
+        // storage; make sure it is gone from this device at least.
+        if (error) {
+          console.error('Sign-out did not reach the server; signing out on this device only', error);
+          await signOutOnThisDevice();
+        }
+      }
+    } catch (error) {
+      console.error(error);
+      await signOutOnThisDevice();
     } finally {
       get().clearSessionState();
     }

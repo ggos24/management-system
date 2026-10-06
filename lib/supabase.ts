@@ -18,7 +18,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 // must not rely on this guard.
 let hasSession = false;
 
+// Where auth-js keeps the session: supabase-js's own default, spelled out so a
+// sign-out that cannot reach the server can still clear it (signOutOnThisDevice).
+// Changing it would sign every user out.
+export const AUTH_STORAGE_KEY = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  auth: { storageKey: AUTH_STORAGE_KEY },
   global: {
     fetch: createSessionGuardedFetch({ supabaseUrl, anonKey: supabaseAnonKey, hasSession: () => hasSession }),
   },
@@ -27,3 +33,25 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
 supabase.auth.onAuthStateChange((_event, session) => {
   hasSession = session !== null;
 });
+
+/**
+ * Ends the session on this device without needing the network.
+ *
+ * auth-js's signOut() — in either scope — first loads the session (refreshing an
+ * expired token) and calls the server's /logout, and when either request fails
+ * it returns an error *before* removing anything. Offline, a sign-out therefore
+ * cleared the app's screen but left the session in storage: the next visit was
+ * signed straight back in, and other tabs were never told. Removing the stored
+ * session first leaves a local signOut nothing to refresh or revoke, so it only
+ * emits SIGNED_OUT here and, through auth-js's BroadcastChannel, in other tabs.
+ * The refresh token itself stays valid on the server until it expires: there is
+ * no revoking it without a connection.
+ */
+export async function signOutOnThisDevice(): Promise<void> {
+  try {
+    for (const suffix of ['', '-code-verifier', '-user']) localStorage.removeItem(AUTH_STORAGE_KEY + suffix);
+  } catch (error) {
+    console.error('Could not clear the stored session', error);
+  }
+  await supabase.auth.signOut({ scope: 'local' }).catch((error) => console.error(error));
+}

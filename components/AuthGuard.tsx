@@ -1,11 +1,11 @@
 import React from 'react';
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
-import { X, Send } from 'lucide-react';
+import { Send } from 'lucide-react';
 import LoginPage from './LoginPage';
 import { useAuth } from '../hooks/useAuth';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
 import { useAuthStore } from '../stores/authStore';
-import { Button } from './ui';
+import { AccountErrorScreen, AuthLoadingScreen } from './AuthScreens';
 
 export const AuthGuard: React.FC = () => {
   const { session } = useAuth();
@@ -15,32 +15,15 @@ export const AuthGuard: React.FC = () => {
   const {
     currentUser,
     isLoading,
-    isReconnecting,
     profileError,
     needsPasswordSetup,
     setSession,
     setIsLoading,
     setNeedsPasswordSetup,
     telegramGate,
-    logout,
   } = useAuthStore();
 
-  // Loading state
-  if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black">
-        <div className="text-center">
-          <img src="/logo.svg" alt="Logo" className="w-12 h-12 rounded-lg mx-auto mb-4 animate-pulse" />
-          <p className="text-sm text-zinc-500">{isReconnecting ? 'Reconnecting…' : 'Loading...'}</p>
-          {isReconnecting && (
-            <p className="mx-auto mt-1 max-w-xs text-xs text-zinc-400 dark:text-zinc-500">
-              Waiting for the connection to come back. You are still signed in.
-            </p>
-          )}
-        </div>
-      </div>
-    );
-  }
+  if (isLoading) return <AuthLoadingScreen />;
 
   // A Telegram Mini App user we could not resolve to a profile. Sending them to
   // the password form is a dead end — the whole reason they are here is that
@@ -92,28 +75,7 @@ export const AuthGuard: React.FC = () => {
     );
   }
 
-  // Profile error
-  if (profileError) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black p-4">
-        <div className="text-center max-w-md">
-          <div className="w-12 h-12 bg-red-500 rounded-lg mx-auto mb-4 flex items-center justify-center">
-            <X size={24} className="text-white" />
-          </div>
-          <h1 className="text-xl font-bold text-zinc-900 dark:text-white mb-2">Account Error</h1>
-          <p className="text-sm text-zinc-500 mb-4">{profileError}</p>
-          <div className="flex items-center justify-center gap-2">
-            {/* Offered first: a load that failed on the network is fixed by trying
-                again, and signing out of a working account is not. */}
-            <Button onClick={() => window.location.reload()}>Try again</Button>
-            <Button variant="ghost" onClick={() => logout()}>
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (profileError) return <AccountErrorScreen message={profileError} onRetry={() => window.location.reload()} />;
 
   if (!currentUser) return null;
 
