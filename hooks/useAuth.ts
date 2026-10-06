@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import type { Session } from '@supabase/supabase-js';
+import { isAuthRetryableFetchError, type Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
 import { useAuthStore } from '../stores/authStore';
 import { useUiStore } from '../stores/uiStore';
@@ -46,6 +46,11 @@ async function exchangeTelegramSession(): Promise<void> {
   }
 }
 
+// Backoff for re-checking a stored session whose refresh failed on the network:
+// 2s, 4s, 8s, 16s, then every 30s — and immediately when the browser comes back online.
+const SESSION_RETRY_BASE_MS = 2_000;
+const SESSION_RETRY_MAX_MS = 30_000;
+
 export function useAuth() {
   const session = useAuthStore((s) => s.session);
 
@@ -56,8 +61,22 @@ export function useAuth() {
     // skewed device clock) into a request flood. Realtime sync keeps data current,
     // so we only do the full load once per signed-in user.
     let initialisedUserId: string | null = null;
+    let disposed = false;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    let retryAttempt = 0;
+
+    const stopRetrying = () => {
+      clearTimeout(retryTimer);
+      retryTimer = undefined;
+      retryAttempt = 0;
+      window.removeEventListener('online', retryNow);
+      if (useAuthStore.getState().isReconnecting) useAuthStore.getState().setIsReconnecting(false);
+    };
 
     const applySession = (next: Session | null) => {
+      // Any definitive answer from auth-js — a session, or a real sign-out —
+      // ends a wait for the network.
+      stopRetrying();
       const state = useAuthStore.getState();
       if (next) {
         if (initialisedUserId !== next.user.id) {
@@ -85,16 +104,56 @@ export function useAuth() {
       return supabase.auth.getSession();
     };
 
-    boot().then(({ data: { session: current }, error }) => {
-      if (error) {
-        // Corrupted or invalid stored session — clear local state, force fresh login.
-        const state = useAuthStore.getState();
-        supabase.auth.signOut().catch(() => {});
-        state.clearSessionState();
-        return;
-      }
-      applySession(current);
-    });
+    // The stored session could not be confirmed, but nothing says it is invalid —
+    // typically its access token expired while the app was closed and the refresh
+    // request failed because the network is not back yet. auth-js keeps such a
+    // session and refreshes it on its own once it can (TOKEN_REFRESHED reaches
+    // applySession above). Keep the user on the loading screen and check again,
+    // rather than sending them to /login: AuthGuard unmounts there, and with it
+    // this listener, so the recovered session would never reach the app.
+    const waitForNetwork = (reason: unknown) => {
+      console.error('Could not confirm the stored session, retrying', reason);
+      if (!useAuthStore.getState().isReconnecting) useAuthStore.getState().setIsReconnecting(true);
+      const delay = Math.min(SESSION_RETRY_BASE_MS * 2 ** retryAttempt, SESSION_RETRY_MAX_MS);
+      retryAttempt += 1;
+      clearTimeout(retryTimer);
+      retryTimer = setTimeout(retryNow, delay);
+      window.addEventListener('online', retryNow);
+    };
+
+    const runBoot = () => {
+      boot().then(
+        ({ data: { session: current }, error }) => {
+          if (disposed) return;
+          if (!error) {
+            applySession(current);
+            return;
+          }
+          if (isAuthRetryableFetchError(error)) {
+            waitForNetwork(error);
+            return;
+          }
+          // The server rejected the stored session (e.g. a revoked or already
+          // used refresh token) and auth-js has dropped it. Clear any leftovers
+          // locally and force a fresh login. Never a global sign-out here: that
+          // would revoke the user's sessions on every other device too.
+          supabase.auth.signOut({ scope: 'local' }).catch(() => {});
+          applySession(null);
+        },
+        (thrown) => {
+          // An unexpected failure says nothing about the session itself.
+          if (!disposed) waitForNetwork(thrown);
+        },
+      );
+    };
+
+    const retryNow = () => {
+      clearTimeout(retryTimer);
+      window.removeEventListener('online', retryNow);
+      runBoot();
+    };
+
+    runBoot();
 
     const {
       data: { subscription },
@@ -103,6 +162,12 @@ export function useAuth() {
         useAuthStore.getState().setNeedsPasswordSetup(true);
         return;
       }
+
+      // An absent initial session is boot()'s call to make. auth-js reports
+      // INITIAL_SESSION as null not only when nobody is signed in but also when
+      // the stored token's refresh failed on the network, with the session still
+      // in storage — clearing state on that would sign a signed-in user out.
+      if (event === 'INITIAL_SESSION' && !next) return;
 
       // Measure device-vs-server clock skew, but ONLY from a provably just-minted
       // token. TOKEN_REFRESHED always carries a brand-new token, so `now - iat` is
@@ -118,7 +183,11 @@ export function useAuth() {
       applySession(next);
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      disposed = true;
+      stopRetrying();
+      subscription.unsubscribe();
+    };
   }, []);
 
   return { session };

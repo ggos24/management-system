@@ -14,6 +14,7 @@ export const AuthGuard: React.FC = () => {
   const {
     currentUser,
     isLoading,
+    isReconnecting,
     profileError,
     needsPasswordSetup,
     setSession,
@@ -29,7 +30,12 @@ export const AuthGuard: React.FC = () => {
       <div className="min-h-screen flex items-center justify-center bg-zinc-50 dark:bg-black">
         <div className="text-center">
           <img src="/logo.svg" alt="Logo" className="w-12 h-12 rounded-lg mx-auto mb-4 animate-pulse" />
-          <p className="text-sm text-zinc-500">Loading...</p>
+          <p className="text-sm text-zinc-500">{isReconnecting ? 'Reconnecting…' : 'Loading...'}</p>
+          {isReconnecting && (
+            <p className="mx-auto mt-1 max-w-xs text-xs text-zinc-400 dark:text-zinc-500">
+              Waiting for the connection to come back. You are still signed in.
+            </p>
+          )}
         </div>
       </div>
     );

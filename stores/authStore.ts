@@ -47,6 +47,9 @@ interface AuthState {
   session: Session | null;
   currentUser: Member | null;
   isLoading: boolean;
+  // The stored session could not be confirmed because the network or auth server
+  // is unreachable; useAuth keeps retrying while the loading screen says so.
+  isReconnecting: boolean;
   profileError: string | null;
   needsPasswordSetup: boolean;
   telegramGate: TelegramGateState | null;
@@ -54,6 +57,7 @@ interface AuthState {
   setSession: (session: Session | null) => void;
   setCurrentUser: (user: Member | null) => void;
   setIsLoading: (loading: boolean) => void;
+  setIsReconnecting: (reconnecting: boolean) => void;
   setProfileError: (error: string | null) => void;
   setNeedsPasswordSetup: (needs: boolean) => void;
   setTelegramGate: (gate: TelegramGateState | null) => void;
@@ -67,6 +71,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   session: null,
   currentUser: null,
   isLoading: true,
+  isReconnecting: false,
   profileError: null,
   needsPasswordSetup: (() => {
     const hashParams = new URLSearchParams(window.location.hash.substring(1));
@@ -79,6 +84,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   setSession: (session) => set({ session }),
   setCurrentUser: (user) => set({ currentUser: user }),
   setIsLoading: (loading) => set({ isLoading: loading }),
+  setIsReconnecting: (isReconnecting) => set({ isReconnecting }),
   setProfileError: (error) => set({ profileError: error }),
   setNeedsPasswordSetup: (needs) => set({ needsPasswordSetup: needs }),
   setTelegramGate: (telegramGate) => set({ telegramGate }),
@@ -147,7 +153,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     initUserId = null;
     useDataStore.getState().resetData();
     useUiStore.getState().resetSessionUi();
-    set({ session: null, currentUser: null, profileError: null, isLoading: false });
+    set({ session: null, currentUser: null, profileError: null, isLoading: false, isReconnecting: false });
   },
 
   logout: async () => {
