@@ -20,6 +20,12 @@ function useDebouncedCallback(fn: () => void, delay: number): () => void {
   }, [delay]);
 }
 
+// The latest refetch started for each fetcher. Refetches overlap when changes
+// arrive faster than a fetch completes, and they finish in any order; only the
+// newest may commit, or an older snapshot lands after a newer one and the store
+// shows — and the next edit starts from — data that is already out of date.
+const latestFetch = new Map<() => Promise<unknown>, number>();
+
 function fetchForCurrentSession<T>(
   fetcher: () => Promise<T>,
   commit: (value: T) => void,
@@ -27,9 +33,11 @@ function fetchForCurrentSession<T>(
 ): void {
   const snapshot = captureAuthSession();
   if (!snapshot.authUserId || !snapshot.profileId || (options?.fullOnly && snapshot.accessScope !== 'full')) return;
+  const sequence = (latestFetch.get(fetcher) ?? 0) + 1;
+  latestFetch.set(fetcher, sequence);
   fetcher()
     .then((value) => {
-      if (isAuthSessionCurrent(snapshot)) commit(value);
+      if (latestFetch.get(fetcher) === sequence && isAuthSessionCurrent(snapshot)) commit(value);
     })
     .catch(console.error);
 }
