@@ -588,13 +588,20 @@ function asEdited<T extends Partial<Task>>(task: T): T {
  */
 const taskWriteQueue = new Map<string, Promise<unknown>>();
 
-function enqueueTaskWrite<T>(taskId: string, write: () => Promise<T>): Promise<T> {
-  const previous = taskWriteQueue.get(taskId) ?? Promise.resolve();
+/**
+ * Queue a write that touches these tasks: it starts once every earlier write to
+ * any of them in this tab has finished. Direct writes — a status drag, a reorder,
+ * moving to or out of the bin — go through here too, so a merge that follows
+ * always reads the server after them instead of writing back what they replaced.
+ */
+function enqueueTaskWrite<T>(taskIds: string | string[], write: () => Promise<T>): Promise<T> {
+  const ids = Array.isArray(taskIds) ? taskIds : [taskIds];
+  const previous = Promise.all(ids.map((id) => taskWriteQueue.get(id) ?? Promise.resolve()));
   const next = previous.then(write, write);
   const settled = next.catch(() => undefined);
-  taskWriteQueue.set(taskId, settled);
+  for (const id of ids) taskWriteQueue.set(id, settled);
   void settled.then(() => {
-    if (taskWriteQueue.get(taskId) === settled) taskWriteQueue.delete(taskId);
+    for (const id of ids) if (taskWriteQueue.get(id) === settled) taskWriteQueue.delete(id);
   });
   return next;
 }
@@ -639,7 +646,10 @@ async function saveEditedTask(
   }
 
   const storeTask = get().tasks.find((t) => t.id === taskData.id);
-  const base = asEdited(options.base ?? storeTask ?? theirs);
+  // A base from another task (a save that returned after the modal moved on)
+  // would turn every difference between the two tasks into an "edit".
+  const givenBase = options.base && (!options.base.id || options.base.id === taskData.id) ? options.base : undefined;
+  const base = asEdited(givenBase ?? storeTask ?? theirs);
   const mine = asEdited(taskData);
   const { task: merged, descriptionConflict, overridden } = merge.mergeTaskEdits(base, mine, theirs, merge.options);
   if (descriptionConflict) return { status: 'conflict', task: merged, theirs };
@@ -1332,8 +1342,7 @@ export const useDataStore = create<DataState>((set, get) => ({
         }
       }
     }
-    const prev = get().tasks;
-    const task = prev.find((t) => t.id === taskId);
+    const task = get().tasks.find((t) => t.id === taskId);
     if (task && task.statusId === newStatusId) return; // Same status, no-op
     const teamStatuses = get().teamStatuses;
     const nextDoneDate = task
@@ -1341,15 +1350,20 @@ export const useDataStore = create<DataState>((set, get) => ({
       : null;
     const doneDateChanged = task ? (task.doneDate ?? null) !== nextDoneDate : false;
     set({
-      tasks: prev.map((t) => (t.id === taskId ? { ...t, statusId: newStatusId, doneDate: nextDoneDate } : t)),
+      tasks: get().tasks.map((t) => (t.id === taskId ? { ...t, statusId: newStatusId, doneDate: nextDoneDate } : t)),
     });
-    db.updateTaskStatus(taskId, newStatusId)
-      .then(() => {
-        if (doneDateChanged) {
-          db.updateTaskDoneDate(taskId, nextDoneDate).catch(() => {});
-        }
-      })
-      .catch(() => set({ tasks: prev }));
+    void enqueueTaskWrite(taskId, async () => {
+      await db.updateTaskStatus(taskId, newStatusId);
+      if (doneDateChanged) await db.updateTaskDoneDate(taskId, nextDoneDate).catch(() => {});
+    }).catch(() => {
+      // Put back only what this move changed; other fields may have moved on since.
+      if (!task) return;
+      set((state) => ({
+        tasks: state.tasks.map((t) =>
+          t.id === taskId ? { ...t, statusId: task.statusId, doneDate: task.doneDate } : t,
+        ),
+      }));
+    });
     if (task) {
       const oldName = getStatusName(teamStatuses, task.teamId, task.statusId);
       const newName = getStatusName(teamStatuses, task.teamId, newStatusId);
@@ -1521,7 +1535,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     logTaskActivity(taskId, [{ field: 'deleted' }]);
 
     if (!userId) return;
-    db.softDeleteTask(taskId, userId).catch(() => {
+    enqueueTaskWrite(taskId, () => db.softDeleteTask(taskId, userId)).catch(() => {
       set({
         tasks: snapshot.tasks,
         deletedTasks: snapshot.deletedTasks,
@@ -1586,7 +1600,16 @@ export const useDataStore = create<DataState>((set, get) => ({
     });
 
     set({ tasks: updatedTasks });
-    db.updateTaskSortOrders(updates).catch(() => set({ tasks }));
+    const previousOrder = new Map(tasks.map((t) => [t.id, t.sortOrder]));
+    enqueueTaskWrite(
+      updates.map((u) => u.id),
+      () => db.updateTaskSortOrders(updates),
+    ).catch(() =>
+      // Put back only the order this drag changed; other fields may have moved on.
+      set({
+        tasks: get().tasks.map((t) => (withoutMap.has(t.id) ? { ...t, sortOrder: previousOrder.get(t.id) } : t)),
+      }),
+    );
   },
 
   saveTask: async (taskData, teams, draftSubtasks = [], options = {}) => {
@@ -2355,7 +2378,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       deletedTaskCount: Math.max(0, snapshot.deletedTaskCount - 1),
     });
 
-    db.restoreTask(taskId).catch(() => {
+    enqueueTaskWrite(taskId, () => db.restoreTask(taskId)).catch(() => {
       set({
         deletedTasks: snapshot.deletedTasks,
         tasks: snapshot.tasks,

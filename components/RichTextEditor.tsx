@@ -179,6 +179,9 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
 
   useEffect(() => {
     if (!editorRef.current || value === lastEmittedRef.current) return;
+    // Once something from outside is shown, an older emission of ours no longer
+    // describes the screen, so a later value equal to it must be applied too.
+    lastEmittedRef.current = null;
     const safe = value ? sanitizeRichTextHtml(withMentionLabels(value, mentionMembersRef.current ?? [])) : '';
     if (editorRef.current.innerHTML !== safe) {
       editorRef.current.innerHTML = safe;
@@ -713,7 +716,12 @@ export const RichTextEditor: React.FC<RichTextEditorProps> = ({
     if (firstLine && (e.clientY < firstLine.top || e.clientY > firstLine.bottom)) return;
     row.setAttribute(CHECKED_ATTR, row.getAttribute(CHECKED_ATTR) === 'true' ? 'false' : 'true');
     const index = Array.from(editorRef.current.querySelectorAll(`[${CHECKLIST_ATTR}]`)).indexOf(row);
-    if (onChecklistToggle?.(index, subtaskKey(row))) return;
+    if (onChecklistToggle?.(index, subtaskKey(row))) {
+      // The parent stored the new value itself: the DOM changed with nothing
+      // emitted, so our last emission no longer matches the screen.
+      lastEmittedRef.current = null;
+      return;
+    }
     handleInput();
   };
 

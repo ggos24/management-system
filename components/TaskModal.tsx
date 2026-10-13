@@ -40,12 +40,11 @@ import { SUBTASKS_ENABLED } from '../lib/features';
 import { Button, Input, Label, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useDataStore, resolvePersonFieldConfig } from '../stores/dataStore';
-import { rebaseUntouched } from '../lib/taskMerge';
+import { mergeTaskEdits, rebaseUntouched } from '../lib/taskMerge';
 import { AlertBanner } from './AlertBanner';
 import { useAuthStore } from '../stores/authStore';
 import { Task, TaskSubtask, TaskComment, TaskActivity, CustomProperty } from '../types';
 import { cn } from '../lib/cn';
-import { toggleSubtaskInHtml } from '../lib/subtasks';
 import { formatDateEU, toDateOnly } from '../lib/utils';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusColor } from '../constants';
 import { getStatusName } from '../lib/statusUtils';
@@ -201,9 +200,11 @@ export const TaskModal: React.FC = () => {
       setTaskModalData((prev) => ({ ...prev, description: saved }));
       return true;
     }
-    // Other edits are pending: keep them in the draft, and move only this row in the baseline.
-    baseline.description = toggleSubtaskInHtml(baseline.description, index, key) ?? baseline.description;
-    initialDataRef.current = JSON.stringify(baseline);
+    // Other edits are pending: the tick goes into the draft like any other edit,
+    // and the baseline stays as the server last had it. If the tick's own write
+    // fails, the save then still sees it as this editor's change and writes it;
+    // moving the baseline would have made the save treat the server's unticked
+    // row as the newer value and silently drop it.
     return false;
   };
 
@@ -810,34 +811,46 @@ export const TaskModal: React.FC = () => {
     }
     if (result.status === 'failed') return;
 
-    const current = useUiStore.getState().taskModalData;
-    if (result.status === 'conflict') {
-      // Someone else changed the same part of the description. Show the merge
-      // with both versions kept, on top of the server's copy, for review; saving
-      // again writes it.
-      const { theirs, task: merged } = result;
-      setTaskModalData({ ...current, ...merged });
-      initialDataRef.current = JSON.stringify({ ...current, ...theirs });
-      setTaskModalConflict(true);
-      return;
-    }
-
     // Link to foreign workspaces (derived from selected placements)
-    if (isNew && pendingLinkedTeamIds.length > 0) {
+    if (result.status === 'saved' && isNew && pendingLinkedTeamIds.length > 0) {
       for (const teamId of pendingLinkedTeamIds) {
         linkTaskToTeam(taskId, teamId);
       }
     }
 
-    if (!isNew && JSON.stringify(current) !== startedFrom) {
-      // Edited further while the save ran: keep the modal open with those edits
-      // on top of what was just saved, which is now the base.
-      const rebased = rebaseUntouched(dataToSave, current, result.task, {
-        normalizeDescription: (html) => sanitizeRichTextHtml(withMentionLabels(html, members)),
-      });
-      if (rebased) setTaskModalData(rebased.draft);
+    // The modal may have been closed, or moved on to another task, while the
+    // save ran; its result then belongs to nothing on screen.
+    const ui = useUiStore.getState();
+    const current = ui.taskModalData;
+    if (!ui.isTaskModalOpen || (isNew ? !!current.id : current.id !== taskId)) return;
+
+    // Edits made while the save ran are carried over onto its result, the same
+    // three-way way the save itself merged onto the server.
+    const editedMeanwhile = JSON.stringify(current) !== startedFrom;
+    const mergeOptions = {
+      normalizeDescription: (html: string) => sanitizeRichTextHtml(withMentionLabels(html, members)),
+    };
+    const carryOver = (onto: Task) =>
+      editedMeanwhile ? mergeTaskEdits(dataToSave, current, onto, mergeOptions) : null;
+
+    if (result.status === 'conflict') {
+      // Someone else changed the same part of the description. Show the merge
+      // with both versions kept, on top of the server's copy, for review; saving
+      // again writes it.
+      const draft = carryOver(result.task)?.task ?? result.task;
+      setTaskModalData({ ...current, ...draft });
+      initialDataRef.current = JSON.stringify({ ...current, ...result.theirs });
+      setTaskModalConflict(true);
+      return;
+    }
+
+    if (!isNew && editedMeanwhile) {
+      // Keep the modal open with those edits on top of what was just saved, which
+      // is now the base — so everything the save merged in stays in the draft.
+      const again = carryOver(result.task)!;
+      setTaskModalData({ ...current, ...again.task });
       initialDataRef.current = JSON.stringify({ ...current, ...result.task });
-      setTaskModalConflict(false);
+      setTaskModalConflict(again.descriptionConflict);
       toast.info('Saved. Your newer changes are not saved yet.');
       return;
     }

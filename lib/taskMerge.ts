@@ -72,6 +72,10 @@ function mergeValue<T>(base: T, mine: T, theirs: T, field: string, overridden: s
  * theirs' order and appending mine's additions in mine's order.
  */
 export function mergeList<T>(base: T[], mine: T[], theirs: T[], key: (item: T) => string = stableStringify): T[] {
+  // One side left the list alone: the other's list stands exactly as edited,
+  // duplicates and order included.
+  if (same(theirs, base)) return mine;
+  if (same(mine, base)) return theirs;
   const baseKeys = new Set(base.map(key));
   const mineKeys = new Set(mine.map(key));
   const removed = new Set([...baseKeys].filter((k) => !mineKeys.has(k)));
@@ -95,7 +99,9 @@ function mergeRecord(
   overridden: string[],
 ): Record<string, unknown> {
   const result: Record<string, unknown> = {};
-  for (const key of new Set([...Object.keys(base), ...Object.keys(mine), ...Object.keys(theirs)])) {
+  // Keys in theirs' order, then mine's new ones, so an unchanged map compares
+  // equal to the server's and the activity log does not see an edit in it.
+  for (const key of new Set([...Object.keys(theirs), ...Object.keys(mine), ...Object.keys(base)])) {
     const value = mergeValue(base[key], mine[key], theirs[key], `${field}.${key}`, overridden);
     if (value !== undefined) result[key] = value;
   }
@@ -196,6 +202,20 @@ function hunks(base: string[], side: string[]): Hunk[] {
   return result;
 }
 
+const BLOCK_START = /^<(?:p|div|h[1-6]|ul|ol|li|blockquote|pre|br|hr|table)[\s>/]/i;
+
+/**
+ * Theirs' blocks followed by mine. Where both meet as loose text (typically two
+ * people typing into an empty description) a line break goes between them, or
+ * the two texts would run together into one line.
+ */
+function bothSides(theirsBlocks: string[], mineBlocks: string[]): string[] {
+  const last = theirsBlocks[theirsBlocks.length - 1];
+  const first = mineBlocks[0];
+  const glued = last !== undefined && first !== undefined && !BLOCK_START.test(last) && !BLOCK_START.test(first);
+  return glued ? [...theirsBlocks, '<br>', ...mineBlocks] : [...theirsBlocks, ...mineBlocks];
+}
+
 function overlaps(a: Hunk, b: Hunk): boolean {
   // Two insertions at the same point have no natural order, so they conflict too.
   if (a.start === a.end && b.start === b.end) return a.start === b.start;
@@ -222,7 +242,7 @@ function sideBlocks(base: string[], start: number, end: number, sideHunks: Hunk[
  */
 export function mergeBlocks(base: string[], mine: string[], theirs: string[]): { blocks: string[]; conflict: boolean } {
   if ((base.length + 1) * Math.max(mine.length + 1, theirs.length + 1) > MAX_DIFF_CELLS) {
-    return { blocks: [...theirs, ...mine], conflict: true };
+    return { blocks: bothSides(theirs, mine), conflict: true };
   }
   const tagged = [
     ...hunks(base, theirs).map((hunk) => ({ hunk, side: 'theirs' as const })),
@@ -254,10 +274,10 @@ export function mergeBlocks(base: string[], mine: string[], theirs: string[]): {
     else if (group.members.every((member) => member.hunk.start === member.hunk.end)) {
       // Both only added blocks at the same spot — typically both wrote at the end.
       // Nothing was changed or removed, so keep both, theirs first, as a clean merge.
-      out.push(...theirsBlocks, ...mineBlocks);
+      out.push(...bothSides(theirsBlocks, mineBlocks));
     } else {
       conflict = true;
-      out.push(...theirsBlocks, ...mineBlocks);
+      out.push(...bothSides(theirsBlocks, mineBlocks));
     }
     pos = group.end;
   }
@@ -312,11 +332,13 @@ export function mergeTaskEdits(base: Side, mine: Side, theirs: Task, options: Ta
     assigneeIds: mergeList(base.assigneeIds ?? [], mine.assigneeIds ?? [], theirs.assigneeIds ?? [], String),
     placements: mergeList(base.placements ?? [], mine.placements ?? [], theirs.placements ?? [], String),
     links: mergeList(base.links ?? [], mine.links ?? [], theirs.links ?? []),
+    // In the order lib/database.ts mapTask builds it, so an unchanged value
+    // compares equal to the server's in the activity log.
     contentInfo: {
       type: mergeValue(baseInfo.type, mineInfo.type, theirsInfo.type, 'contentInfo.type', overridden),
-      notes: mergeValue(baseInfo.notes, mineInfo.notes, theirsInfo.notes, 'contentInfo.notes', overridden),
       editorIds: mergeList(baseInfo.editorIds, mineInfo.editorIds, theirsInfo.editorIds, String),
       designerIds: mergeList(baseInfo.designerIds, mineInfo.designerIds, theirsInfo.designerIds, String),
+      notes: mergeValue(baseInfo.notes, mineInfo.notes, theirsInfo.notes, 'contentInfo.notes', overridden),
       files: mergeList(baseInfo.files, mineInfo.files, theirsInfo.files),
     },
     customFieldValues: mergeRecord(

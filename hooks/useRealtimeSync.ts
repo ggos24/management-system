@@ -20,11 +20,13 @@ function useDebouncedCallback(fn: () => void, delay: number): () => void {
   }, [delay]);
 }
 
-// The latest refetch started for each fetcher. Refetches overlap when changes
-// arrive faster than a fetch completes, and they finish in any order; only the
-// newest may commit, or an older snapshot lands after a newer one and the store
-// shows — and the next edit starts from — data that is already out of date.
-const latestFetch = new Map<() => Promise<unknown>, number>();
+// Refetches overlap when changes arrive faster than a fetch completes, and they
+// finish in any order. Each one is numbered, and a result commits only if no
+// newer one has committed already: an older snapshot landing after a newer one
+// would leave the store — and the next edit made from it — out of date, while an
+// older success must still land when the newer fetch fails.
+const startedFetch = new Map<() => Promise<unknown>, number>();
+const committedFetch = new Map<() => Promise<unknown>, number>();
 
 function fetchForCurrentSession<T>(
   fetcher: () => Promise<T>,
@@ -33,11 +35,13 @@ function fetchForCurrentSession<T>(
 ): void {
   const snapshot = captureAuthSession();
   if (!snapshot.authUserId || !snapshot.profileId || (options?.fullOnly && snapshot.accessScope !== 'full')) return;
-  const sequence = (latestFetch.get(fetcher) ?? 0) + 1;
-  latestFetch.set(fetcher, sequence);
+  const sequence = (startedFetch.get(fetcher) ?? 0) + 1;
+  startedFetch.set(fetcher, sequence);
   fetcher()
     .then((value) => {
-      if (latestFetch.get(fetcher) === sequence && isAuthSessionCurrent(snapshot)) commit(value);
+      if (sequence <= (committedFetch.get(fetcher) ?? 0) || !isAuthSessionCurrent(snapshot)) return;
+      committedFetch.set(fetcher, sequence);
+      commit(value);
     })
     .catch(console.error);
 }
