@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { ArrowLeft, Printer, Check, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, Printer, Check, AlertTriangle } from './icons';
 import { Button, Input, Badge } from './ui';
 import { CustomSelect } from './CustomSelect';
 const EquipmentTestSheet = React.lazy(() =>
@@ -388,7 +388,7 @@ const EquipmentLabels: React.FC = () => {
                     Error correction
                   </p>
                   <CustomSelect options={EC_OPTIONS} value={ec} onChange={setEc} />
-                  <p className="text-[11px] text-zinc-400 mt-1 leading-relaxed">
+                  <p className="text-[0.6875rem] text-zinc-400 mt-1 leading-relaxed">
                     M is one QR version smaller than Q — the same scan quality in ~9% less width. Q survives scratches
                     better; on laminated stock the laminate does that job.
                   </p>
@@ -426,7 +426,7 @@ const EquipmentLabels: React.FC = () => {
                       {moduleVerdict === 'tight' && ' — works, but leaves no margin for wear'}
                     </span>
                   </div>
-                  <div className="mt-1.5 flex items-center gap-1.5 text-[11px] text-zinc-400">
+                  <div className="mt-1.5 flex items-center gap-1.5 text-[0.6875rem] text-zinc-400">
                     <span>At these settings:</span>
                     <button
                       type="button"
@@ -455,7 +455,7 @@ const EquipmentLabels: React.FC = () => {
                   Add a 50 mm ruler to check printer scaling
                 </label>
 
-                <p className="text-[11px] text-zinc-400 leading-relaxed">
+                <p className="text-[0.6875rem] text-zinc-400 leading-relaxed">
                   Print one sheet first. Stick it on real gear and scan from 30 cm and 10 cm, in poor light, at an
                   angle, on the oldest phone in the team. A wasted sheet beats a wasted day.
                 </p>

@@ -14,11 +14,12 @@ import {
   UserMinus,
   Trash2,
   AlarmClock,
+  EmergencyHome,
   LifeBuoy,
   Package,
   PackageX,
   CalendarClock,
-} from 'lucide-react';
+} from './icons';
 import { Avatar } from './Avatar';
 import { IconButton, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
@@ -55,7 +56,7 @@ function getNotificationIcon(type: NotificationType) {
     case 'ticket_status_changed':
     case 'ticket_assigned':
     case 'ticket_reply':
-      return <LifeBuoy size={14} className="shrink-0" />;
+      return <EmergencyHome size={14} className="shrink-0" />;
     case 'equipment_taken':
     case 'equipment_returned':
       return <Package size={14} className="shrink-0" />;
@@ -283,7 +284,7 @@ export const Header: React.FC = () => {
           <IconButton onClick={() => setIsNotificationsOpen(!isNotificationsOpen)} className="relative">
             <Bell size={18} />
             {visibleUnreadCount > 0 && (
-              <span className="absolute -top-0.5 -right-0.5 min-w-[18px] h-[18px] flex items-center justify-center bg-red-500 text-white text-[10px] font-semibold rounded-full px-1">
+              <span className="absolute -top-0.5 -right-0.5 min-w-[1.125rem] h-[1.125rem] flex items-center justify-center bg-red-500 text-white text-[0.625rem] font-semibold rounded-full px-1">
                 {visibleUnreadCount > 99 ? '99+' : visibleUnreadCount}
               </span>
             )}

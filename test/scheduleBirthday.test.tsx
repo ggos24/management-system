@@ -89,7 +89,7 @@ describe('schedule birthday highlight', () => {
     expect(outline(cell)).not.toBeNull();
     expect(cell.getAttribute('title')).toBe("Ada Lovelace's birthday");
     // Nothing else is on that day, so the cake has room.
-    expect(outline(cell)?.querySelector('svg')).not.toBeNull();
+    expect(outline(cell)?.querySelector('.material-symbol')).not.toBeNull();
   });
 
   it('leaves every other day alone', async () => {
@@ -126,7 +126,7 @@ describe('schedule birthday highlight', () => {
     expect(cell.textContent).toContain('HOLS');
     expect(cell.querySelector('[title]')?.getAttribute('title')).toBe("HOLS · Ada Lovelace's birthday");
     // No room for the cake on top of the label — the outline carries it alone.
-    expect(outline(cell)?.querySelector('svg')).toBeNull();
+    expect(outline(cell)?.querySelector('.material-symbol')).toBeNull();
   });
 
   it('shows the birthday in the member card', async () => {

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { X } from 'lucide-react';
+import { X } from './icons';
 import { useAuthStore } from '../stores/authStore';
 import { Button } from './ui';
 

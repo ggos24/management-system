@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Trash2, RotateCcw, Search } from 'lucide-react';
+import { Trash2, RotateCcw, Search } from './icons';
 import { Button, Input } from './ui';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
@@ -131,25 +131,25 @@ export const Bin: React.FC = () => {
             <table className="w-full hidden md:table">
               <thead className="sticky top-0 bg-zinc-50 dark:bg-zinc-900/80 backdrop-blur-sm z-10">
                 <tr className="border-b border-zinc-200 dark:border-zinc-800">
-                  <th className="text-left text-[10px] font-semibold text-zinc-400 uppercase tracking-wider px-6 py-2.5">
+                  <th className="text-left text-[0.625rem] font-semibold text-zinc-400 uppercase tracking-wider px-6 py-2.5">
                     Title
                   </th>
-                  <th className="text-left text-[10px] font-semibold text-zinc-400 uppercase tracking-wider px-3 py-2.5">
+                  <th className="text-left text-[0.625rem] font-semibold text-zinc-400 uppercase tracking-wider px-3 py-2.5">
                     Team
                   </th>
-                  <th className="text-left text-[10px] font-semibold text-zinc-400 uppercase tracking-wider px-3 py-2.5">
+                  <th className="text-left text-[0.625rem] font-semibold text-zinc-400 uppercase tracking-wider px-3 py-2.5">
                     Status
                   </th>
-                  <th className="text-left text-[10px] font-semibold text-zinc-400 uppercase tracking-wider px-3 py-2.5">
+                  <th className="text-left text-[0.625rem] font-semibold text-zinc-400 uppercase tracking-wider px-3 py-2.5">
                     Priority
                   </th>
-                  <th className="text-left text-[10px] font-semibold text-zinc-400 uppercase tracking-wider px-3 py-2.5">
+                  <th className="text-left text-[0.625rem] font-semibold text-zinc-400 uppercase tracking-wider px-3 py-2.5">
                     Deleted By
                   </th>
-                  <th className="text-left text-[10px] font-semibold text-zinc-400 uppercase tracking-wider px-3 py-2.5">
+                  <th className="text-left text-[0.625rem] font-semibold text-zinc-400 uppercase tracking-wider px-3 py-2.5">
                     Deleted
                   </th>
-                  <th className="text-right text-[10px] font-semibold text-zinc-400 uppercase tracking-wider px-6 py-2.5">
+                  <th className="text-right text-[0.625rem] font-semibold text-zinc-400 uppercase tracking-wider px-6 py-2.5">
                     Actions
                   </th>
                 </tr>
@@ -174,7 +174,7 @@ export const Bin: React.FC = () => {
                         const name = getStatusName(teamStatuses, task.teamId, task.statusId);
                         return (
                           <span
-                            className={`inline-flex px-2 py-0.5 rounded text-[10px] font-medium border ${getStatusColor(name)}`}
+                            className={`inline-flex px-2 py-0.5 rounded text-[0.625rem] font-medium border ${getStatusColor(name)}`}
                           >
                             {name}
                           </span>
@@ -198,7 +198,7 @@ export const Bin: React.FC = () => {
                           {task.deletedAt ? formatRelativeTime(task.deletedAt) : ''}
                         </span>
                         {task.deletedAt && (
-                          <span className="block text-[10px] text-zinc-400 dark:text-zinc-500">
+                          <span className="block text-[0.625rem] text-zinc-400 dark:text-zinc-500">
                             {daysUntilPurge(task.deletedAt)}d until purge
                           </span>
                         )}
@@ -267,14 +267,16 @@ export const Bin: React.FC = () => {
                       const name = getStatusName(teamStatuses, task.teamId, task.statusId);
                       return (
                         <span
-                          className={`inline-flex px-2 py-0.5 rounded text-[11px] md:text-[10px] font-medium border ${getStatusColor(name)}`}
+                          className={`inline-flex px-2 py-0.5 rounded text-[0.6875rem] md:text-[0.625rem] font-medium border ${getStatusColor(name)}`}
                         >
                           {name}
                         </span>
                       );
                     })()}
-                    <span className="text-[11px] capitalize text-zinc-600 dark:text-zinc-400">{task.priority}</span>
-                    <span className="text-[11px] text-zinc-400 dark:text-zinc-500">
+                    <span className="text-[0.6875rem] capitalize text-zinc-600 dark:text-zinc-400">
+                      {task.priority}
+                    </span>
+                    <span className="text-[0.6875rem] text-zinc-400 dark:text-zinc-500">
                       {task.deletedAt ? formatRelativeTime(task.deletedAt) : ''}
                       {task.deletedAt && (
                         <span className="text-zinc-400"> · {daysUntilPurge(task.deletedAt)}d until purge</span>

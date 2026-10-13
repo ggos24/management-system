@@ -1,5 +1,5 @@
 import React from 'react';
-import { Check, ListChecks } from 'lucide-react';
+import { Check, ListChecks } from './icons';
 import type { Member, TaskSubtask } from '../types';
 import { cn } from '../lib/cn';
 import { formatDateEU } from '../lib/utils';
@@ -27,7 +27,7 @@ const Ring: React.FC<{ done: number; total: number }> = ({ done, total }) => {
   const circumference = 13 * Math.PI;
   const share = total ? done / total : 0;
   return (
-    <svg width="16" height="16" viewBox="0 0 16 16" className="flex-shrink-0 -rotate-90" aria-hidden>
+    <svg viewBox="0 0 16 16" className="h-4 w-4 flex-shrink-0 -rotate-90" aria-hidden>
       <circle cx="8" cy="8" r="6.5" fill="none" strokeWidth="2.5" className="stroke-zinc-200 dark:stroke-zinc-700" />
       {share > 0 && (
         <circle
@@ -164,7 +164,7 @@ export const SubtaskList: React.FC<{
                 >
                   {item.title}
                 </div>
-                <div className="flex flex-wrap gap-x-3 text-[10px] text-zinc-500 dark:text-zinc-400">
+                <div className="flex flex-wrap gap-x-3 text-[0.625rem] text-zinc-500 dark:text-zinc-400">
                   {assignee && <span>{assignee.name}</span>}
                   {item.startDate && <span>Start {formatDateEU(item.startDate)}</span>}
                   {item.endDate && <span>End {formatDateEU(item.endDate)}</span>}

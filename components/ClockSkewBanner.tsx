@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { AlarmClockOff, RefreshCw } from 'lucide-react';
+import { AlarmClockOff, RefreshCw } from './icons';
 import { useUiStore } from '../stores/uiStore';
 import { CLOCK_SKEW_WARN_SECONDS, CLOCK_SKEW_CRITICAL_SECONDS, recheckClockSkew } from '../lib/clockSkew';
 
@@ -52,7 +52,7 @@ export const ClockSkewBanner: React.FC = () => {
         variantClasses[isCritical ? 'error' : 'warning']
       }`}
     >
-      <AlarmClockOff className="h-3.5 w-3.5 flex-shrink-0" />
+      <AlarmClockOff size={14} className="flex-shrink-0" />
       <span>{message}</span>
       <button
         type="button"
@@ -60,7 +60,7 @@ export const ClockSkewBanner: React.FC = () => {
         disabled={checking}
         className="inline-flex items-center gap-1 font-semibold underline underline-offset-2 hover:no-underline disabled:opacity-60"
       >
-        <RefreshCw className={`h-3 w-3 ${checking ? 'animate-spin' : ''}`} />
+        <RefreshCw size={12} className={`${checking ? 'animate-spin' : ''}`} />
         {checking ? 'Checking…' : 'I fixed it — recheck'}
       </button>
     </div>

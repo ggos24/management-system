@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { ArrowLeft, CalendarDays, CircleCheck, CreditCard, List, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowLeft, CalendarDays, CircleCheck, CreditCard, List, Pencil, Plus, Search, Trash2 } from './icons';
 import { toast } from 'sonner';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
@@ -283,7 +283,7 @@ export const SubscriptionsTool: React.FC = () => {
             <div className="px-4 md:px-6 pt-4 pb-2 grid grid-cols-2 lg:grid-cols-4 gap-3">
               {spend.map((entry) => (
                 <Card key={entry.currency} padding="sm">
-                  <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                  <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-zinc-400">
                     {entry.currency} · {entry.count} recurring
                   </p>
                   <p className="text-lg font-semibold text-zinc-900 dark:text-white">
@@ -294,7 +294,7 @@ export const SubscriptionsTool: React.FC = () => {
                 </Card>
               ))}
               <Card padding="sm">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
+                <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-zinc-400">
                   Next {DUE_SOON_DAYS} days
                 </p>
                 <p className="text-lg font-semibold text-zinc-900 dark:text-white">{dueSoonCount + overdueCount}</p>
@@ -343,7 +343,7 @@ export const SubscriptionsTool: React.FC = () => {
                       <td className="px-3 py-2 text-zinc-900 dark:text-white">{item.serviceName}</td>
                       <td className="px-3 py-2 whitespace-nowrap">
                         <span className="text-zinc-900 dark:text-white">{formatMoney(item.amount, item.currency)}</span>
-                        <span className="text-[10px] text-zinc-400 ml-1">
+                        <span className="text-[0.625rem] text-zinc-400 ml-1">
                           {BILLING_PERIOD_SUFFIX[item.billingPeriod]}
                         </span>
                       </td>
@@ -351,7 +351,7 @@ export const SubscriptionsTool: React.FC = () => {
                         {item.nextPaymentDate ? (
                           <>
                             <span className={dateClass}>{formatDateEU(item.nextPaymentDate)}</span>
-                            <span className="block text-[10px] text-zinc-400">{describeCountdown(days)}</span>
+                            <span className="block text-[0.625rem] text-zinc-400">{describeCountdown(days)}</span>
                           </>
                         ) : (
                           <span className="text-zinc-400">—</span>
@@ -569,7 +569,7 @@ const SubscriptionDetailModal: React.FC<SubscriptionDetailModalProps> = ({
               ))}
             </ul>
           )}
-          <p className="text-[10px] text-zinc-400 mt-2">
+          <p className="text-[0.625rem] text-zinc-400 mt-2">
             Deleting a payment does not move the next payment date back — edit the date instead.
           </p>
         </div>
@@ -580,7 +580,7 @@ const SubscriptionDetailModal: React.FC<SubscriptionDetailModalProps> = ({
 
 const Detail: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="min-w-0">
-    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{label}</p>
+    <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-zinc-400">{label}</p>
     <p className="text-zinc-900 dark:text-white truncate" title={value}>
       {value}
     </p>

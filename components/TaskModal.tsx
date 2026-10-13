@@ -27,7 +27,7 @@ import {
   Tags as TagsIcon,
   History,
   Copy,
-} from 'lucide-react';
+} from './icons';
 import { Modal } from './Modal';
 import { RichTextEditor, sanitizeRichTextHtml } from './RichTextEditor';
 import { MultiSelect, MultiSelectOptionGroup } from './MultiSelect';
@@ -59,7 +59,7 @@ import { supabase } from '../lib/supabase';
 
 const ReadOnlyTaskField: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
   <div className="min-w-0 space-y-1">
-    <p className="text-[10px] font-semibold uppercase tracking-wide text-zinc-400">{label}</p>
+    <p className="text-[0.625rem] font-semibold uppercase tracking-wide text-zinc-400">{label}</p>
     <div className="min-h-6 text-sm text-zinc-700 dark:text-zinc-300">{children}</div>
   </div>
 );
@@ -1303,7 +1303,9 @@ export const TaskModal: React.FC = () => {
                     <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
                       <Calendar size={12} /> Due Date
                     </label>
-                    <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Target completion deadline</p>
+                    <p className="text-[0.625rem] text-zinc-400 dark:text-zinc-500 mt-0.5">
+                      Target completion deadline
+                    </p>
                   </div>
                   <SimpleDatePicker
                     value={toDateOnly(taskModalData.dueDate)}
@@ -1316,7 +1318,9 @@ export const TaskModal: React.FC = () => {
                     <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
                       <CheckCircle size={12} /> Pub Date
                     </label>
-                    <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">Actual date of publication</p>
+                    <p className="text-[0.625rem] text-zinc-400 dark:text-zinc-500 mt-0.5">
+                      Actual date of publication
+                    </p>
                   </div>
                   <SimpleDatePicker
                     value={toDateOnly(taskModalData.doneDate)}
@@ -1410,7 +1414,7 @@ export const TaskModal: React.FC = () => {
                               {homeTeam.name}
                             </span>
                             <span
-                              className={`text-[11px] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(homeStatusName)}`}
+                              className={`text-[0.6875rem] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(homeStatusName)}`}
                             >
                               {homeStatusName}
                             </span>
@@ -1430,7 +1434,7 @@ export const TaskModal: React.FC = () => {
                                 {linkedTeam.name}
                               </span>
                               <span
-                                className={`text-[11px] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(linkStatusName)}`}
+                                className={`text-[0.6875rem] font-medium rounded-full px-2 py-0.5 border ${getStatusColor(linkStatusName)}`}
                               >
                                 {linkStatusName}
                               </span>
@@ -1527,7 +1531,7 @@ export const TaskModal: React.FC = () => {
                             <Edit2 size={12} /> Rename
                           </button>
                           <Divider className="my-1" />
-                          <p className="px-3 py-1 text-[10px] font-semibold text-zinc-400 uppercase">Change Type</p>
+                          <p className="px-3 py-1 text-[0.625rem] font-semibold text-zinc-400 uppercase">Change Type</p>
                           {[
                             { type: 'text' as const, icon: Type, label: 'Text' },
                             { type: 'select' as const, icon: ListIcon, label: 'Select' },
@@ -1769,11 +1773,13 @@ export const TaskModal: React.FC = () => {
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-0.5">
                               <span className="text-xs font-semibold text-zinc-900 dark:text-white">{c.userName}</span>
-                              <span className="text-[11px] md:text-[10px] text-zinc-400">
+                              <span className="text-[0.6875rem] md:text-[0.625rem] text-zinc-400">
                                 {formatCommentTime(c.createdAt)}
                               </span>
                               {c.updatedAt && (
-                                <span className="text-[11px] md:text-[10px] text-zinc-400 italic">(edited)</span>
+                                <span className="text-[0.6875rem] md:text-[0.625rem] text-zinc-400 italic">
+                                  (edited)
+                                </span>
                               )}
                               {currentUser &&
                                 (currentUser.id === c.userId || (!isRelatedOnly && currentUser.role === 'admin')) && (
@@ -1943,7 +1949,7 @@ export const TaskModal: React.FC = () => {
                               {renderActivityDescription(a)}
                             </span>
                           </div>
-                          <span className="text-[10px] text-zinc-400">{formatCommentTime(a.createdAt)}</span>
+                          <span className="text-[0.625rem] text-zinc-400">{formatCommentTime(a.createdAt)}</span>
                         </div>
                       </div>
                     ))
@@ -1957,7 +1963,7 @@ export const TaskModal: React.FC = () => {
             <Label variant="section" className="flex items-center gap-2">
               <LinkIcon size={12} /> Links
               {taskModalData.links && taskModalData.links.length > 0 && (
-                <span className="text-[10px] text-zinc-400 font-normal">({taskModalData.links.length})</span>
+                <span className="text-[0.625rem] text-zinc-400 font-normal">({taskModalData.links.length})</span>
               )}
             </Label>
 
@@ -2010,7 +2016,7 @@ export const TaskModal: React.FC = () => {
                         >
                           {link.title || link.url}
                         </a>
-                        {link.title && <span className="text-[10px] text-zinc-400 truncate block">{link.url}</span>}
+                        {link.title && <span className="text-[0.625rem] text-zinc-400 truncate block">{link.url}</span>}
                       </div>
                       {!isRelatedOnly && (
                         <div className="flex items-center gap-0.5 opacity-100 md:opacity-0 md:group-hover/link:opacity-100 transition-opacity flex-shrink-0">

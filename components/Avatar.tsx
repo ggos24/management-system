@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { User } from 'lucide-react';
+import { User } from './icons';
 
 interface AvatarProps {
   src?: string;
@@ -23,9 +23,9 @@ const iconSizes = {
 };
 
 const initialsTextClasses = {
-  xs: 'text-[7px]',
-  sm: 'text-[9px]',
-  md: 'text-[11px]',
+  xs: 'text-[0.4375rem]',
+  sm: 'text-[0.5625rem]',
+  md: 'text-[0.6875rem]',
   lg: 'text-sm',
 };
 

@@ -1,7 +1,7 @@
 import React, { useCallback, useRef, useState } from 'react';
 import { Node, mergeAttributes } from '@tiptap/core';
 import { NodeViewWrapper, ReactNodeViewRenderer } from '@tiptap/react';
-import { AlignLeft, AlignCenter, AlignRight, Trash2 } from 'lucide-react';
+import { AlignLeft, AlignCenter, AlignRight, Trash2 } from './icons';
 
 // Size presets as percentage of container width
 const SIZE_PRESETS = [

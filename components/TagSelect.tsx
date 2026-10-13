@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check, Plus, ChevronDown, Trash2 } from 'lucide-react';
+import { X, Check, Plus, ChevronDown, Trash2 } from './icons';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
 import { useExitAnimation } from '../hooks/useExitAnimation';
 
@@ -164,8 +164,8 @@ export const TagSelect: React.FC<TagSelectProps> = ({
         onClick={handleTriggerClick}
         className={
           compact
-            ? 'w-full min-h-[24px] px-1.5 py-0.5 rounded text-xs cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 relative'
-            : 'w-full min-h-[32px] pl-2 pr-6 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 relative'
+            ? 'w-full min-h-[1.5rem] px-1.5 py-0.5 rounded text-xs cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 relative'
+            : 'w-full min-h-[2rem] pl-2 pr-6 py-1 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 relative'
         }
       >
         {selected.length === 0 && <span className="text-zinc-400">{placeholder}</span>}
@@ -174,7 +174,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
           return (
             <span
               key={tag}
-              className={`${color.bg} ${color.text} px-1.5 py-0.5 rounded text-[11px] md:text-[10px] flex items-center gap-1 font-medium`}
+              className={`${color.bg} ${color.text} px-1.5 py-0.5 rounded text-[0.6875rem] md:text-[0.625rem] flex items-center gap-1 font-medium`}
             >
               {tag}
               <button
@@ -190,7 +190,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
           );
         })}
         {hiddenCount > 0 && (
-          <span className="text-[11px] md:text-[10px] font-medium text-zinc-500 dark:text-zinc-400 px-1 py-0.5">
+          <span className="text-[0.6875rem] md:text-[0.625rem] font-medium text-zinc-500 dark:text-zinc-400 px-1 py-0.5">
             +{hiddenCount}
           </span>
         )}
@@ -230,7 +230,7 @@ export const TagSelect: React.FC<TagSelectProps> = ({
                     className={`flex-1 px-1.5 py-1 rounded text-xs cursor-pointer flex items-center gap-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-700 ${isSelected ? 'font-semibold' : ''}`}
                   >
                     <span
-                      className={`${color.bg} ${color.text} px-1.5 py-0.5 rounded text-[11px] md:text-[10px] font-medium`}
+                      className={`${color.bg} ${color.text} px-1.5 py-0.5 rounded text-[0.6875rem] md:text-[0.625rem] font-medium`}
                     >
                       {tag}
                     </span>

@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { Mail, Wrench, ChevronRight, IdCard, CreditCard } from 'lucide-react';
+import { Mail, Wrench, ChevronRight, IdCard, CreditCard } from './icons';
 import { Badge, Card } from './ui';
 import { useDataStore } from '../stores/dataStore';
 import { useNow } from '../hooks/useNow';

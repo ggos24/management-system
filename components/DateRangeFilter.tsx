@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Check } from 'lucide-react';
+import { Calendar, ChevronDown, ChevronLeft, ChevronRight, Check } from './icons';
 import { mondayIndex, formatDateEU } from '../lib/utils';
 import { useExitAnimation } from '../hooks/useExitAnimation';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
@@ -150,7 +150,7 @@ const MiniCalendar: React.FC<{
 
   return (
     <div>
-      <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">{label}</p>
+      <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">{label}</p>
       <div className="flex justify-between items-center mb-1.5">
         <button
           onClick={() => {
@@ -178,7 +178,7 @@ const MiniCalendar: React.FC<{
       </div>
       <div className="grid grid-cols-7 gap-0.5 text-center mb-0.5">
         {['M', 'T', 'W', 'T', 'F', 'S', 'S'].map((d, i) => (
-          <span key={i} className="text-[10px] text-zinc-400 font-medium">
+          <span key={i} className="text-[0.625rem] text-zinc-400 font-medium">
             {d}
           </span>
         ))}
@@ -291,7 +291,7 @@ export const DateRangeFilter: React.FC<DateRangeFilterProps> = ({
     <div className="relative" ref={triggerRef}>
       <button
         onClick={handleTriggerClick}
-        className="w-full flex items-center gap-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[32px] px-2.5 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors text-sm text-zinc-900 dark:text-zinc-100"
+        className="w-full flex items-center gap-1.5 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[2rem] px-2.5 py-1.5 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors text-sm text-zinc-900 dark:text-zinc-100"
       >
         <Calendar size={14} className="text-zinc-500 flex-shrink-0" />
         <span className="flex-1 text-left">{displayLabel}</span>

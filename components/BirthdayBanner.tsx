@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Cake, X } from 'lucide-react';
+import { Cake, X } from './icons';
 import { useAuthStore } from '../stores/authStore';
 import { useDataStore } from '../stores/dataStore';
 import { isBirthdayOn } from '../lib/birthday';
@@ -106,7 +106,7 @@ export const BirthdayBanner: React.FC = () => {
       aria-live="polite"
       className="flex flex-wrap items-center justify-center gap-x-2 gap-y-1 px-4 py-1.5 text-xs font-medium bg-fuchsia-100 text-fuchsia-900 dark:bg-fuchsia-950 dark:text-fuchsia-200 border-b border-fuchsia-200 dark:border-fuchsia-900"
     >
-      <Cake className="h-3.5 w-3.5 flex-shrink-0" />
+      <Cake size={14} className="flex-shrink-0" />
       <span className="flex flex-shrink-0 items-center -space-x-1.5">
         {celebrants.slice(0, MAX_AVATARS).map((member) => (
           <Avatar
@@ -125,7 +125,7 @@ export const BirthdayBanner: React.FC = () => {
         aria-label="Dismiss birthday banner"
         className="ml-1 flex-shrink-0 rounded p-0.5 opacity-70 hover:opacity-100 hover:bg-fuchsia-200/70 dark:hover:bg-fuchsia-900/70"
       >
-        <X className="h-3.5 w-3.5" />
+        <X size={14} />
       </button>
     </div>
   );

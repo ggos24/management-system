@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Edit2, Archive, Trash2, Lock, Unlock, Rocket, Users as UsersIcon, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, Edit2, Archive, Trash2, Lock, Unlock, Rocket, Users as UsersIcon, RotateCcw } from './icons';
 import { Modal } from './Modal';
 import { IconComponent, ICONS } from './IconComponent';
 import { Button, Input, Label, Badge, Divider } from './ui';
@@ -19,7 +19,7 @@ const PersonFieldsPanel: React.FC<{ teamId: string }> = ({ teamId }) => {
 
   return (
     <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40 px-3 py-3 space-y-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+      <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
         Person fields
       </p>
       {PERSON_FIELD_KEYS.map((key) => {
@@ -155,7 +155,7 @@ export const ManageTeamsModal: React.FC = () => {
       isOpen={isManageTeamsModalOpen}
       onClose={() => setIsManageTeamsModalOpen(false)}
       title="Manage Workspaces"
-      size="mdx"
+      size="lg"
     >
       <div className="space-y-6 min-h-[400px] flex flex-col">
         <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-4">
@@ -209,7 +209,7 @@ export const ManageTeamsModal: React.FC = () => {
                 className={`border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-900 group ${team.archived ? 'opacity-60 grayscale' : ''}`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3">
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 sm:flex-1">
                     <div className="w-8 h-8 flex items-center justify-center bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">
                       <IconComponent name={team.icon} size={16} />
                     </div>
@@ -233,24 +233,24 @@ export const ManageTeamsModal: React.FC = () => {
                       <p className="text-sm font-semibold">
                         {team.name}{' '}
                         {team.adminOnly && (
-                          <span className="inline-flex items-center gap-1 ml-2 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded">
+                          <span className="inline-flex items-center gap-1 ml-2 text-[0.625rem] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded">
                             <Lock size={10} />
                             Admin Only
                           </span>
                         )}
                         {team.rapidResponse && (
-                          <span className="inline-flex items-center gap-1 ml-2 text-[10px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 px-1.5 py-0.5 rounded">
+                          <span className="inline-flex items-center gap-1 ml-2 text-[0.625rem] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 px-1.5 py-0.5 rounded">
                             <Rocket size={10} />
                             Rapid Response
                           </span>
                         )}
                         {team.archived && (
-                          <span className="text-[10px] font-normal text-zinc-400 uppercase ml-2">(Archived)</span>
+                          <span className="text-[0.625rem] font-normal text-zinc-400 uppercase ml-2">(Archived)</span>
                         )}
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap sm:shrink-0">
                     {currentUser && isAdmin(currentUser.role) && (
                       <button
                         onClick={() => toggleTeamAdminOnly(team.id)}

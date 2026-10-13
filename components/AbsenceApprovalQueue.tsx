@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { Check, X, Clock, CheckCircle2, History } from 'lucide-react';
+import { Check, X, Clock, CheckCircle2, History } from './icons';
 import { Absence, Member } from '../types';
 import { Avatar } from './Avatar';
 import { Badge, Input } from './ui';
@@ -241,7 +241,7 @@ export const AbsenceApprovalQueue: React.FC<AbsenceApprovalQueueProps> = ({
                         </span>
                         <span className="text-xs text-zinc-400">{days}d</span>
                       </div>
-                      <div className="flex items-center gap-1.5 mt-0.5 text-[11px] text-zinc-400">
+                      <div className="flex items-center gap-1.5 mt-0.5 text-[0.6875rem] text-zinc-400">
                         {isApproved ? (
                           <Check size={10} className="text-emerald-500" />
                         ) : (

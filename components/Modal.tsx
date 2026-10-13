@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useRef } from 'react';
-import { X } from 'lucide-react';
+import { X } from './icons';
 import { IconButton } from './ui/Button';
 import { useExitAnimation } from '../hooks/useExitAnimation';
 

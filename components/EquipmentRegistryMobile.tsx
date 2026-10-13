@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { ChevronRight, ClipboardCheck, Package } from 'lucide-react';
+import { ChevronRight, ClipboardCheck, Package } from './icons';
 import { Avatar } from './Avatar';
 import { Badge, Button, Input } from './ui';
 import { useDataStore } from '../stores/dataStore';
