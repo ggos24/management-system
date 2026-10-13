@@ -21,6 +21,9 @@ function nextAuthEpoch(): number {
   return authEpoch;
 }
 
+/** Shown when the session is valid but no profile is linked to it. */
+export const NO_PROFILE_ERROR = 'No profile found for this account. Please contact an administrator.';
+
 // Retrying a first load whose profile request failed (typically a network blip
 // right after the session was confirmed): 2s, 4s, 8s, 16s — about half a minute
 // — before reporting an error. While the browser says it is offline the wait
@@ -158,7 +161,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         if (!shouldCommit()) return;
         if (!profile) {
           set({
-            profileError: 'No profile found for this account. Please contact an administrator.',
+            profileError: NO_PROFILE_ERROR,
             isReconnecting: false,
           });
           return;
