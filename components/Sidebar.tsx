@@ -209,7 +209,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div>
               <div className={`px-3 flex items-center justify-between mb-2 ${isCollapsed ? 'justify-center' : ''}`}>
                 {!isCollapsed && (
-                  <h3 className="text-[0.625rem] font-semibold text-zinc-400 uppercase tracking-wider">Workspaces</h3>
+                  <h3 className="text-[0.625rem] font-semibold text-zinc-400 uppercase tracking-wider">Teams</h3>
                 )}
                 {isCollapsed && <div className="h-px w-4 bg-zinc-200 dark:bg-zinc-800"></div>}
 

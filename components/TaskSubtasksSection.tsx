@@ -65,7 +65,7 @@ export const TaskSubtasksSection: React.FC<Props> = ({
       return;
     }
     if (form.startDate && form.endDate && form.startDate > form.endDate) {
-      toast.error('End date must be on or after start date');
+      toast.error('Due date must be on or after the start date');
       return;
     }
     const next = { ...form, title };
@@ -145,7 +145,7 @@ export const TaskSubtasksSection: React.FC<Props> = ({
                   {assignee && <span>{assignee.name}</span>}
                   <span>Created {formatDateEU(item.createdAt)}</span>
                   {item.startDate && <span>Start {formatDateEU(item.startDate)}</span>}
-                  {item.endDate && <span>End {formatDateEU(item.endDate)}</span>}
+                  {item.endDate && <span>Due {formatDateEU(item.endDate)}</span>}
                 </div>
               </div>
               {canEdit && (
@@ -210,12 +210,12 @@ export const TaskSubtasksSection: React.FC<Props> = ({
             </div>
             <div className="space-y-1">
               <label className="flex items-center gap-1.5 text-xs font-medium text-zinc-500 dark:text-zinc-400">
-                <Calendar size={12} /> End date
+                <Calendar size={12} /> Due date
               </label>
               <SimpleDatePicker
                 value={form.endDate || ''}
                 onChange={(date) => setForm({ ...form, endDate: date || null })}
-                placeholder="Set end date"
+                placeholder="Set due date"
               />
             </div>
           </div>

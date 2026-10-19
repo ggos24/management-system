@@ -820,8 +820,11 @@ const Schedule: React.FC<ScheduleProps> = ({
                     </div>
 
                     {!collapsedTeams[group.team.id] &&
-                      group.members.map((member) => {
+                      group.members.map((member, memberIndex) => {
                         const isCurrentUser = member.id === currentUserId;
+                        // Zebra striping: every second row in a team gets a light tint so long
+                        // rosters are easier to follow across the day columns.
+                        const isStriped = memberIndex % 2 === 1;
                         const isMemberDragOver = dragState.dragType === 'member' && dragState.dragOverId === member.id;
                         const memberDropClass = isMemberDragOver
                           ? dragState.dropPosition === 'after'
@@ -832,13 +835,13 @@ const Schedule: React.FC<ScheduleProps> = ({
                           <div
                             // Composite key — a multi-team member appears in multiple rows
                             key={`${group.team.id}-${member.id}`}
-                            className={`flex border-b transition-colors h-10 ${isRapidResponse ? 'border-zinc-200 bg-zinc-100 hover:bg-zinc-200/60 dark:border-zinc-700/60 dark:bg-zinc-800 dark:hover:bg-zinc-700/60' : `border-zinc-100 hover:bg-zinc-50 dark:border-zinc-800 dark:hover:bg-zinc-800/30 ${isCurrentUser ? 'bg-blue-50/40 dark:bg-blue-950/20' : ''}`} ${memberDropClass}`}
+                            className={`flex border-b transition-colors h-10 ${isRapidResponse ? `border-zinc-200 hover:bg-zinc-200/60 dark:border-zinc-700/60 dark:hover:bg-zinc-700/60 ${isStriped ? 'bg-zinc-200/60 dark:bg-zinc-700/50' : 'bg-zinc-100 dark:bg-zinc-800'}` : `border-zinc-100 hover:bg-zinc-100/70 dark:border-zinc-800 dark:hover:bg-zinc-800/40 ${isCurrentUser ? 'bg-blue-50/40 dark:bg-blue-950/20' : isStriped ? 'bg-zinc-50 dark:bg-zinc-900/60' : ''}`} ${memberDropClass}`}
                             onDragOver={(e) => handleMemberDragOver(e, member.id)}
                             onDrop={(e) => handleMemberDrop(e, member.id)}
                             onDragEnd={handleDragEnd}
                           >
                             <div
-                              className={`group sticky left-0 z-10 w-32 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-1.5 md:px-2 flex items-center gap-1.5 md:gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer ${isCurrentUser ? 'bg-blue-50 hover:bg-zinc-50 dark:bg-blue-950 dark:hover:bg-zinc-800' : isRapidResponse ? 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700' : 'bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-800'}`}
+                              className={`group sticky left-0 z-10 w-32 md:w-64 border-r border-zinc-200 dark:border-zinc-800 py-1 px-1.5 md:px-2 flex items-center gap-1.5 md:gap-2 shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)] cursor-pointer ${isCurrentUser ? 'bg-blue-50 hover:bg-zinc-50 dark:bg-blue-950 dark:hover:bg-zinc-800' : isRapidResponse ? (isStriped ? 'bg-zinc-200 hover:bg-zinc-300/70 dark:bg-zinc-700 dark:hover:bg-zinc-600' : 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700') : isStriped ? 'bg-zinc-50 hover:bg-zinc-100 dark:bg-[#1f1f23] dark:hover:bg-zinc-800' : 'bg-white hover:bg-zinc-50 dark:bg-zinc-900 dark:hover:bg-zinc-800'}`}
                               onClick={ifGridIsStill(() => setSelectedMemberStats(member))}
                             >
                               <Avatar src={member.avatar} alt={member.name} size="sm" />
