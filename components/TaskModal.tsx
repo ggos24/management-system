@@ -41,10 +41,11 @@ import { SUBTASKS_ENABLED } from '../lib/features';
 import { Button, Input, Label, Divider } from './ui';
 import { useUiStore } from '../stores/uiStore';
 import { useDataStore, resolvePersonFieldConfig } from '../stores/dataStore';
+import { mergeTaskEdits, rebaseUntouched } from '../lib/taskMerge';
+import { AlertBanner } from './AlertBanner';
 import { useAuthStore } from '../stores/authStore';
 import { Task, TaskSubtask, TaskComment, TaskActivity, CustomProperty } from '../types';
 import { cn } from '../lib/cn';
-import { toggleSubtaskInHtml } from '../lib/subtasks';
 import { formatDateEU, isDateOrderValid, toDateOnly } from '../lib/utils';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusColor } from '../constants';
 import { getStatusName } from '../lib/statusUtils';
@@ -72,7 +73,14 @@ export const TaskModal: React.FC = () => {
   const [editingPropId, setEditingPropId] = useState<string | null>(null);
   const [editingPropName, setEditingPropName] = useState('');
   const [propMenuId, setPropMenuId] = useState<string | null>(null);
-  const { isTaskModalOpen, taskModalData, setIsTaskModalOpen, setTaskModalData } = useUiStore();
+  const {
+    isTaskModalOpen,
+    taskModalData,
+    setIsTaskModalOpen,
+    setTaskModalData,
+    taskModalConflict,
+    setTaskModalConflict,
+  } = useUiStore();
 
   const {
     teams,
@@ -104,6 +112,9 @@ export const TaskModal: React.FC = () => {
   const contextTeamId = taskModalData.viewingTeamId || taskModalData.teamId || '';
   const [draftSubtasks, setDraftSubtasks] = useState<TaskSubtask[]>([]);
   const [savingTask, setSavingTask] = useState(false);
+  // Guards against a second save while one is in flight — the Unsaved Changes
+  // dialog's Save can be reached by pressing Escape during a save.
+  const savingRef = useRef(false);
 
   const sortedMembers = useMemo(
     () => [...members].sort((a, b) => (a.id === currentUser?.id ? -1 : b.id === currentUser?.id ? 1 : 0)),
@@ -128,6 +139,45 @@ export const TaskModal: React.FC = () => {
 
   const [isUnsavedConfirmOpen, setIsUnsavedConfirmOpen] = useState(false);
 
+  /** The task as this editor last saw it from the server: the base for merging the save. */
+  const readBaseline = (): Partial<Task> | undefined => {
+    if (!initialDataRef.current) return undefined;
+    try {
+      return JSON.parse(initialDataRef.current);
+    } catch {
+      return undefined;
+    }
+  };
+
+  // While the task is open, bring in what other people save — but only into the
+  // fields this editor has not touched, so someone typing a description sees a
+  // colleague's new text appear instead of saving over it later. Fields being
+  // edited stay as they are and are merged when this editor saves.
+  const openTaskId = isTaskModalOpen ? taskModalData.id : undefined;
+  useEffect(() => {
+    if (!openTaskId) return;
+    return useDataStore.subscribe((state, previous) => {
+      const next = state.tasks.find((task) => task.id === openTaskId);
+      if (!next || next === previous.tasks.find((task) => task.id === openTaskId)) return;
+      // A save in flight settles the draft itself when it returns.
+      if (savingRef.current || !initialDataRef.current) return;
+      let base: Partial<Task>;
+      try {
+        base = JSON.parse(initialDataRef.current);
+      } catch {
+        return;
+      }
+      const draft = useUiStore.getState().taskModalData;
+      if (draft.id !== openTaskId || draft.deletedAt) return;
+      const rebased = rebaseUntouched(base, draft, next, {
+        normalizeDescription: (html) => sanitizeRichTextHtml(withMentionLabels(html, state.members)),
+      });
+      if (!rebased) return;
+      initialDataRef.current = JSON.stringify(rebased.base);
+      setTaskModalData(rebased.draft);
+    });
+  }, [openTaskId, setTaskModalData]);
+
   /**
    * Ticking a subtask on an existing task saves that one row straight away — the rest of the
    * draft still waits for Save. The baseline gets the same tick so the saved row never reads as
@@ -149,12 +199,14 @@ export const TaskModal: React.FC = () => {
     if (draftUntouched) {
       baseline.description = saved;
       initialDataRef.current = JSON.stringify(baseline);
-      setTaskModalData({ ...taskModalData, description: saved });
+      setTaskModalData((prev) => ({ ...prev, description: saved }));
       return true;
     }
-    // Other edits are pending: keep them in the draft, and move only this row in the baseline.
-    baseline.description = toggleSubtaskInHtml(baseline.description, index, key) ?? baseline.description;
-    initialDataRef.current = JSON.stringify(baseline);
+    // Other edits are pending: the tick goes into the draft like any other edit,
+    // and the baseline stays as the server last had it. If the tick's own write
+    // fails, the save then still sees it as this editor's change and writes it;
+    // moving the baseline would have made the save treat the server's unticked
+    // row as the newer value and silently drop it.
     return false;
   };
 
@@ -747,7 +799,7 @@ export const TaskModal: React.FC = () => {
   };
 
   const handleSaveTask = async () => {
-    if (isRelatedOnly) return;
+    if (isRelatedOnly || savingRef.current) return;
     if (!taskModalData.title?.trim()) {
       toast.error('Title is required');
       return;
@@ -755,17 +807,64 @@ export const TaskModal: React.FC = () => {
     const isNew = !taskModalData.id;
     const taskId = isNew ? crypto.randomUUID() : taskModalData.id!;
     const dataToSave = isNew ? { ...taskModalData, id: taskId } : taskModalData;
+    const startedFrom = JSON.stringify(taskModalData);
 
+    savingRef.current = true;
     setSavingTask(true);
-    const saved = await saveTask(dataToSave, teams, isNew ? draftSubtasks : []);
-    setSavingTask(false);
-    if (!saved) return;
+    let result: Awaited<ReturnType<typeof saveTask>>;
+    try {
+      result = await saveTask(dataToSave, teams, isNew ? draftSubtasks : [], {
+        isNew,
+        base: isNew ? undefined : readBaseline(),
+      });
+    } finally {
+      savingRef.current = false;
+      setSavingTask(false);
+    }
+    if (result.status === 'failed') return;
 
     // Link to foreign workspaces (derived from selected placements)
-    if (isNew && pendingLinkedTeamIds.length > 0) {
+    if (result.status === 'saved' && isNew && pendingLinkedTeamIds.length > 0) {
       for (const teamId of pendingLinkedTeamIds) {
         linkTaskToTeam(taskId, teamId);
       }
+    }
+
+    // The modal may have been closed, or moved on to another task, while the
+    // save ran; its result then belongs to nothing on screen.
+    const ui = useUiStore.getState();
+    const current = ui.taskModalData;
+    if (!ui.isTaskModalOpen || (isNew ? !!current.id : current.id !== taskId)) return;
+
+    // Edits made while the save ran are carried over onto its result, the same
+    // three-way way the save itself merged onto the server.
+    const editedMeanwhile = JSON.stringify(current) !== startedFrom;
+    const mergeOptions = {
+      normalizeDescription: (html: string) => sanitizeRichTextHtml(withMentionLabels(html, members)),
+    };
+    const carryOver = (onto: Task) =>
+      editedMeanwhile ? mergeTaskEdits(dataToSave, current, onto, mergeOptions) : null;
+
+    if (result.status === 'conflict') {
+      // Someone else changed the same part of the description. Show the merge
+      // with both versions kept, on top of the server's copy, for review; saving
+      // again writes it.
+      const draft = carryOver(result.task)?.task ?? result.task;
+      setTaskModalData({ ...current, ...draft });
+      initialDataRef.current = JSON.stringify({ ...current, ...result.theirs });
+      setTaskModalConflict(true);
+      return;
+    }
+
+    if (!isNew && editedMeanwhile) {
+      // Keep the modal open with those edits on top of what was just saved, which
+      // is now the base — so everything the save merged in stays in the draft.
+      const again = carryOver(result.task)!;
+      setTaskModalData({ ...current, ...again.task });
+      initialDataRef.current = JSON.stringify({ ...current, ...result.task });
+      setTaskModalConflict(again.descriptionConflict);
+      toast.info('Saved. Your newer changes are not saved yet.');
+      return;
     }
 
     setDraftSubtasks([]);
@@ -1177,7 +1276,10 @@ export const TaskModal: React.FC = () => {
                 placeholder="Task Title"
                 value={taskModalData.title || ''}
                 readOnly={isRelatedOnly}
-                onChange={(e) => setTaskModalData({ ...taskModalData, title: e.target.value.replace(/\r?\n/g, ' ') })}
+                onChange={(e) => {
+                  const title = e.target.value.replace(/\r?\n/g, ' ');
+                  setTaskModalData((prev) => ({ ...prev, title }));
+                }}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') e.preventDefault();
                 }}
@@ -1188,9 +1290,15 @@ export const TaskModal: React.FC = () => {
             </div>
 
             <div className="space-y-2">
+              {taskModalConflict && (
+                <AlertBanner
+                  variant="warning"
+                  message="Someone else changed the same part of the description while you were editing. Both versions are kept below — theirs first. Tidy it up and save again."
+                />
+              )}
               <RichTextEditor
                 value={taskModalData.description || ''}
-                onChange={(html) => setTaskModalData({ ...taskModalData, description: html })}
+                onChange={(html) => setTaskModalData((prev) => ({ ...prev, description: html }))}
                 placeholder="Description... Use @ to mention someone"
                 minHeight="120px"
                 mentionMembers={descriptionMentionMembers}
@@ -1223,14 +1331,14 @@ export const TaskModal: React.FC = () => {
                     label: s.name,
                   }))}
                   value={taskModalData.statusId || ''}
-                  onChange={(val) => setTaskModalData({ ...taskModalData, statusId: val })}
+                  onChange={(val) => setTaskModalData((prev) => ({ ...prev, statusId: val }))}
                   onAdd={async (name) => {
                     const teamId = taskModalData.teamId;
                     if (!teamId) return;
                     await addStatus(teamId, name);
                     const created = (useDataStore.getState().teamStatuses[teamId] || []).find((s) => s.name === name);
                     if (created) {
-                      setTaskModalData({ ...taskModalData, statusId: created.id });
+                      setTaskModalData((prev) => ({ ...prev, statusId: created.id }));
                     }
                   }}
                 />
@@ -1241,11 +1349,11 @@ export const TaskModal: React.FC = () => {
                   options={teamTypes[taskModalData.teamId || 'default'] || teamTypes['default'] || ['General']}
                   value={taskModalData.contentInfo?.type || ''}
                   onChange={(val) =>
-                    setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } })
+                    setTaskModalData((prev) => ({ ...prev, contentInfo: { ...prev.contentInfo!, type: val } }))
                   }
                   onAdd={(val) => {
                     addType(taskModalData.teamId || 'default', val);
-                    setTaskModalData({ ...taskModalData, contentInfo: { ...taskModalData.contentInfo!, type: val } });
+                    setTaskModalData((prev) => ({ ...prev, contentInfo: { ...prev.contentInfo!, type: val } }));
                   }}
                 />
                 {!authorCfg.hidden && (
@@ -1255,7 +1363,7 @@ export const TaskModal: React.FC = () => {
                     hint="Person who creates the content"
                     options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
                     selected={taskModalData.assigneeIds || []}
-                    onChange={(ids) => setTaskModalData({ ...taskModalData, assigneeIds: ids })}
+                    onChange={(ids) => setTaskModalData((prev) => ({ ...prev, assigneeIds: ids }))}
                     placeholder={`Select ${authorCfg.label}...`}
                     searchable
                     highlightValue={currentUser?.id}
@@ -1269,10 +1377,10 @@ export const TaskModal: React.FC = () => {
                     options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
                     selected={taskModalData.contentInfo?.editorIds || []}
                     onChange={(ids) =>
-                      setTaskModalData({
-                        ...taskModalData,
-                        contentInfo: { ...taskModalData.contentInfo!, editorIds: ids },
-                      })
+                      setTaskModalData((prev) => ({
+                        ...prev,
+                        contentInfo: { ...prev.contentInfo!, editorIds: ids },
+                      }))
                     }
                     placeholder={`Select ${editorCfg.label}...`}
                     searchable
@@ -1287,10 +1395,10 @@ export const TaskModal: React.FC = () => {
                     options={sortedMembers.map((m) => ({ value: m.id, label: m.name }))}
                     selected={taskModalData.contentInfo?.designerIds || []}
                     onChange={(ids) =>
-                      setTaskModalData({
-                        ...taskModalData,
-                        contentInfo: { ...taskModalData.contentInfo!, designerIds: ids },
-                      })
+                      setTaskModalData((prev) => ({
+                        ...prev,
+                        contentInfo: { ...prev.contentInfo!, designerIds: ids },
+                      }))
                     }
                     placeholder={`Select ${designerCfg.label}...`}
                     searchable
@@ -1304,7 +1412,7 @@ export const TaskModal: React.FC = () => {
                   hint="Urgency level for scheduling"
                   options={['low', 'medium', 'high']}
                   value={taskModalData.priority || 'medium'}
-                  onChange={(val) => setTaskModalData({ ...taskModalData, priority: val as Task['priority'] })}
+                  onChange={(val) => setTaskModalData((prev) => ({ ...prev, priority: val as Task['priority'] }))}
                   renderValue={(v) => (
                     <span className={`capitalize inline-flex items-center gap-1.5 ${PRIORITY_COLORS[v] || ''}`}>
                       <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[v] || 'bg-zinc-400'}`} />
@@ -1330,7 +1438,7 @@ export const TaskModal: React.FC = () => {
                           toast.error('Start date must be on or before the due date');
                           return;
                         }
-                        setTaskModalData({ ...taskModalData, startDate });
+                        setTaskModalData((prev) => ({ ...prev, startDate }));
                       }}
                       placeholder="Set start date"
                     />
@@ -1353,7 +1461,7 @@ export const TaskModal: React.FC = () => {
                         toast.error('Due date must be on or after the start date');
                         return;
                       }
-                      setTaskModalData({ ...taskModalData, dueDate });
+                      setTaskModalData((prev) => ({ ...prev, dueDate }));
                     }}
                     placeholder="Set due date"
                   />
@@ -1374,7 +1482,7 @@ export const TaskModal: React.FC = () => {
                         const innerIdx = raw.indexOf(':');
                         return innerIdx > 8 ? raw.substring(innerIdx + 1) : raw;
                       });
-                      setTaskModalData({ ...taskModalData, placements: plainNames });
+                      setTaskModalData((prev) => ({ ...prev, placements: plainNames }));
                     }}
                     onToggleWithGroup={(compositeValue, isSelected, group) => {
                       const _placementName = compositeValue.substring(compositeValue.indexOf(':') + 1);
@@ -1383,7 +1491,7 @@ export const TaskModal: React.FC = () => {
                         ? [...selectedCompositeKeys, compositeValue]
                         : selectedCompositeKeys.filter((k) => k !== compositeValue);
                       const newPlacements = newKeys.map((k) => k.substring(k.indexOf(':') + 1));
-                      setTaskModalData({ ...taskModalData, placements: newPlacements });
+                      setTaskModalData((prev) => ({ ...prev, placements: newPlacements }));
 
                       // If editing existing task and selecting a foreign placement, link immediately
                       if (isSelected && group.teamId !== taskModalData.teamId && taskModalData.id) {
@@ -1397,10 +1505,10 @@ export const TaskModal: React.FC = () => {
                       const teamId = taskModalData.teamId || '';
                       if (teamId) addTeamPlacement(teamId, newTag);
                       if (!allPlacements.includes(newTag)) addPlacement(newTag);
-                      setTaskModalData({
-                        ...taskModalData,
-                        placements: [...(taskModalData.placements || []), newTag],
-                      });
+                      setTaskModalData((prev) => ({
+                        ...prev,
+                        placements: [...(prev.placements || []), newTag],
+                      }));
                     }}
                     placeholder="Add placements..."
                   />
@@ -1491,10 +1599,10 @@ export const TaskModal: React.FC = () => {
                     if (isViewingLinkedTeam && taskModalData.id) {
                       updateLinkedTaskFields(taskModalData.id, viewingTeamId!, { ...fieldValues, [propId]: value });
                     } else {
-                      setTaskModalData({
-                        ...taskModalData,
-                        customFieldValues: { ...taskModalData.customFieldValues, [propId]: value },
-                      });
+                      setTaskModalData((prev) => ({
+                        ...prev,
+                        customFieldValues: { ...prev.customFieldValues, [propId]: value },
+                      }));
                     }
                   };
 

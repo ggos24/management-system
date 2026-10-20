@@ -19,6 +19,12 @@ interface UiState {
 
   // Modal states
   isTaskModalOpen: boolean;
+  /**
+   * The last save of the open task found the description edited by someone else
+   * in the same place; the draft holds both versions for review. Cleared whenever
+   * the modal opens or closes.
+   */
+  taskModalConflict: boolean;
   taskModalData: TaskModalData;
   isSettingsModalOpen: boolean;
   isLogoutModalOpen: boolean;
@@ -60,6 +66,7 @@ interface UiState {
   setClockSkew: (seconds: number | null) => void;
 
   setIsTaskModalOpen: (open: boolean) => void;
+  setTaskModalConflict: (conflict: boolean) => void;
   setTaskModalData: (data: TaskModalData | ((prev: TaskModalData) => TaskModalData)) => void;
   setIsSettingsModalOpen: (open: boolean) => void;
   setIsLogoutModalOpen: (open: boolean) => void;
@@ -111,6 +118,7 @@ export const useUiStore = create<UiState>((set, get) => ({
   clockSkewSeconds: null,
 
   isTaskModalOpen: false,
+  taskModalConflict: false,
   taskModalData: {},
   isSettingsModalOpen: false,
   isLogoutModalOpen: false,
@@ -171,7 +179,8 @@ export const useUiStore = create<UiState>((set, get) => ({
 
   setClockSkew: (seconds) => set({ clockSkewSeconds: seconds }),
 
-  setIsTaskModalOpen: (open) => set({ isTaskModalOpen: open }),
+  setIsTaskModalOpen: (open) => set({ isTaskModalOpen: open, taskModalConflict: false }),
+  setTaskModalConflict: (taskModalConflict) => set({ taskModalConflict }),
   setTaskModalData: (data) =>
     set((state) => ({
       taskModalData: typeof data === 'function' ? data(state.taskModalData) : data,

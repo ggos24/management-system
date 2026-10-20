@@ -4,8 +4,26 @@ import { Send } from './icons';
 import LoginPage from './LoginPage';
 import { useAuth } from '../hooks/useAuth';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';
-import { useAuthStore } from '../stores/authStore';
+import { NO_PROFILE_ERROR, useAuthStore } from '../stores/authStore';
 import { AccountErrorScreen, AuthLoadingScreen } from './AuthScreens';
+import { isTelegramWebview } from '../lib/telegram';
+import { signOutOnThisDevice } from '../lib/supabase';
+
+/**
+ * Reload to retry the profile load. In the Telegram Mini App, when the session
+ * has no profile, the stored session is dropped first: a reload would otherwise
+ * reuse it on every open (say, after an admin deleted and re-created the
+ * profile), while a fresh initData exchange reaches the current link or the
+ * "not linked" screen. A load that merely failed keeps the session — the reload
+ * reuses the same initData, which the exchange rejects 15 minutes after launch.
+ */
+function retryAfterAccountError(message: string) {
+  if (!isTelegramWebview() || message !== NO_PROFILE_ERROR) {
+    window.location.reload();
+    return;
+  }
+  void signOutOnThisDevice().finally(() => window.location.reload());
+}
 
 export const AuthGuard: React.FC = () => {
   const { session } = useAuth();
@@ -75,7 +93,8 @@ export const AuthGuard: React.FC = () => {
     );
   }
 
-  if (profileError) return <AccountErrorScreen message={profileError} onRetry={() => window.location.reload()} />;
+  if (profileError)
+    return <AccountErrorScreen message={profileError} onRetry={() => retryAfterAccountError(profileError)} />;
 
   if (!currentUser) return null;
 

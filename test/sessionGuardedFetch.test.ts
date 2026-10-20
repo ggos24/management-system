@@ -154,6 +154,42 @@ describe('token refresh through the session-guarded fetch', () => {
     expect(realFetch).toHaveBeenCalledTimes(2);
   });
 
+  it('does not stretch the pause when the device clock is corrected', async () => {
+    vi.useFakeTimers();
+    const { guarded, realFetch } = refreshFetch(json({ msg: 'rate limited' }, 429, { 'Retry-After': '10' }));
+
+    await expect(guarded(REFRESH_URL, { method: 'POST' })).rejects.toMatchObject({ status: 429 });
+    // The clock was an hour fast, and the user just fixed it, as the banner asks.
+    vi.setSystemTime(Date.now() - 60 * 60_000);
+    vi.advanceTimersByTime(10_000);
+
+    await expect(guarded(REFRESH_URL, { method: 'POST' })).resolves.toMatchObject({ status: 200 });
+    expect(realFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it('reports whether the latest token refresh failed', async () => {
+    vi.useFakeTimers();
+    const { guarded, realFetch } = refreshFetch(json({}, 500), json({}, 200), json({}, 400));
+    expect(guarded.isTokenRefreshFailing()).toBe(false);
+
+    await guarded(REFRESH_URL, { method: 'POST' }).catch(() => undefined);
+    expect(guarded.isTokenRefreshFailing()).toBe(true);
+    await guarded(REFRESH_URL, { method: 'POST' });
+    expect(guarded.isTokenRefreshFailing()).toBe(false);
+    // A rejected refresh token is an answer, not an outage.
+    await guarded(REFRESH_URL, { method: 'POST' });
+    expect(guarded.isTokenRefreshFailing()).toBe(false);
+
+    realFetch.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+    await guarded(REFRESH_URL, { method: 'POST' }).catch(() => undefined);
+    expect(guarded.isTokenRefreshFailing()).toBe(true);
+
+    realFetch.mockResolvedValueOnce(json({}, 429, { 'Retry-After': '10' }));
+    await guarded(REFRESH_URL, { method: 'POST' }).catch(() => undefined);
+    vi.advanceTimersByTime(5_000);
+    expect(guarded.isTokenRefreshFailing()).toBe(true);
+  });
+
   it('pauses for 30 seconds after a rate limit that names no Retry-After', async () => {
     vi.useFakeTimers();
     const { guarded, realFetch } = refreshFetch(json({ msg: 'rate limited' }, 429));

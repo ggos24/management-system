@@ -32,12 +32,19 @@ const stored: Task = {
 };
 
 let saved: Task[] = [];
+let server: Task;
 
 beforeEach(() => {
   saved = [];
+  server = stored;
   useAuthStore.setState({ currentUser: profile });
   useDataStore.setState({ tasks: [stored], teamStatuses: {}, members: [profile] });
+  vi.spyOn(db, 'fetchTaskById').mockImplementation(async () => server);
   vi.spyOn(db, 'saveTaskWithRelations').mockImplementation(async (task: Task) => {
+    saved.push(task);
+    return task.id;
+  });
+  vi.spyOn(db, 'saveTaskWithSubtasks').mockImplementation(async (task: Task) => {
     saved.push(task);
     return task.id;
   });
@@ -61,10 +68,18 @@ describe('saveTask start date', () => {
     expect(saved[0].startDate).toBeNull();
   });
 
-  it('keeps the stored start date when the caller leaves it out', async () => {
-    const { startDate: _omitted, ...withoutStart } = stored;
-    await useDataStore.getState().saveTask({ ...withoutStart, title: 'Renamed' }, [team]);
+  it('keeps a start date someone else set while this editor changed only the title', async () => {
+    server = { ...stored, startDate: '2026-10-17' };
+    await useDataStore.getState().saveTask({ ...stored, title: 'Renamed' }, [team], [], { base: stored });
     expect(saved[0].title).toBe('Renamed');
-    expect(saved[0].startDate).toBe('2026-10-14');
+    expect(saved[0].startDate).toBe('2026-10-17');
+  });
+
+  it('saves the start date of a new task', async () => {
+    useDataStore.setState({ tasks: [] });
+    await useDataStore.getState().saveTask({ ...stored, id: 'task-2', startDate: '2026-10-15' }, [team], [], {
+      isNew: true,
+    });
+    expect(saved[0].startDate).toBe('2026-10-15');
   });
 });

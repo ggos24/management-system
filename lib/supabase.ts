@@ -23,11 +23,15 @@ let hasSession = false;
 // Changing it would sign every user out.
 export const AUTH_STORAGE_KEY = `sb-${new URL(supabaseUrl).hostname.split('.')[0]}-auth-token`;
 
+const guardedFetch = createSessionGuardedFetch({
+  supabaseUrl,
+  anonKey: supabaseAnonKey,
+  hasSession: () => hasSession,
+});
+
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: { storageKey: AUTH_STORAGE_KEY },
-  global: {
-    fetch: createSessionGuardedFetch({ supabaseUrl, anonKey: supabaseAnonKey, hasSession: () => hasSession }),
-  },
+  global: { fetch: guardedFetch },
 });
 
 supabase.auth.onAuthStateChange((_event, session) => {
@@ -47,6 +51,27 @@ supabase.auth.onAuthStateChange((_event, session) => {
  * The refresh token itself stays valid on the server until it expires: there is
  * no revoking it without a connection.
  */
+// auth-js refreshes an access token that expires within this margin before it
+// will use it (its EXPIRY_MARGIN_MS).
+const REFRESH_MARGIN_MS = 90_000;
+
+/**
+ * Whether a sign-out that tells the server would first have to wait out failing
+ * token refreshes. auth-js's signOut() refreshes an expired access token before it
+ * calls /logout; while refreshes are failing (network, 408/429/5xx, or paused after
+ * a rate limit) that is ~25s of retries ending in an error, so the only sign-out
+ * that can work is the one on this device.
+ */
+export function signOutMustWaitForRefresh(): boolean {
+  if (!guardedFetch.isTokenRefreshFailing()) return false;
+  try {
+    const stored = JSON.parse(localStorage.getItem(AUTH_STORAGE_KEY) ?? 'null') as { expires_at?: number } | null;
+    return !stored?.expires_at || stored.expires_at * 1000 - Date.now() < REFRESH_MARGIN_MS;
+  } catch {
+    return true;
+  }
+}
+
 export async function signOutOnThisDevice(): Promise<void> {
   try {
     for (const suffix of ['', '-code-verifier', '-user']) localStorage.removeItem(AUTH_STORAGE_KEY + suffix);

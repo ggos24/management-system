@@ -6,6 +6,7 @@ import { AlertBanner } from './AlertBanner';
 import { ClockSkewBanner } from './ClockSkewBanner';
 import { Button, Input, FormField, Card } from './ui';
 import { useUiStore } from '../stores/uiStore';
+import { useAuthStore } from '../stores/authStore';
 import { skewSecondsFromToken } from '../lib/clockSkew';
 import type { Session } from '@supabase/supabase-js';
 
@@ -21,6 +22,9 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
+  // A sign-out that already left the app may still be clearing the old session;
+  // signing in before it finishes would let it sign the new session out too.
+  const isSigningOut = useAuthStore((s) => s.isSigningOut);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -193,21 +197,23 @@ const LoginPage: React.FC<LoginPageProps> = ({ onLogin, mode: initialMode = 'log
 
             <Button
               type="submit"
-              disabled={isLoading}
+              disabled={isLoading || isSigningOut}
               className="w-full py-2.5 flex items-center justify-center gap-2 disabled:opacity-70"
             >
-              {isLoading
-                ? currentMode === 'set-password'
-                  ? 'Setting password...'
-                  : currentMode === 'reset-password'
-                    ? 'Sending...'
-                    : 'Logging in...'
-                : currentMode === 'set-password'
-                  ? 'Set Password & Continue'
-                  : currentMode === 'reset-password'
-                    ? 'Send Reset Link'
-                    : 'Sign In'}
-              {!isLoading && <ArrowRight size={16} />}
+              {isSigningOut
+                ? 'Signing out…'
+                : isLoading
+                  ? currentMode === 'set-password'
+                    ? 'Setting password...'
+                    : currentMode === 'reset-password'
+                      ? 'Sending...'
+                      : 'Logging in...'
+                  : currentMode === 'set-password'
+                    ? 'Set Password & Continue'
+                    : currentMode === 'reset-password'
+                      ? 'Send Reset Link'
+                      : 'Sign In'}
+              {!isLoading && !isSigningOut && <ArrowRight size={16} />}
             </Button>
 
             {currentMode === 'reset-password' && (
