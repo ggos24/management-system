@@ -24,7 +24,14 @@ import {
   isEditorOrAbove,
   PERSON_FIELD_DEFAULT_LABELS,
 } from '../constants';
-import { formatDateEU, getDateDiffFromToday, mondayIndex, toDateOnly, WEEKDAYS_MON_SHORT } from '../lib/utils';
+import {
+  formatDateEU,
+  getDateDiffFromToday,
+  isDateOrderValid,
+  mondayIndex,
+  toDateOnly,
+  WEEKDAYS_MON_SHORT,
+} from '../lib/utils';
 import {
   Plus,
   MoreHorizontal,
@@ -64,10 +71,11 @@ import { CustomSelect } from './CustomSelect';
 import { TagSelect } from './TagSelect';
 import { SimpleDatePicker } from './SimpleDatePicker';
 import { Avatar } from './Avatar';
-import { SubtaskList, SubtaskProgress } from './SubtaskProgress';
+import { SubtaskCheckbox, SubtaskList, SubtaskProgress } from './SubtaskProgress';
 import { SUBTASKS_ENABLED } from '../lib/features';
 import { Button, Divider } from './ui';
 import { useAuthStore } from '../stores/authStore';
+import { useDataStore } from '../stores/dataStore';
 
 // Known service favicon URLs (Google's favicon API returns generic icons for subdomains)
 const KNOWN_FAVICONS: { match: (hostname: string, pathname: string) => boolean; icon: string }[] = [
@@ -121,7 +129,7 @@ type DeadlineStatusCategory = 'active' | 'completed' | 'backlog' | 'ignored';
 
 function getDeadlineVisualState(
   value: string,
-  ctx?: { statusCategory?: DeadlineStatusCategory; doneDate?: string | null },
+  ctx?: { statusCategory?: DeadlineStatusCategory; doneDate?: string | null; startDate?: string | null },
 ) {
   // Archived tasks: render the date neutrally — the team has opted out of caring.
   if (ctx?.statusCategory === 'ignored') {
@@ -192,8 +200,16 @@ function getDeadlineVisualState(
   }
 
   const daysText = `${Math.abs(diffDays)}d`;
+  // With a start date the bar shows how much of the planned start→due window has passed;
+  // without one it fills over the last DEADLINE_WINDOW_DAYS before the due date.
+  const startDiffDays = ctx?.startDate ? getDateDiffFromToday(ctx.startDate) : null;
+  const plannedSpanDays = startDiffDays !== null ? diffDays - startDiffDays : 0;
   const urgencyProgress =
-    diffDays <= 0 ? 100 : Math.max(10, Math.min(100, ((DEADLINE_WINDOW_DAYS - diffDays) / DEADLINE_WINDOW_DAYS) * 100));
+    diffDays <= 0
+      ? 100
+      : startDiffDays !== null && plannedSpanDays > 0
+        ? Math.max(4, Math.min(100, (-startDiffDays / plannedSpanDays) * 100))
+        : Math.max(10, Math.min(100, ((DEADLINE_WINDOW_DAYS - diffDays) / DEADLINE_WINDOW_DAYS) * 100));
 
   if (diffDays < 0) {
     return {
@@ -240,8 +256,9 @@ const DeadlineDateTrigger: React.FC<{
   onClick: () => void;
   statusCategory?: DeadlineStatusCategory;
   doneDate?: string | null;
+  startDate?: string | null;
   readOnly?: boolean;
-}> = ({ value, placeholder, onClick, statusCategory, doneDate, readOnly }) => {
+}> = ({ value, placeholder, onClick, statusCategory, doneDate, startDate, readOnly }) => {
   const dateOnly = toDateOnly(value);
 
   if (!dateOnly) {
@@ -257,7 +274,7 @@ const DeadlineDateTrigger: React.FC<{
     );
   }
 
-  const visual = getDeadlineVisualState(dateOnly, { statusCategory, doneDate });
+  const visual = getDeadlineVisualState(dateOnly, { statusCategory, doneDate, startDate });
   const markerPosition = Math.max(2, Math.min(98, visual.progress));
   // Read-only viewers get the same bar without the button affordances.
   const Root = readOnly ? 'span' : 'button';
@@ -265,8 +282,8 @@ const DeadlineDateTrigger: React.FC<{
   return (
     <Root
       {...(readOnly ? {} : { type: 'button' as const, onClick })}
-      title={`Deadline ${formatDateEU(dateOnly)} · ${visual.label}`}
-      aria-label={`Deadline ${formatDateEU(dateOnly)}, ${visual.label}`}
+      title={`Due date ${formatDateEU(dateOnly)} · ${visual.label}`}
+      aria-label={`Due date ${formatDateEU(dateOnly)}, ${visual.label}`}
       className={`flex w-[7.25rem] flex-col gap-0.5 rounded-md px-1 py-0.5 text-left ${readOnly ? '' : 'transition-colors hover:bg-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-400 dark:hover:bg-zinc-800'}`}
     >
       <span className="flex items-center justify-between gap-1.5">
@@ -495,6 +512,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<ViewMode>('table');
   const isRelatedOnly = useAuthStore((state) => state.currentUser?.accessScope === 'related_only');
+  // Start date shows only once tasks.start_date exists in the database (see lib/database.ts).
+  const taskStartDateEnabled = useDataStore((state) => state.taskStartDateEnabled);
   const isMyWorkspace = teamFilter === 'my-work';
   const usesAclContexts = isRelatedOnly && isMyWorkspace;
 
@@ -547,6 +566,95 @@ const Workspace: React.FC<WorkspaceProps> = ({
       onToggle={onToggleTaskSubtask}
     />
   );
+  // Expanded subtasks in the table: one row per subtask under its parent, lined up with the
+  // parent's columns — tick in the subtask column, title indented under the parent title,
+  // assignee / created / start / due in their own columns. Clicking a row opens the parent task,
+  // where subtasks are edited.
+  const renderSubtaskTableRow = (
+    task: ContextualTask,
+    subtask: TaskSubtask,
+    columns: { key: string }[],
+    indent: boolean | undefined,
+  ) => {
+    const assignee = members.find((m) => m.id === subtask.assigneeId);
+    const canToggle = (!isRelatedOnly && !task.deletedAt) || subtask.assigneeId === currentUserId;
+    const hasAssigneeColumn = columns.some((c) => c.key === 'assignee');
+    const dateCell = (key: string, value: string | null | undefined, prefix: string) => (
+      <td key={key} className="px-3 py-1.5">
+        {value ? (
+          <span
+            className="text-xs tabular-nums text-zinc-500 dark:text-zinc-400"
+            title={`${prefix} ${formatDateEU(value)}`}
+          >
+            {formatDateEU(value)}
+          </span>
+        ) : (
+          <span className="text-xs text-zinc-300 dark:text-zinc-600">—</span>
+        )}
+      </td>
+    );
+    return (
+      <tr
+        key={`subtask-${subtask.id}`}
+        className="cursor-pointer bg-zinc-50/70 transition-colors hover:bg-zinc-100/70 dark:bg-zinc-900/60 dark:hover:bg-zinc-800/50"
+        onClick={() => openTask(task)}
+      >
+        {!isRelatedOnly && !indent && <td className="w-10" />}
+        <td className="w-12 px-0.5 py-1.5" onClick={(e) => e.stopPropagation()}>
+          <div className="flex justify-center">
+            <SubtaskCheckbox subtask={subtask} canToggle={canToggle} onToggle={onToggleTaskSubtask} />
+          </div>
+        </td>
+        {columns.map((tc) => {
+          switch (tc.key) {
+            case 'title':
+              return (
+                <td key={tc.key} className="max-w-[280px] px-3 py-1.5">
+                  <div className="flex min-w-0 items-center gap-1.5 pl-3">
+                    <span aria-hidden className="flex-shrink-0 text-zinc-300 dark:text-zinc-600">
+                      └
+                    </span>
+                    <span
+                      className={`truncate text-xs ${subtask.completed ? 'text-zinc-400 line-through dark:text-zinc-500' : 'text-zinc-700 dark:text-zinc-300'}`}
+                      title={subtask.title}
+                    >
+                      {subtask.title}
+                    </span>
+                    {!hasAssigneeColumn && assignee && (
+                      <span className="flex-shrink-0" title={assignee.name}>
+                        <Avatar src={assignee.avatar} alt={assignee.name} size="xs" />
+                      </span>
+                    )}
+                  </div>
+                </td>
+              );
+            case 'assignee':
+              return (
+                <td key={tc.key} className="px-3 py-1.5">
+                  {assignee ? (
+                    <div className="flex items-center gap-1.5">
+                      <Avatar src={assignee.avatar} alt={assignee.name} size="xs" className="flex-shrink-0" />
+                      <span className="truncate text-xs text-zinc-600 dark:text-zinc-400">{assignee.name}</span>
+                    </div>
+                  ) : (
+                    <span className="text-xs text-zinc-300 dark:text-zinc-600">—</span>
+                  )}
+                </td>
+              );
+            case 'created':
+              return dateCell(tc.key, subtask.createdAt, 'Created');
+            case 'start':
+              return dateCell(tc.key, subtask.startDate, 'Start');
+            case 'deadline':
+              return dateCell(tc.key, subtask.endDate, 'Due');
+            default:
+              return <td key={tc.key} />;
+          }
+        })}
+        <td />
+      </tr>
+    );
+  };
   const renderSubtaskProgress = (task: ContextualTask) => (
     <SubtaskProgress
       subtasks={getTaskSubtasks(task)}
@@ -554,6 +662,24 @@ const Workspace: React.FC<WorkspaceProps> = ({
       onExpand={() => toggleExpandedSubtasks(task)}
     />
   );
+  // Due/start date edits from the table and board go through these so a start date can never
+  // land after the due date (the task modal applies the same rule).
+  const updateTaskDueDate = (task: ContextualTask, date: string | null) => {
+    const dueDate = toDateOnly(date);
+    if (!isDateOrderValid(task.startDate, dueDate)) {
+      toast.error('Due date must be on or after the start date');
+      return;
+    }
+    onUpdateTask({ ...task, dueDate });
+  };
+  const updateTaskStartDate = (task: ContextualTask, date: string | null) => {
+    const startDate = date ? toDateOnly(date) : null;
+    if (!isDateOrderValid(startDate, task.dueDate)) {
+      toast.error('Start date must be on or before the due date');
+      return;
+    }
+    onUpdateTask({ ...task, startDate });
+  };
   // Board cards show the same deadline bar as the table's Deadline column. Clicking it opens
   // the date picker; stopPropagation keeps that click from also opening the task.
   const renderBoardDeadline = (task: ContextualTask, category: StatusCategory) => {
@@ -569,11 +695,12 @@ const Workspace: React.FC<WorkspaceProps> = ({
             onClick={() => undefined}
             statusCategory={category}
             doneDate={task.doneDate ?? null}
+            startDate={task.startDate ?? null}
           />
         ) : (
           <SimpleDatePicker
             value={dueDate}
-            onChange={(date) => onUpdateTask({ ...task, dueDate: toDateOnly(date) })}
+            onChange={(date) => updateTaskDueDate(task, date)}
             placeholder="Set date"
             renderTrigger={(onClick, value, placeholder) => (
               <DeadlineDateTrigger
@@ -582,6 +709,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                 onClick={onClick}
                 statusCategory={category}
                 doneDate={task.doneDate ?? null}
+                startDate={task.startDate ?? null}
               />
             )}
           />
@@ -663,13 +791,17 @@ const Workspace: React.FC<WorkspaceProps> = ({
     if (!personFieldHidden.designer) {
       base.push({ key: 'designer', label: personFieldLabels.designer, className: 'w-32' });
     }
+    // Task dates read left to right as their timeline: Created (automatic) · Start date · Due date.
+    // done_date ("Pub Date") is an automatic completion stamp and is intentionally not a column.
     base.push(
       { key: 'priority', label: 'Priority', className: 'w-24' },
+      { key: 'created', label: 'Created', className: 'w-24' },
+    );
+    if (taskStartDateEnabled) base.push({ key: 'start', label: 'Start date', className: 'w-28' });
+    base.push(
       // Wide enough for the subtask ring beside the date — it lives here rather than in a column
       // of its own, since most tasks have no checklist and that column would sit mostly empty.
-      { key: 'deadline', label: 'Deadline', className: 'w-[11.5rem] min-w-[11.5rem]' },
-      { key: 'done', label: 'Pub Date', className: 'w-24' },
-      { key: 'created', label: 'Created', className: 'w-24' },
+      { key: 'deadline', label: 'Due date', className: 'w-[11.5rem] min-w-[11.5rem]' },
     );
     const propCols = customProperties.map((p) => ({
       key: `prop:${p.id}`,
@@ -682,7 +814,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
       { key: 'links', label: 'Links', className: 'w-32' },
       { key: 'placements', label: 'Placements', className: 'w-32' },
     ];
-  }, [teamFilter, customProperties, personFieldLabels, personFieldHidden]);
+  }, [teamFilter, customProperties, personFieldLabels, personFieldHidden, taskStartDateEnabled]);
 
   const columnOrderKey = `table-col-order-${teamFilter}`;
   const [columnOrder, setColumnOrder] = useState<string[]>(() => {
@@ -711,9 +843,15 @@ const Workspace: React.FC<WorkspaceProps> = ({
     const allKeys = allTableColumns.map((c) => c.key);
     // Filter saved order to only valid keys
     const validOrder = columnOrder.filter((k) => allKeys.includes(k));
-    // Add any keys not in saved order
-    const missing = allKeys.filter((k) => !validOrder.includes(k));
-    const finalOrder = [...validOrder, ...missing];
+    // Add keys missing from the saved order next to their default neighbour (e.g. a newly
+    // added Start date lands just before Due date) instead of at the far right.
+    const finalOrder = [...validOrder];
+    allKeys.forEach((k, i) => {
+      if (finalOrder.includes(k)) return;
+      const nextKnown = allKeys.slice(i + 1).find((next) => finalOrder.includes(next));
+      if (nextKnown) finalOrder.splice(finalOrder.indexOf(nextKnown), 0, k);
+      else finalOrder.push(k);
+    });
     return finalOrder.map((k) => allTableColumns.find((c) => c.key === k)!);
   }, [allTableColumns, columnOrder]);
 
@@ -1220,8 +1358,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
           }
           case 'deadline':
             return dir * toDateOnly(a.dueDate).localeCompare(toDateOnly(b.dueDate));
-          case 'done':
-            return dir * toDateOnly(a.doneDate).localeCompare(toDateOnly(b.doneDate));
+          case 'start':
+            return dir * toDateOnly(a.startDate).localeCompare(toDateOnly(b.startDate));
           case 'created':
             return dir * (a.createdAt || '').localeCompare(b.createdAt || '');
           case 'type':
@@ -1713,90 +1851,91 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                     {sortTasks(colTasks).map((task) => {
                                       const assignees = getMembersByIds(task.assigneeIds);
                                       return (
-                                        <div
-                                          key={getTaskRenderKey(task)}
-                                          onClick={() => openTask(task)}
-                                          draggable={!isRelatedOnly}
-                                          onDragStart={
-                                            isRelatedOnly ? undefined : (e) => handleDragStart(e, task.id, col.id)
-                                          }
-                                          className={`bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group relative ${isRelatedOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`}
-                                        >
-                                          <div className="flex justify-between items-start mb-2">
-                                            <div className="flex gap-1 flex-wrap">
-                                              {task.contentInfo?.type && (
-                                                <span className="text-[0.625rem] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded">
-                                                  {task.contentInfo.type}
+                                        <React.Fragment key={getTaskRenderKey(task)}>
+                                          <div
+                                            onClick={() => openTask(task)}
+                                            draggable={!isRelatedOnly}
+                                            onDragStart={
+                                              isRelatedOnly ? undefined : (e) => handleDragStart(e, task.id, col.id)
+                                            }
+                                            className={`bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group relative ${isRelatedOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`}
+                                          >
+                                            <div className="flex justify-between items-start mb-2">
+                                              <div className="flex gap-1 flex-wrap">
+                                                {task.contentInfo?.type && (
+                                                  <span className="text-[0.625rem] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded">
+                                                    {task.contentInfo.type}
+                                                  </span>
+                                                )}
+                                                <span
+                                                  className={`inline-flex items-center gap-1 text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority] || ''}`}
+                                                >
+                                                  <span
+                                                    className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
+                                                  />
+                                                  {task.priority}
+                                                </span>
+                                              </div>
+                                              {!isRelatedOnly && (
+                                                <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
+                                                  <GripVertical size={14} />
+                                                </div>
+                                              )}
+                                            </div>
+                                            <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug wrap-anywhere overflow-hidden flex items-center gap-1.5">
+                                              {isLinkedCopy(task) && (
+                                                <Link2 size={12} className="text-blue-500 flex-shrink-0" />
+                                              )}
+                                              <span>{task.title}</span>
+                                            </h3>
+                                            <div className="flex flex-wrap gap-1 mb-3">
+                                              {task.placements.slice(0, 2).map((placement) => (
+                                                <span
+                                                  key={placement}
+                                                  className="text-[0.625rem] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
+                                                >
+                                                  {placement}
+                                                </span>
+                                              ))}
+                                              {task.placements.length > 2 && (
+                                                <span className="text-[0.625rem] font-medium text-zinc-400 px-1">
+                                                  +{task.placements.length - 2}
                                                 </span>
                                               )}
-                                              <span
-                                                className={`inline-flex items-center gap-1 text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority] || ''}`}
-                                              >
-                                                <span
-                                                  className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
-                                                />
-                                                {task.priority}
-                                              </span>
                                             </div>
-                                            {!isRelatedOnly && (
-                                              <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
-                                                <GripVertical size={14} />
+                                            <div className="flex items-center gap-2 pt-2">
+                                              {renderBoardDeadline(task, col.category)}
+                                              {renderSubtaskProgress(task)}
+                                              <div className="ml-auto flex -space-x-1.5">
+                                                {assignees.length > 0 ? (
+                                                  assignees
+                                                    .slice(0, 3)
+                                                    .map((a) => (
+                                                      <Avatar
+                                                        key={a.id}
+                                                        src={a.avatar}
+                                                        alt={a.name}
+                                                        size="sm"
+                                                        className="!w-5 !h-5 !border-white dark:!border-zinc-900"
+                                                      />
+                                                    ))
+                                                ) : (
+                                                  <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
+                                                    <User size={10} />
+                                                  </div>
+                                                )}
+                                                {assignees.length > 3 && (
+                                                  <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[0.625rem] border border-white dark:border-zinc-900">
+                                                    +{assignees.length - 3}
+                                                  </div>
+                                                )}
                                               </div>
-                                            )}
-                                          </div>
-                                          <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug wrap-anywhere overflow-hidden flex items-center gap-1.5">
-                                            {isLinkedCopy(task) && (
-                                              <Link2 size={12} className="text-blue-500 flex-shrink-0" />
-                                            )}
-                                            <span>{task.title}</span>
-                                          </h3>
-                                          <div className="flex flex-wrap gap-1 mb-3">
-                                            {task.placements.slice(0, 2).map((placement) => (
-                                              <span
-                                                key={placement}
-                                                className="text-[0.625rem] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
-                                              >
-                                                {placement}
-                                              </span>
-                                            ))}
-                                            {task.placements.length > 2 && (
-                                              <span className="text-[0.625rem] font-medium text-zinc-400 px-1">
-                                                +{task.placements.length - 2}
-                                              </span>
-                                            )}
-                                          </div>
-                                          <div className="flex items-center gap-2 pt-2">
-                                            {renderBoardDeadline(task, col.category)}
-                                            {renderSubtaskProgress(task)}
-                                            <div className="ml-auto flex -space-x-1.5">
-                                              {assignees.length > 0 ? (
-                                                assignees
-                                                  .slice(0, 3)
-                                                  .map((a) => (
-                                                    <Avatar
-                                                      key={a.id}
-                                                      src={a.avatar}
-                                                      alt={a.name}
-                                                      size="sm"
-                                                      className="!w-5 !h-5 !border-white dark:!border-zinc-900"
-                                                    />
-                                                  ))
-                                              ) : (
-                                                <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
-                                                  <User size={10} />
-                                                </div>
-                                              )}
-                                              {assignees.length > 3 && (
-                                                <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[0.625rem] border border-white dark:border-zinc-900">
-                                                  +{assignees.length - 3}
-                                                </div>
-                                              )}
                                             </div>
                                           </div>
                                           {isSubtaskExpanded(task) && getTaskSubtasks(task).length > 0 && (
-                                            <div className="mt-2">{renderSubtaskList(task)}</div>
+                                            <div className="-mt-1">{renderSubtaskList(task)}</div>
                                           )}
-                                        </div>
+                                        </React.Fragment>
                                       );
                                     })}
                                   </div>
@@ -2009,88 +2148,89 @@ const Workspace: React.FC<WorkspaceProps> = ({
                           {sortTasks(filteredTasks.filter((t) => getTaskStatusInTeam(t) === col.id)).map((task) => {
                             const assignees = getMembersByIds(task.assigneeIds);
                             return (
-                              <div
-                                key={getTaskRenderKey(task)}
-                                onClick={() => openTask(task)}
-                                draggable={!isRelatedOnly}
-                                onDragStart={isRelatedOnly ? undefined : (e) => handleDragStart(e, task.id, col.id)}
-                                className={`bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group relative ${isRelatedOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`}
-                              >
-                                <div className="flex justify-between items-start mb-2">
-                                  <div className="flex gap-1 flex-wrap">
-                                    {task.contentInfo?.type && (
-                                      <span className="text-[0.625rem] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded">
-                                        {task.contentInfo.type}
+                              <React.Fragment key={getTaskRenderKey(task)}>
+                                <div
+                                  onClick={() => openTask(task)}
+                                  draggable={!isRelatedOnly}
+                                  onDragStart={isRelatedOnly ? undefined : (e) => handleDragStart(e, task.id, col.id)}
+                                  className={`bg-white dark:bg-zinc-900 p-3 rounded shadow-sm border border-zinc-200 dark:border-zinc-800 hover:border-zinc-300 dark:hover:border-zinc-700 transition-colors group relative ${isRelatedOnly ? 'cursor-pointer' : 'cursor-grab active:cursor-grabbing'}`}
+                                >
+                                  <div className="flex justify-between items-start mb-2">
+                                    <div className="flex gap-1 flex-wrap">
+                                      {task.contentInfo?.type && (
+                                        <span className="text-[0.625rem] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded">
+                                          {task.contentInfo.type}
+                                        </span>
+                                      )}
+                                      <span
+                                        className={`inline-flex items-center gap-1 text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority] || ''}`}
+                                      >
+                                        <span
+                                          className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
+                                        />
+                                        {task.priority}
+                                      </span>
+                                    </div>
+                                    {!isRelatedOnly && (
+                                      <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
+                                        <GripVertical size={14} />
+                                      </div>
+                                    )}
+                                  </div>
+                                  <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug wrap-anywhere overflow-hidden flex items-center gap-1.5">
+                                    {isLinkedCopy(task) && <Link2 size={12} className="text-blue-500 flex-shrink-0" />}
+                                    <span>{task.title}</span>
+                                  </h3>
+
+                                  <div className="flex flex-wrap gap-1 mb-3">
+                                    {task.placements.slice(0, 2).map((placement) => (
+                                      <span
+                                        key={placement}
+                                        className="text-[0.625rem] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
+                                      >
+                                        {placement}
+                                      </span>
+                                    ))}
+                                    {task.placements.length > 2 && (
+                                      <span className="text-[0.625rem] font-medium text-zinc-400 px-1">
+                                        +{task.placements.length - 2}
                                       </span>
                                     )}
-                                    <span
-                                      className={`inline-flex items-center gap-1 text-[0.625rem] font-medium capitalize px-1.5 py-0.5 rounded ${PRIORITY_COLORS[task.priority] || ''}`}
-                                    >
-                                      <span
-                                        className={`w-1.5 h-1.5 rounded-full ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
-                                      />
-                                      {task.priority}
-                                    </span>
                                   </div>
-                                  {!isRelatedOnly && (
-                                    <div className="text-zinc-300 group-hover:text-black dark:group-hover:text-white transition-colors">
-                                      <GripVertical size={14} />
+
+                                  <div className="flex items-center gap-2 pt-2">
+                                    {renderBoardDeadline(task, col.category)}
+                                    {renderSubtaskProgress(task)}
+                                    <div className="ml-auto flex -space-x-1.5">
+                                      {assignees.length > 0 ? (
+                                        assignees
+                                          .slice(0, 3)
+                                          .map((a) => (
+                                            <Avatar
+                                              key={a.id}
+                                              src={a.avatar}
+                                              alt={a.name}
+                                              size="sm"
+                                              className="!w-5 !h-5 !border-white dark:!border-zinc-900"
+                                            />
+                                          ))
+                                      ) : (
+                                        <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
+                                          <User size={10} />
+                                        </div>
+                                      )}
+                                      {assignees.length > 3 && (
+                                        <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[0.625rem] border border-white dark:border-zinc-900">
+                                          +{assignees.length - 3}
+                                        </div>
+                                      )}
                                     </div>
-                                  )}
-                                </div>
-                                <h3 className="text-sm font-medium text-zinc-900 dark:text-zinc-100 mb-2 leading-snug wrap-anywhere overflow-hidden flex items-center gap-1.5">
-                                  {isLinkedCopy(task) && <Link2 size={12} className="text-blue-500 flex-shrink-0" />}
-                                  <span>{task.title}</span>
-                                </h3>
-
-                                <div className="flex flex-wrap gap-1 mb-3">
-                                  {task.placements.slice(0, 2).map((placement) => (
-                                    <span
-                                      key={placement}
-                                      className="text-[0.625rem] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded"
-                                    >
-                                      {placement}
-                                    </span>
-                                  ))}
-                                  {task.placements.length > 2 && (
-                                    <span className="text-[0.625rem] font-medium text-zinc-400 px-1">
-                                      +{task.placements.length - 2}
-                                    </span>
-                                  )}
-                                </div>
-
-                                <div className="flex items-center gap-2 pt-2">
-                                  {renderBoardDeadline(task, col.category)}
-                                  {renderSubtaskProgress(task)}
-                                  <div className="ml-auto flex -space-x-1.5">
-                                    {assignees.length > 0 ? (
-                                      assignees
-                                        .slice(0, 3)
-                                        .map((a) => (
-                                          <Avatar
-                                            key={a.id}
-                                            src={a.avatar}
-                                            alt={a.name}
-                                            size="sm"
-                                            className="!w-5 !h-5 !border-white dark:!border-zinc-900"
-                                          />
-                                        ))
-                                    ) : (
-                                      <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400">
-                                        <User size={10} />
-                                      </div>
-                                    )}
-                                    {assignees.length > 3 && (
-                                      <div className="w-5 h-5 rounded-full bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-400 text-[0.625rem] border border-white dark:border-zinc-900">
-                                        +{assignees.length - 3}
-                                      </div>
-                                    )}
                                   </div>
                                 </div>
                                 {isSubtaskExpanded(task) && getTaskSubtasks(task).length > 0 && (
-                                  <div className="mt-2">{renderSubtaskList(task)}</div>
+                                  <div className="-mt-1">{renderSubtaskList(task)}</div>
                                 )}
-                              </div>
+                              </React.Fragment>
                             );
                           })}
                           {/* Always-visible add row under the last card, styled like the board's "Add Status" button. */}
@@ -2352,53 +2492,54 @@ const Workspace: React.FC<WorkspaceProps> = ({
                             const assignees = members.filter((m) => task.assigneeIds.includes(m.id));
                             const urgency = task.dueDate ? getDeadlineUrgency(task.dueDate) : null;
                             return (
-                              <div
-                                key={getTaskRenderKey(task)}
-                                onClick={() => openTask(task)}
-                                className={`border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 bg-white dark:bg-zinc-900/40 active:bg-zinc-50 dark:active:bg-zinc-800/50 transition-colors cursor-pointer ${selectedTaskIds.has(task.id) ? 'ring-1 ring-blue-500 bg-blue-50/50 dark:bg-blue-950/30' : ''}`}
-                              >
-                                <div className="flex items-center gap-2 min-w-0">
-                                  <span
-                                    className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
-                                  />
-                                  <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
-                                    {task.title}
-                                  </span>
-                                </div>
-                                <div className="flex items-center gap-3 mt-1.5 ml-3.5 text-xs text-zinc-500 dark:text-zinc-400">
-                                  {assignees.length > 0 && (
-                                    <div className="flex items-center -space-x-1">
-                                      {assignees.slice(0, 3).map((m) => (
-                                        <Avatar
-                                          key={m.id}
-                                          src={m.avatar}
-                                          alt={m.name}
-                                          size="xs"
-                                          className="ring-1 ring-white dark:ring-zinc-900"
-                                        />
-                                      ))}
-                                      {assignees.length > 3 && (
-                                        <span className="ml-1.5 text-[0.625rem]">+{assignees.length - 3}</span>
-                                      )}
-                                    </div>
-                                  )}
-                                  {task.contentInfo?.type && (
-                                    <span className="text-[0.625rem] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded truncate max-w-[80px]">
-                                      {task.contentInfo.type}
+                              <React.Fragment key={getTaskRenderKey(task)}>
+                                <div
+                                  onClick={() => openTask(task)}
+                                  className={`border border-zinc-200 dark:border-zinc-800 rounded-lg p-3 bg-white dark:bg-zinc-900/40 active:bg-zinc-50 dark:active:bg-zinc-800/50 transition-colors cursor-pointer ${selectedTaskIds.has(task.id) ? 'ring-1 ring-blue-500 bg-blue-50/50 dark:bg-blue-950/30' : ''}`}
+                                >
+                                  <div className="flex items-center gap-2 min-w-0">
+                                    <span
+                                      className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${PRIORITY_DOT[task.priority] || 'bg-zinc-400'}`}
+                                    />
+                                    <span className="text-sm font-medium text-zinc-900 dark:text-zinc-100 truncate">
+                                      {task.title}
                                     </span>
-                                  )}
-                                  {task.dueDate && urgency && (
-                                    <span className={`flex items-center gap-1 ${urgency.text}`}>
-                                      {urgency.dot && <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />}
-                                      {formatDateEU(toDateOnly(task.dueDate))}
-                                    </span>
-                                  )}
-                                  {renderSubtaskProgress(task)}
+                                  </div>
+                                  <div className="flex items-center gap-3 mt-1.5 ml-3.5 text-xs text-zinc-500 dark:text-zinc-400">
+                                    {assignees.length > 0 && (
+                                      <div className="flex items-center -space-x-1">
+                                        {assignees.slice(0, 3).map((m) => (
+                                          <Avatar
+                                            key={m.id}
+                                            src={m.avatar}
+                                            alt={m.name}
+                                            size="xs"
+                                            className="ring-1 ring-white dark:ring-zinc-900"
+                                          />
+                                        ))}
+                                        {assignees.length > 3 && (
+                                          <span className="ml-1.5 text-[0.625rem]">+{assignees.length - 3}</span>
+                                        )}
+                                      </div>
+                                    )}
+                                    {task.contentInfo?.type && (
+                                      <span className="text-[0.625rem] font-medium text-zinc-600 dark:text-zinc-300 bg-zinc-100 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 px-1.5 py-0.5 rounded truncate max-w-[80px]">
+                                        {task.contentInfo.type}
+                                      </span>
+                                    )}
+                                    {task.dueDate && urgency && (
+                                      <span className={`flex items-center gap-1 ${urgency.text}`}>
+                                        {urgency.dot && <span className={`w-1.5 h-1.5 rounded-full ${urgency.dot}`} />}
+                                        {formatDateEU(toDateOnly(task.dueDate))}
+                                      </span>
+                                    )}
+                                    {renderSubtaskProgress(task)}
+                                  </div>
                                 </div>
                                 {isSubtaskExpanded(task) && getTaskSubtasks(task).length > 0 && (
-                                  <div className="mt-2">{renderSubtaskList(task)}</div>
+                                  <div className="-mt-1">{renderSubtaskList(task)}</div>
                                 )}
-                              </div>
+                              </React.Fragment>
                             );
                           })
                         ) : (
@@ -2792,12 +2933,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                   ) : (
                                                     <SimpleDatePicker
                                                       value={toDateOnly(task.dueDate)}
-                                                      onChange={(date) =>
-                                                        onUpdateTask({
-                                                          ...task,
-                                                          dueDate: toDateOnly(date),
-                                                        })
-                                                      }
+                                                      onChange={(date) => updateTaskDueDate(task, date)}
                                                       placeholder="Set date"
                                                       renderTrigger={(onClick, value, placeholder) => (
                                                         <DeadlineDateTrigger
@@ -2806,6 +2942,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                                           onClick={onClick}
                                                           statusCategory={deadlineCategory}
                                                           doneDate={task.doneDate ?? null}
+                                                          startDate={task.startDate ?? null}
                                                         />
                                                       )}
                                                     />
@@ -2814,22 +2951,17 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                               </td>
                                             );
                                           }
-                                          case 'done':
+                                          case 'start':
                                             return (
                                               <td key={tc.key} className="p-3" onClick={(e) => e.stopPropagation()}>
                                                 {isRelatedOnly ? (
                                                   <span className="text-xs text-zinc-500 dark:text-zinc-400">
-                                                    {task.doneDate ? formatDateEU(toDateOnly(task.doneDate)) : '—'}
+                                                    {task.startDate ? formatDateEU(toDateOnly(task.startDate)) : '—'}
                                                   </span>
                                                 ) : (
                                                   <SimpleDatePicker
-                                                    value={toDateOnly(task.doneDate)}
-                                                    onChange={(date) =>
-                                                      onUpdateTask({
-                                                        ...task,
-                                                        doneDate: date ? toDateOnly(date) : null,
-                                                      })
-                                                    }
+                                                    value={toDateOnly(task.startDate)}
+                                                    onChange={(date) => updateTaskStartDate(task, date)}
                                                     placeholder="Set date"
                                                     renderTrigger={(onClick, value) => (
                                                       <button
@@ -3028,20 +3160,10 @@ const Workspace: React.FC<WorkspaceProps> = ({
                                       })}
                                       <td className="p-3"></td>
                                     </tr>
-                                    {isSubtaskExpanded(task) && getTaskSubtasks(task).length > 0 && (
-                                      <tr className="bg-zinc-50/60 dark:bg-zinc-900/60">
-                                        <td
-                                          colSpan={
-                                            sectionTableColumns.length +
-                                            (isRelatedOnly || indent ? 1 : 2) +
-                                            Number(SUBTASKS_ENABLED)
-                                          }
-                                          className="px-4 py-2"
-                                        >
-                                          {renderSubtaskList(task)}
-                                        </td>
-                                      </tr>
-                                    )}
+                                    {isSubtaskExpanded(task) &&
+                                      getTaskSubtasks(task).map((subtask) =>
+                                        renderSubtaskTableRow(task, subtask, sectionTableColumns, indent),
+                                      )}
                                   </React.Fragment>
                                 );
                               })

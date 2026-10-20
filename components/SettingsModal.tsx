@@ -69,7 +69,7 @@ export function getNotificationCategoryRows(
 ): NotificationCategoryRow[] {
   const relatedRows: NotificationCategoryRow[] = [
     { category: 'tasks', label: 'Tasks', description: 'Assigned, status, updates, deletions' },
-    { category: 'deadlines', label: 'Deadlines', description: 'Reminders 3 days and 1 day before due' },
+    { category: 'deadlines', label: 'Due dates', description: 'Reminders 3 days and 1 day before the due date' },
     { category: 'mentions', label: 'Mentions', description: '@mentions in task comments' },
   ];
   if (accessScope === 'related_only') return relatedRows;
@@ -294,6 +294,8 @@ export const SettingsModal: React.FC = () => {
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploading, setUploading] = useState(false);
+  // Team Members tab: live filter by name or job title.
+  const [memberSearch, setMemberSearch] = useState('');
   const [editingName, setEditingName] = useState(false);
   const [nameDraft, setNameDraft] = useState('');
   const [editingJobTitle, setEditingJobTitle] = useState(false);
@@ -765,9 +767,43 @@ export const SettingsModal: React.FC = () => {
           </div>
         );
       }
-      case 'Team Members':
+      case 'Team Members': {
+        const memberQuery = memberSearch.trim().toLowerCase();
+        const visibleMembers = memberQuery
+          ? members.filter(
+              (m) =>
+                m.name.toLowerCase().includes(memberQuery) || (m.jobTitle || '').toLowerCase().includes(memberQuery),
+            )
+          : members;
         return (
           <div>
+            <div className="relative mb-3">
+              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-400" />
+              <input
+                type="text"
+                name="member-search"
+                enterKeyHint="search"
+                placeholder="Search people..."
+                aria-label="Search team members"
+                value={memberSearch}
+                onChange={(e) => setMemberSearch(e.target.value)}
+                {...noAutofillProps}
+                className="w-full h-9 sm:h-8 pl-8 pr-8 text-sm rounded-md border border-zinc-200 dark:border-zinc-700 bg-white dark:bg-zinc-900 text-zinc-900 dark:text-zinc-100 placeholder-zinc-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              {memberSearch && (
+                <button
+                  type="button"
+                  aria-label="Clear search"
+                  onClick={() => setMemberSearch('')}
+                  className="absolute right-2 top-1/2 -translate-y-1/2 rounded p-0.5 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200"
+                >
+                  <X size={12} />
+                </button>
+              )}
+            </div>
+            {memberQuery && visibleMembers.length === 0 && (
+              <p className="py-6 text-center text-sm text-zinc-400">No people match "{memberSearch.trim()}".</p>
+            )}
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
               <div
                 className={`hidden text-[0.625rem] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 ${MEMBER_ROW} ${isAdmin(currentUser.role) ? MEMBER_COLUMNS_ADMIN : MEMBER_COLUMNS_BASIC}`}
@@ -787,7 +823,7 @@ export const SettingsModal: React.FC = () => {
                   </>
                 )}
               </div>
-              {members.map((m) => {
+              {visibleMembers.map((m) => {
                 const isMe = m.id === currentUser.id;
                 const canManage = isAdmin(currentUser.role);
                 const roleOptions = [
@@ -1077,6 +1113,7 @@ export const SettingsModal: React.FC = () => {
             )}
           </div>
         );
+      }
       case 'Logs History':
         return <LogsHistoryTab logs={logs} members={members} />;
       case 'Content': {
@@ -1084,9 +1121,9 @@ export const SettingsModal: React.FC = () => {
         const currentPlacements = selectedContentTeamId ? teamPlacements[selectedContentTeamId] || [] : [];
         return (
           <div className="space-y-5">
-            {/* Workspace selector */}
+            {/* Team selector */}
             <div>
-              <Label variant="section">Workspace</Label>
+              <Label variant="section">Team</Label>
               <CustomSelect
                 value={selectedContentTeamId}
                 onChange={(id) => {
@@ -1094,7 +1131,7 @@ export const SettingsModal: React.FC = () => {
                   setEditingTypeId(null);
                   setEditingPlacementId(null);
                 }}
-                placeholder="Select workspace..."
+                placeholder="Select team..."
                 options={nonArchivedTeams.map((t) => ({ value: t.id, label: t.name }))}
               />
             </div>
@@ -1293,7 +1330,7 @@ export const SettingsModal: React.FC = () => {
                               </button>
                               <button
                                 onClick={() => {
-                                  if (confirm(`Delete "${p}"? It will be removed from this workspace.`)) {
+                                  if (confirm(`Delete "${p}"? It will be removed from this team.`)) {
                                     deleteTeamPlacement(selectedContentTeamId, p);
                                     toast.success('Placement deleted');
                                   }

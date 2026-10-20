@@ -1,6 +1,7 @@
 import React from 'react';
-import { Check, ListChecks } from './icons';
+import { Check, ChevronRight, ListChecks } from './icons';
 import type { Member, TaskSubtask } from '../types';
+import { Avatar } from './Avatar';
 import { cn } from '../lib/cn';
 import { formatDateEU } from '../lib/utils';
 import { subtaskProgress } from '../lib/taskSubtasks';
@@ -100,81 +101,100 @@ export const SubtaskProgress: React.FC<{
         className,
       )}
     >
+      <ChevronRight
+        size={12}
+        className={cn('-mr-0.5 text-zinc-400 transition-transform duration-150', expanded && 'rotate-90')}
+      />
       <Ring done={done} total={total} /> {done}/{total}
     </button>
   );
 };
 
+/** Completion tick shared by the board rows and the table rows. */
+export const SubtaskCheckbox: React.FC<{
+  subtask: TaskSubtask;
+  canToggle: boolean;
+  onToggle: (id: string, completed: boolean) => void;
+}> = ({ subtask, canToggle, onToggle }) => (
+  <button
+    type="button"
+    role="checkbox"
+    aria-label={`Complete ${subtask.title}`}
+    aria-checked={subtask.completed}
+    disabled={!canToggle}
+    onClick={(event) => {
+      event.stopPropagation();
+      onToggle(subtask.id, !subtask.completed);
+    }}
+    className={cn(
+      'flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border transition-colors',
+      subtask.completed
+        ? 'border-emerald-500 bg-emerald-500 text-white'
+        : 'border-zinc-400 hover:border-zinc-600 dark:border-zinc-600 dark:hover:border-zinc-400',
+      !canToggle && 'opacity-50',
+    )}
+  >
+    {subtask.completed && <Check size={11} strokeWidth={3} />}
+  </button>
+);
+
+/**
+ * Subtasks as rows hanging under their parent card (board and mobile list). The left rule ties
+ * them to the card above; each row shows the tick, title, assignee and due date.
+ */
 export const SubtaskList: React.FC<{
   subtasks: TaskSubtask[];
   members: Member[];
   currentUserId: string;
   canEditAll: boolean;
   onToggle: (id: string, completed: boolean) => void;
-}> = ({ subtasks, members, currentUserId, canEditAll, onToggle }) => {
-  const { done, total } = subtaskProgress(subtasks);
-  return (
-    <div
-      className="rounded-md bg-zinc-50 dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 p-2 cursor-default"
-      onClick={(event) => event.stopPropagation()}
-      onMouseDown={(event) => event.stopPropagation()}
-      onPointerDown={(event) => event.stopPropagation()}
-      onDoubleClick={(event) => event.stopPropagation()}
-      onDragStart={(event) => {
-        event.preventDefault();
-        event.stopPropagation();
-      }}
-      draggable={false}
-    >
-      <div className="text-xs font-medium text-zinc-500 dark:text-zinc-400 px-2 py-1">
-        Subtasks · {done}/{total}
-      </div>
-      <ul className="space-y-0.5">
-        {subtasks.map((item) => {
-          const assignee = members.find((member) => member.id === item.assigneeId);
-          const canToggle = canEditAll || item.assigneeId === currentUserId;
-          return (
-            <li
-              key={item.id}
-              className="flex items-start gap-2 rounded px-2 py-1.5 text-xs hover:bg-white dark:hover:bg-zinc-800"
+}> = ({ subtasks, members, currentUserId, canEditAll, onToggle }) => (
+  <ul
+    className="ml-3 space-y-0.5 border-l-2 border-zinc-200 pl-2 cursor-default dark:border-zinc-700"
+    aria-label="Subtasks"
+    onClick={(event) => event.stopPropagation()}
+    onMouseDown={(event) => event.stopPropagation()}
+    onPointerDown={(event) => event.stopPropagation()}
+    onDoubleClick={(event) => event.stopPropagation()}
+    onDragStart={(event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    }}
+    draggable={false}
+  >
+    {subtasks.map((item) => {
+      const assignee = members.find((member) => member.id === item.assigneeId);
+      const canToggle = canEditAll || item.assigneeId === currentUserId;
+      return (
+        <li
+          key={item.id}
+          className="flex items-center gap-2 rounded-md border border-zinc-200 bg-white px-2 py-1.5 text-xs dark:border-zinc-800 dark:bg-zinc-900"
+        >
+          <SubtaskCheckbox subtask={item} canToggle={canToggle} onToggle={onToggle} />
+          <span
+            className={cn(
+              'min-w-0 flex-1 truncate text-zinc-800 dark:text-zinc-200',
+              item.completed && 'line-through text-zinc-400 dark:text-zinc-500',
+            )}
+            title={item.title}
+          >
+            {item.title}
+          </span>
+          {item.endDate && (
+            <span
+              className="flex-shrink-0 tabular-nums text-[0.625rem] text-zinc-500 dark:text-zinc-400"
+              title={`Due ${formatDateEU(item.endDate)}`}
             >
-              <button
-                type="button"
-                role="checkbox"
-                aria-label={`Complete ${item.title}`}
-                aria-checked={item.completed}
-                disabled={!canToggle}
-                onClick={() => onToggle(item.id, !item.completed)}
-                className={cn(
-                  'mt-px flex h-4 w-4 flex-shrink-0 items-center justify-center rounded border',
-                  item.completed
-                    ? 'border-emerald-500 bg-emerald-500 text-white'
-                    : 'border-zinc-400 dark:border-zinc-600',
-                  !canToggle && 'opacity-50',
-                )}
-              >
-                {item.completed && <Check size={11} strokeWidth={3} />}
-              </button>
-              <div className="min-w-0 flex-1">
-                <div
-                  className={cn(
-                    'break-words text-zinc-800 dark:text-zinc-200',
-                    item.completed && 'line-through text-zinc-400',
-                  )}
-                >
-                  {item.title}
-                </div>
-                <div className="flex flex-wrap gap-x-3 text-[0.625rem] text-zinc-500 dark:text-zinc-400">
-                  {assignee && <span>{assignee.name}</span>}
-                  {item.startDate && <span>Start {formatDateEU(item.startDate)}</span>}
-                  {item.endDate && <span>End {formatDateEU(item.endDate)}</span>}
-                  <span>Created {formatDateEU(item.createdAt)}</span>
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-    </div>
-  );
-};
+              {formatDateEU(item.endDate)}
+            </span>
+          )}
+          {assignee && (
+            <span className="flex-shrink-0" title={assignee.name}>
+              <Avatar src={assignee.avatar} alt={assignee.name} size="xs" />
+            </span>
+          )}
+        </li>
+      );
+    })}
+  </ul>
+);

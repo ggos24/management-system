@@ -106,7 +106,7 @@ export const ManageTeamsModal: React.FC = () => {
   const handleAddTeam = () => {
     if (!newTeamName) return;
     if (!currentUser || !isAdmin(currentUser.role)) {
-      toast.error('Only admins can create workspaces.');
+      toast.error('Only admins can create teams.');
       return;
     }
     const newTeam: Team = {
@@ -125,7 +125,7 @@ export const ManageTeamsModal: React.FC = () => {
 
   const handleDeleteTeam = (id: string) => {
     if (!currentUser || !isAdmin(currentUser.role)) {
-      toast.error('Only admins can delete workspaces.');
+      toast.error('Only admins can delete teams.');
       return;
     }
     setTeamToDelete(id);
@@ -154,12 +154,12 @@ export const ManageTeamsModal: React.FC = () => {
     <Modal
       isOpen={isManageTeamsModalOpen}
       onClose={() => setIsManageTeamsModalOpen(false)}
-      title="Manage Workspaces"
+      title="Manage Teams"
       size="lg"
     >
       <div className="space-y-6 min-h-[400px] flex flex-col">
         <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-4">
-          <Label variant="section">Create New Workspace</Label>
+          <Label variant="section">Create New Team</Label>
           <div className="flex gap-2">
             <div className="relative">
               <button
@@ -187,7 +187,7 @@ export const ManageTeamsModal: React.FC = () => {
             </div>
             <Input
               type="text"
-              placeholder="Workspace Name (e.g. Design Team)"
+              placeholder="Team name (e.g. Design Team)"
               value={newTeamName}
               onChange={(e) => setNewTeamName(e.target.value)}
               className="flex-1"
@@ -201,7 +201,7 @@ export const ManageTeamsModal: React.FC = () => {
         <Divider />
 
         <div className="space-y-2 flex-1 overflow-hidden flex flex-col">
-          <Label variant="section">Existing Workspaces</Label>
+          <Label variant="section">Existing Teams</Label>
           <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar">
             {teams.map((team) => (
               <div
@@ -325,7 +325,7 @@ export const ManageTeamsModal: React.FC = () => {
         {teamToDelete && (
           <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-200 dark:border-red-900 space-y-2 animate-slide-down">
             <p className="text-sm text-red-700 dark:text-red-300 font-semibold">
-              Are you sure you want to delete this workspace?
+              Are you sure you want to delete this team?
             </p>
             <p className="text-xs text-red-600 dark:text-red-400">
               Type <span className="font-mono bg-red-100 dark:bg-red-900/50 px-1 rounded">/iwanttodelete</span> to

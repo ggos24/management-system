@@ -174,6 +174,9 @@ function diffTaskFields(
   if (oldTask.priority !== newTask.priority) {
     entries.push({ field: 'priority', oldValue: oldTask.priority, newValue: newTask.priority });
   }
+  if ((oldTask.startDate || null) !== (newTask.startDate || null)) {
+    entries.push({ field: 'startDate', oldValue: oldTask.startDate || null, newValue: newTask.startDate || null });
+  }
   if (oldTask.dueDate !== newTask.dueDate) {
     entries.push({ field: 'dueDate', oldValue: oldTask.dueDate || null, newValue: newTask.dueDate || null });
   }
@@ -413,7 +416,7 @@ const EMAIL_SUBJECTS: Partial<Record<NotificationType, string>> = {
   task_updated: 'Task updated',
   task_unassigned: 'Task unassigned',
   task_deleted: 'Task deleted',
-  task_deadline_reminder: 'Task deadline approaching',
+  task_deadline_reminder: 'Task due date approaching',
   absence_submitted: 'New absence request',
   absence_decided: 'Absence request decided',
   absence_cancelled: 'Absence cancelled',
@@ -546,6 +549,8 @@ function notify(recipientId: string, type: NotificationType, message: string, en
 interface DataState {
   tasks: Task[];
   taskSubtasks: TaskSubtask[];
+  /** tasks.start_date exists in the database (see db.isTaskStartDateEnabled). */
+  taskStartDateEnabled: boolean;
   tickets: Ticket[];
   equipmentItems: EquipmentItem[];
   // Open checkouts plus any closed one still flagged for repair. The current
@@ -791,6 +796,7 @@ function emptyData() {
   return {
     tasks: [],
     taskSubtasks: [],
+    taskStartDateEnabled: false,
     tickets: [],
     equipmentItems: [],
     equipmentCheckouts: [],
@@ -826,6 +832,7 @@ type DataSlices = Pick<DataState, keyof ReturnType<typeof emptyData>>;
 export const useDataStore = create<DataState>((set, get) => ({
   tasks: [],
   taskSubtasks: [],
+  taskStartDateEnabled: false,
   tickets: [],
   equipmentItems: [],
   equipmentCheckouts: [],
@@ -1410,6 +1417,14 @@ export const useDataStore = create<DataState>((set, get) => ({
       teamId: incomingTeamId,
       statusId: incomingStatusId,
       priority: taskData.priority || 'medium',
+      // A caller that leaves startDate out keeps the stored one; this task is written whole,
+      // so dropping the field would send start_date = null and wipe it.
+      startDate:
+        taskData.startDate !== undefined
+          ? taskData.startDate
+            ? toDateOnly(taskData.startDate)
+            : null
+          : (existingTask?.startDate ?? null),
       dueDate: toDateOnly(taskData.dueDate),
       doneDate: resolvedDoneDate,
       placements: taskData.placements || [],
@@ -2030,7 +2045,7 @@ export const useDataStore = create<DataState>((set, get) => ({
     const prev = members;
     set({ members: members.filter((m) => m.id !== id) });
     db.deleteMember(id).catch(() => set({ members: prev }));
-    logAction('Member Removed', `Removed ${memberName} from the workspace`, 'member');
+    logAction('Member Removed', `Removed ${memberName} from UNITIES`, 'member');
   },
 
   updateMemberAvatar: (memberId, newAvatar) => {
@@ -2778,6 +2793,7 @@ export const useDataStore = create<DataState>((set, get) => ({
         teams: getValue(results[0], []),
         tasks: getValue(results[1], []),
         taskSubtasks: getValue(results[12], [] as TaskSubtask[]),
+        taskStartDateEnabled: db.isTaskStartDateEnabled(),
         members: getValue(results[2], [profileResult]),
         teamStatuses: getValue(results[3], {} as Record<string, TeamStatus[]>),
         teamTypes: getValue(results[4], {} as Record<string, string[]>),
@@ -2868,6 +2884,7 @@ export const useDataStore = create<DataState>((set, get) => ({
       scheduleTeamOrders: keep(results[16], current.scheduleTeamOrders),
       tasks: keep(results[1], current.tasks),
       taskSubtasks: keep(results[27], current.taskSubtasks),
+      taskStartDateEnabled: db.isTaskStartDateEnabled(),
       members: keep(results[2], current.members),
       absences: keep(results[3], current.absences),
       shifts: keep(results[4], current.shifts),

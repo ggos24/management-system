@@ -90,6 +90,7 @@ function mapTask(row: any, assigneeIds: string[], placements: string[]): Task {
     teamId: row.team_id,
     statusId: row.status_id ?? null,
     priority: row.priority || 'medium',
+    startDate: row.start_date ? toDateOnly(row.start_date) : null,
     dueDate: toDateOnly(row.due_date),
     doneDate: row.done_date ? toDateOnly(row.done_date) : null,
     assigneeIds,
@@ -238,6 +239,31 @@ export async function fetchTaskAccessContexts(): Promise<TaskAccessContext[]> {
   }));
 }
 
+// Whether tasks.start_date exists yet (migration 20261013000000_task_start_date). Until it does,
+// task writes leave the column out (an unknown column fails the whole save) and the UI hides the
+// Start date field, so the client can ship before or after the migration is applied.
+let taskStartDateColumn = false;
+
+export function isTaskStartDateEnabled(): boolean {
+  return taskStartDateColumn;
+}
+
+/** start_date for a task write — only once the column exists. */
+function startDateField(task: Task): { start_date?: string | null } {
+  return taskStartDateColumn ? { start_date: task.startDate ? toDateOnly(task.startDate) : null } : {};
+}
+
+async function detectTaskStartDateColumn(sampleRow: Record<string, unknown> | undefined) {
+  if (sampleRow) {
+    taskStartDateColumn = 'start_date' in sampleRow;
+    return;
+  }
+  // No visible tasks to inspect: ask for the column directly. A missing column is a 400;
+  // any failure keeps the feature off, which is always safe, and the next reload retries.
+  const { error } = await supabase.from('tasks').select('start_date', { head: true }).limit(1);
+  taskStartDateColumn = !error;
+}
+
 export async function fetchTasks(): Promise<Task[]> {
   // All three tables grow with content; page them so silent truncation can never
   // drop a task, an assignee link, or a placement chip. Each is ordered by its full
@@ -270,6 +296,8 @@ export async function fetchTasks(): Promise<Task[]> {
     const placementName = (row as any).placements?.name;
     if (placementName) placementsByTask[row.task_id].push(placementName);
   }
+
+  await detectTaskStartDateColumn(taskRows?.[0]);
 
   return (taskRows || []).map((row) => mapTask(row, assigneesByTask[row.id] || [], placementsByTask[row.id] || []));
 }
@@ -545,6 +573,7 @@ export async function upsertTask(task: Task) {
     team_id: task.teamId,
     status_id: task.statusId,
     priority: task.priority,
+    ...startDateField(task),
     due_date: task.dueDate ? toDateOnly(task.dueDate) : null,
     done_date: task.doneDate ? toDateOnly(task.doneDate) : null,
     content_type: task.contentInfo?.type || null,
@@ -571,6 +600,7 @@ export async function saveTaskWithRelations(task: Task) {
     team_id: task.teamId,
     status_id: task.statusId,
     priority: task.priority,
+    ...startDateField(task),
     due_date: task.dueDate ? toDateOnly(task.dueDate) : null,
     done_date: task.doneDate ? toDateOnly(task.doneDate) : null,
     content_type: task.contentInfo?.type || null,
@@ -600,6 +630,7 @@ export async function saveTaskWithSubtasks(task: Task, subtasks: TaskSubtask[]) 
     team_id: task.teamId,
     status_id: task.statusId,
     priority: task.priority,
+    ...startDateField(task),
     due_date: task.dueDate ? toDateOnly(task.dueDate) : null,
     done_date: task.doneDate ? toDateOnly(task.doneDate) : null,
     content_type: task.contentInfo?.type || null,

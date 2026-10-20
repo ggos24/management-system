@@ -6,6 +6,7 @@ import {
   Plus,
   X,
   Calendar,
+  CalendarClock,
   CheckCircle,
   Layout,
   User as UserIcon,
@@ -44,7 +45,7 @@ import { useAuthStore } from '../stores/authStore';
 import { Task, TaskSubtask, TaskComment, TaskActivity, CustomProperty } from '../types';
 import { cn } from '../lib/cn';
 import { toggleSubtaskInHtml } from '../lib/subtasks';
-import { formatDateEU, toDateOnly } from '../lib/utils';
+import { formatDateEU, isDateOrderValid, toDateOnly } from '../lib/utils';
 import { PRIORITY_COLORS, PRIORITY_DOT, getStatusColor } from '../constants';
 import { getStatusName } from '../lib/statusUtils';
 import {
@@ -95,6 +96,7 @@ export const TaskModal: React.FC = () => {
     updateLinkedTaskFields,
     teamPersonFieldConfig,
     toggleDescriptionChecklist,
+    taskStartDateEnabled,
   } = useDataStore();
 
   const currentUser = useAuthStore((s) => s.currentUser);
@@ -174,7 +176,7 @@ export const TaskModal: React.FC = () => {
     const homePlacements = teamPlacements[homeTeamId] || [];
     if (homePlacements.length > 0) {
       groups.push({
-        label: homeTeam?.name || 'Current Workspace',
+        label: homeTeam?.name || 'Current Team',
         teamId: homeTeamId,
         highlighted: true,
         options: homePlacements.map((p) => ({ value: `${homeTeamId}:${p}`, label: p })),
@@ -266,6 +268,9 @@ export const TaskModal: React.FC = () => {
   const [editingMentionIds, setEditingMentionIds] = useState<string[]>([]);
   const [isLoadingComments, setIsLoadingComments] = useState(false);
   const [activities, setActivities] = useState<TaskActivity[]>([]);
+  // doneDate entries record the automatic completion stamp — system bookkeeping that users never
+  // see or edit, so they stay in the database but are left out of the activity feed.
+  const visibleActivities = activities.filter((a) => a.field !== 'doneDate');
   const [isLoadingActivities, setIsLoadingActivities] = useState(false);
   const activityLoadedRef = useRef(false);
   const [showMentionDropdown, setShowMentionDropdown] = useState(false);
@@ -701,6 +706,13 @@ export const TaskModal: React.FC = () => {
             changed priority from {bold(a.oldValue || '')} to {bold(a.newValue || '')}
           </>
         );
+      case 'startDate':
+        return (
+          <>
+            changed start date from {bold(a.oldValue ? formatDate(a.oldValue) : 'none')} to{' '}
+            {bold(a.newValue ? formatDate(a.newValue) : 'none')}
+          </>
+        );
       case 'dueDate':
         return (
           <>
@@ -1110,16 +1122,18 @@ export const TaskModal: React.FC = () => {
                     {taskModalData.priority || 'medium'}
                   </span>
                 </ReadOnlyTaskField>
-                <ReadOnlyTaskField label="Deadline">
+                {taskStartDateEnabled && (
+                  <ReadOnlyTaskField label="Start date">
+                    {taskModalData.startDate ? (
+                      formatDateEU(toDateOnly(taskModalData.startDate))
+                    ) : (
+                      <span className="text-zinc-400">—</span>
+                    )}
+                  </ReadOnlyTaskField>
+                )}
+                <ReadOnlyTaskField label="Due date">
                   {taskModalData.dueDate ? (
                     formatDateEU(toDateOnly(taskModalData.dueDate))
-                  ) : (
-                    <span className="text-zinc-400">—</span>
-                  )}
-                </ReadOnlyTaskField>
-                <ReadOnlyTaskField label="Publication Date">
-                  {taskModalData.doneDate ? (
-                    formatDateEU(toDateOnly(taskModalData.doneDate))
                   ) : (
                     <span className="text-zinc-400">—</span>
                   )}
@@ -1298,36 +1312,50 @@ export const TaskModal: React.FC = () => {
                     </span>
                   )}
                 />
+                {taskStartDateEnabled && (
+                  <div className="space-y-1">
+                    <div>
+                      <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
+                        <CalendarClock size={12} /> Start date
+                      </label>
+                      <p className="text-[0.625rem] text-zinc-400 dark:text-zinc-500 mt-0.5">
+                        When work on this task begins
+                      </p>
+                    </div>
+                    <SimpleDatePicker
+                      value={toDateOnly(taskModalData.startDate || '')}
+                      onChange={(date) => {
+                        const startDate = date ? toDateOnly(date) : null;
+                        if (!isDateOrderValid(startDate, taskModalData.dueDate)) {
+                          toast.error('Start date must be on or before the due date');
+                          return;
+                        }
+                        setTaskModalData({ ...taskModalData, startDate });
+                      }}
+                      placeholder="Set start date"
+                    />
+                  </div>
+                )}
                 <div className="space-y-1">
                   <div>
                     <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                      <Calendar size={12} /> Due Date
+                      <Calendar size={12} /> Due date
                     </label>
                     <p className="text-[0.625rem] text-zinc-400 dark:text-zinc-500 mt-0.5">
-                      Target completion deadline
+                      When this task should be finished
                     </p>
                   </div>
                   <SimpleDatePicker
                     value={toDateOnly(taskModalData.dueDate)}
-                    onChange={(date) => setTaskModalData({ ...taskModalData, dueDate: toDateOnly(date) })}
+                    onChange={(date) => {
+                      const dueDate = toDateOnly(date);
+                      if (!isDateOrderValid(taskModalData.startDate, dueDate)) {
+                        toast.error('Due date must be on or after the start date');
+                        return;
+                      }
+                      setTaskModalData({ ...taskModalData, dueDate });
+                    }}
                     placeholder="Set due date"
-                  />
-                </div>
-                <div className="space-y-1">
-                  <div>
-                    <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
-                      <CheckCircle size={12} /> Pub Date
-                    </label>
-                    <p className="text-[0.625rem] text-zinc-400 dark:text-zinc-500 mt-0.5">
-                      Actual date of publication
-                    </p>
-                  </div>
-                  <SimpleDatePicker
-                    value={toDateOnly(taskModalData.doneDate)}
-                    onChange={(date) =>
-                      setTaskModalData({ ...taskModalData, doneDate: date ? toDateOnly(date) : null })
-                    }
-                    placeholder="Set publish date"
                   />
                 </div>
                 <div>
@@ -1400,7 +1428,7 @@ export const TaskModal: React.FC = () => {
                 {taskModalData.id && taskTeamLinks.filter((l) => l.taskId === taskModalData.id).length > 0 && (
                   <div className="md:col-span-2">
                     <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5 mb-2">
-                      <Link2 size={12} /> Section per Workspace
+                      <Link2 size={12} /> Section per Team
                     </label>
                     <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
                       {/* Home workspace */}
@@ -1931,10 +1959,10 @@ export const TaskModal: React.FC = () => {
                 <div className="max-h-[min(300px,50dvh)] overflow-y-auto custom-scrollbar space-y-2.5">
                   {isLoadingActivities ? (
                     <p className="text-xs text-zinc-400 italic py-4 text-center">Loading activity...</p>
-                  ) : activities.length === 0 ? (
+                  ) : visibleActivities.length === 0 ? (
                     <p className="text-xs text-zinc-400 italic py-4 text-center">No activity yet</p>
                   ) : (
-                    activities.map((a) => (
+                    visibleActivities.map((a) => (
                       <div key={a.id} className="flex gap-2.5 items-start">
                         <Avatar
                           src={a.userAvatar || ''}

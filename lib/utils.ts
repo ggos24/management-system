@@ -21,6 +21,13 @@ export function toDateOnly(d: Date | string | null | undefined): string {
   return isNaN(parsed.getTime()) ? '' : formatDateOnlyParts(parsed);
 }
 
+/** A task's start date may not fall after its due date. Missing dates never conflict. */
+export function isDateOrderValid(startDate: string | null | undefined, dueDate: string | null | undefined): boolean {
+  const start = toDateOnly(startDate);
+  const due = toDateOnly(dueDate);
+  return !start || !due || start <= due;
+}
+
 function toDate(d: Date | string | null | undefined): Date | null {
   if (!d) return null;
   if (d instanceof Date) return d;

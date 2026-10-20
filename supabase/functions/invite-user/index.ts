@@ -225,7 +225,7 @@ Deno.serve(async (req) => {
     await adminClient.from('activity_log').insert({
       user_id: callerFullProfile?.id || '',
       action: 'Member Invited',
-      details: `Invited ${name} (${email}) to the workspace`,
+      details: `Invited ${name} (${email}) to UNITIES`,
       timestamp: new Date().toISOString(),
       entity_type: 'member',
     });
@@ -242,7 +242,7 @@ Deno.serve(async (req) => {
         ? (await adminClient.from('profiles').select('name').eq('id', callerFullProfile.id).single()).data?.name ||
           'An admin'
         : 'An admin';
-      const notifMessage = `${callerName} invited ${name} to the workspace`;
+      const notifMessage = `${callerName} invited ${name} to UNITIES`;
       await adminClient.from('notifications').insert(
         existingProfiles.map((p: { id: string }) => ({
           recipient_id: p.id,
