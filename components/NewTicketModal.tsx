@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'sonner';
-import { Paperclip, X, UploadCloud, Loader2, FileText } from 'lucide-react';
+import { Paperclip, X, UploadCloud, Loader2, FileText } from './icons';
 import { Modal } from './Modal';
 import { Button } from './ui/Button';
 import { FormField } from './ui/FormField';
@@ -142,7 +142,7 @@ const NewTicketForm: React.FC<{ onClose: () => void }> = ({ onClose }) => {
             <span className="font-medium text-zinc-700 dark:text-zinc-200">Click to upload</span> or drag screenshots
             here
           </p>
-          <p className="text-[11px] text-zinc-400">Images, PDF, logs — up to 25 MB each</p>
+          <p className="text-[0.6875rem] text-zinc-400">Images, PDF, logs — up to 25 MB each</p>
           <input
             ref={fileInputRef}
             type="file"
@@ -196,7 +196,7 @@ const NewTicketForm: React.FC<{ onClose: () => void }> = ({ onClose }) => {
       </FormField>
 
       <div className="flex items-center justify-between gap-3 pt-2 border-t border-zinc-100 dark:border-zinc-800">
-        <p className="text-[11px] text-zinc-400 flex items-center gap-1">
+        <p className="text-[0.6875rem] text-zinc-400 flex items-center gap-1">
           <Paperclip size={12} /> Tip: a screenshot helps us fix it faster
         </p>
         <div className="flex gap-2">

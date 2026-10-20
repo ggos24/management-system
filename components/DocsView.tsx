@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { toast } from 'sonner';
-import { Search, Plus, FolderPlus, FileText, Folder, ChevronLeft, ChevronRight, Pencil, Trash2 } from 'lucide-react';
+import { Search, Plus, FolderPlus, FileText, Folder, ChevronLeft, ChevronRight, Pencil, Trash2 } from './icons';
 import { IconComponent } from './IconComponent';
 import { Doc, DocSection } from '../types';
 import { fetchDocs, upsertDoc, deleteDoc as deleteDocDb } from '../lib/database';
@@ -361,7 +361,7 @@ export const DocsView: React.FC<DocsViewProps> = ({ section, docId, onNavigate }
                               <span className="text-sm text-zinc-700 dark:text-zinc-300 group-hover:text-zinc-900 dark:group-hover:text-white transition-colors truncate">
                                 {article.title}
                               </span>
-                              <span className="ml-auto text-[11px] text-zinc-300 dark:text-zinc-600 flex-shrink-0">
+                              <span className="ml-auto text-[0.6875rem] text-zinc-300 dark:text-zinc-600 flex-shrink-0">
                                 {formatDateEU(article.updatedAt)}
                               </span>
                             </div>

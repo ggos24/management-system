@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { Calendar, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Calendar, ChevronLeft, ChevronRight } from './icons';
 import { formatDateEU, mondayIndex, WEEKDAYS_MON_INITIALS } from '../lib/utils';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
 import { useExitAnimation } from '../hooks/useExitAnimation';
@@ -133,7 +133,7 @@ export const SimpleDatePicker: React.FC<SimpleDatePickerProps> = ({
             </div>
             <div className="grid grid-cols-7 gap-1 text-center mb-1">
               {WEEKDAYS_MON_INITIALS.map((d, i) => (
-                <span key={i} className="text-[11px] md:text-[10px] text-zinc-400">
+                <span key={i} className="text-[0.6875rem] md:text-[0.625rem] text-zinc-400">
                   {d}
                 </span>
               ))}

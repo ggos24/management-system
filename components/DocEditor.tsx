@@ -4,7 +4,7 @@ import { DocsEditor } from './DocsEditor';
 import { CustomSelect } from './CustomSelect';
 import { IconComponent, ICONS } from './IconComponent';
 import { Button, Label } from './ui';
-import { Folder } from 'lucide-react';
+import { Folder } from './icons';
 
 interface DocEditorProps {
   doc?: Doc;

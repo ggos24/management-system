@@ -2,7 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { toast } from 'sonner';
 import {
-  LifeBuoy,
+  EmergencyHome,
   Search,
   Plus,
   ArrowLeft,
@@ -13,7 +13,7 @@ import {
   RotateCcw,
   Inbox,
   MessageSquare,
-} from 'lucide-react';
+} from './icons';
 import { Avatar } from './Avatar';
 import { Badge } from './ui/Badge';
 import { Button, IconButton } from './ui/Button';
@@ -339,7 +339,7 @@ const TicketDetail: React.FC<TicketDetailProps> = ({
                   <div className="min-w-0 flex-1">
                     <div className="flex items-baseline gap-2">
                       <span className="text-sm font-medium text-zinc-800 dark:text-zinc-200">{c.userName}</span>
-                      <span className="text-[11px] text-zinc-400">{formatRelativeTime(c.createdAt)}</span>
+                      <span className="text-[0.6875rem] text-zinc-400">{formatRelativeTime(c.createdAt)}</span>
                     </div>
                     <p className="text-sm text-zinc-700 dark:text-zinc-300 whitespace-pre-wrap break-words">
                       {renderCommentContent(c.content, members)}
@@ -447,7 +447,7 @@ export default function Support() {
         <div className="flex-shrink-0 px-4 py-3 border-b border-zinc-200 dark:border-zinc-800">
           <div className="flex items-center justify-between mb-3">
             <h1 className="flex items-center gap-2 text-base font-semibold text-zinc-900 dark:text-white">
-              <LifeBuoy size={18} /> {admin ? 'Support' : 'My tickets'}
+              <EmergencyHome size={18} /> {admin ? 'Support' : 'My tickets'}
             </h1>
             <Button size="sm" variant="primary" onClick={() => setIsNewTicketModalOpen(true)}>
               <Plus size={14} className="mr-1" /> New
@@ -465,7 +465,7 @@ export default function Support() {
               className="w-full pl-8 pr-3 py-1.5 bg-zinc-100 dark:bg-zinc-800/50 border-none rounded-md text-sm outline-none focus:ring-1 focus:ring-zinc-300 dark:focus:ring-zinc-600"
             />
           </div>
-          <div className="flex gap-1 mt-2 overflow-x-auto -mx-1 px-1 custom-scrollbar">
+          <div className="flex gap-1 mt-2 overflow-x-auto -mx-1 px-1 pb-[5px] custom-scrollbar">
             {tabs.map((t) => {
               const count = t.key === 'all' ? tickets.length : tickets.filter((tk) => tk.status === t.key).length;
               const active = statusFilter === t.key;
@@ -519,7 +519,7 @@ export default function Support() {
                     <PriorityDot priority={t.priority} />
                   </div>
                   <p className="text-sm font-medium text-zinc-800 dark:text-zinc-100 truncate">{t.title}</p>
-                  <p className="text-[11px] text-zinc-400 mt-0.5 truncate">
+                  <p className="text-[0.6875rem] text-zinc-400 mt-0.5 truncate">
                     {TICKET_CATEGORY_META[t.category].label}
                     {admin && ` · ${memberName(t.reporterId)}`} · {formatRelativeTime(t.updatedAt || t.createdAt)}
                   </p>
@@ -544,7 +544,7 @@ export default function Support() {
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center text-zinc-400 px-6">
-            <LifeBuoy size={36} className="mb-3" />
+            <EmergencyHome size={36} className="mb-3" />
             <p className="text-sm">{selectedId ? 'Ticket not found' : 'Select a ticket to view the conversation'}</p>
           </div>
         )}

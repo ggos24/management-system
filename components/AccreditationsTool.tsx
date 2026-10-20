@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { ArrowLeft, IdCard, Pencil, Plus, Search, Trash2 } from 'lucide-react';
+import { ArrowLeft, IdCard, Pencil, Plus, Search, Trash2 } from './icons';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
 import { CustomSelect } from './CustomSelect';
@@ -216,7 +216,7 @@ export const AccreditationsTool: React.FC = () => {
                         <Avatar src={holder?.avatar} alt={item.holderName} size="sm" />
                         <span className="min-w-0">
                           <span className="block truncate text-zinc-900 dark:text-white">{item.holderName}</span>
-                          {!item.holderId && <span className="block text-[10px] text-zinc-400">Former member</span>}
+                          {!item.holderId && <span className="block text-[0.625rem] text-zinc-400">Former member</span>}
                         </span>
                       </span>
                     </td>
@@ -229,7 +229,7 @@ export const AccreditationsTool: React.FC = () => {
                           <span className={countdownClass(days, EXPIRING_SOON_DAYS)}>
                             {formatDateEU(item.validUntil)}
                           </span>
-                          <span className="block text-[10px] text-zinc-400">{describeCountdown(days)}</span>
+                          <span className="block text-[0.625rem] text-zinc-400">{describeCountdown(days)}</span>
                         </>
                       ) : (
                         <span className="text-zinc-400">No expiry</span>

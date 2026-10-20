@@ -24,7 +24,7 @@ import {
   Link as LinkIcon,
   Table as TableIcon,
   Minus,
-} from 'lucide-react';
+} from './icons';
 import { toast } from 'sonner';
 import { uploadDocImage } from '../lib/database';
 

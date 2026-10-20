@@ -19,7 +19,7 @@ export const Badge = React.forwardRef<HTMLSpanElement, BadgeProps>(({ color = 'z
     <span
       ref={ref}
       className={cn(
-        'px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase tracking-wider',
+        'px-1.5 py-0.5 rounded text-[0.625rem] font-semibold uppercase tracking-wider',
         badgeColors[color],
         className,
       )}

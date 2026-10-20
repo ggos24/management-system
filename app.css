@@ -189,6 +189,70 @@ body {
   }
 }
 
+/*
+ * Desktop/tablet density: shrink the root font size so everything sized in rem — Tailwind
+ * text, spacing, widths, and the icons in components/icons.tsx — renders as it would at
+ * 80% browser zoom. Media-query breakpoints are unaffected (they always use the browser's
+ * default 16px). Phones keep 100% so text stays readable and tap targets stay large.
+ */
+@media screen and (min-width: 768px) {
+  html {
+    font-size: 80%;
+  }
+}
+
+/*
+ * Fluid type scale for desktop/tablet. Overrides Tailwind's text-* tokens so every
+ * text-xs … text-2xl in the app shrinks on smaller screens: each size runs from its
+ * minimum at a 1280px-wide viewport to its maximum at 1920px, and stays clamped
+ * outside that range. Phones (<768px) keep Tailwind's defaults for readability.
+ * Line heights are ratios in Tailwind, so they follow the font size automatically.
+ * The px notes below assume a 16px root; with the 80% root above, the rem parts
+ * render at 80% (e.g. text-sm ≈ 10–10.8px).
+ */
+@media screen and (min-width: 768px) {
+  :root {
+    --text-xs: clamp(0.6875rem, 0.5625rem + 0.15625vw, 0.75rem); /* 11px → 12px */
+    --text-sm: clamp(0.78125rem, 0.65625rem + 0.15625vw, 0.84375rem); /* 12.5px → 13.5px */
+    --text-base: clamp(0.875rem, 0.75rem + 0.15625vw, 0.9375rem); /* 14px → 15px */
+    --text-lg: clamp(1rem, 0.875rem + 0.15625vw, 1.0625rem); /* 16px → 17px */
+    --text-xl: clamp(1.09375rem, 0.90625rem + 0.234375vw, 1.1875rem); /* 17.5px → 19px */
+    --text-2xl: clamp(1.3125rem, 1.0625rem + 0.3125vw, 1.4375rem); /* 21px → 23px */
+  }
+}
+
+/*
+ * Material Symbols icon glyphs rendered by components/icons.tsx. Lives in the components
+ * layer so Tailwind utilities passed via className (inline, text colour, animate-spin…) win.
+ */
+@layer components {
+  .material-symbol {
+    display: block; /* matches Tailwind preflight's display for the <svg> icons this replaced */
+    width: 1em;
+    height: 1em;
+    overflow: hidden;
+    font-family: 'Material Symbols Outlined';
+    font-size: 1.5rem;
+    font-style: normal;
+    font-weight: 400; /* the served font is a single weight-400 instance — don't let parents fake-bold it */
+    font-synthesis: none;
+    line-height: 1;
+    letter-spacing: normal; /* non-zero tracking disables the ligatures that turn names into glyphs */
+    text-transform: none;
+    white-space: nowrap;
+    word-wrap: normal;
+    direction: ltr;
+    user-select: none;
+    font-feature-settings: 'liga';
+    -webkit-font-smoothing: antialiased;
+    font-variation-settings:
+      'FILL' 0,
+      'wght' 400,
+      'GRAD' 0,
+      'opsz' 20;
+  }
+}
+
 /* Custom scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

@@ -15,7 +15,7 @@ import {
   GripVertical,
   Cake,
   Rocket,
-} from 'lucide-react';
+} from './icons';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
@@ -615,7 +615,7 @@ const Schedule: React.FC<ScheduleProps> = ({
             Team availability & shifts for {monthName} {year}.
           </p>
           {/* Hold-to-edit is not discoverable on its own. */}
-          <p className="md:hidden text-[11px] text-zinc-400 mt-1">Hold a day to add a shift or absence.</p>
+          <p className="md:hidden text-[0.6875rem] text-zinc-400 mt-1">Hold a day to add a shift or absence.</p>
         </div>
 
         {/* Wraps on phones: [Me][People][Absence] on the first row, the month
@@ -632,7 +632,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                 onClick={() => setFilterPerson(isMe ? 'all' : currentUserId)}
                 aria-pressed={isMe}
                 title={isMe ? 'Show everyone' : 'Show only me'}
-                className={`flex items-center gap-1.5 md:gap-2 rounded-lg border min-h-[32px] px-2 md:px-2.5 py-1 text-xs font-medium transition-colors flex-shrink-0 ${
+                className={`flex items-center gap-1.5 md:gap-2 rounded-lg border min-h-[2rem] px-2 md:px-2.5 py-1 text-xs font-medium transition-colors flex-shrink-0 ${
                   isMe
                     ? 'bg-blue-600 border-blue-600 text-white hover:bg-blue-700 dark:bg-blue-500 dark:border-blue-500 dark:hover:bg-blue-600'
                     : 'bg-white dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-200 hover:bg-zinc-50 dark:hover:bg-zinc-700'
@@ -674,7 +674,7 @@ const Schedule: React.FC<ScheduleProps> = ({
               className="min-w-0 md:w-[140px]"
             />
           </div>
-          <div className="w-full md:w-auto flex items-center justify-between gap-1 md:gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[36px] md:min-h-[32px] px-1 md:px-2 py-1 md:py-1.5 min-w-0">
+          <div className="w-full md:w-auto flex items-center justify-between gap-1 md:gap-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg min-h-[36px] md:min-h-[2rem] px-1 md:px-2 py-1 md:py-1.5 min-w-0">
             <button
               onClick={() => changeMonth(-1)}
               className="p-2 md:p-1 hover:bg-zinc-100 dark:hover:bg-zinc-700 rounded text-zinc-600 dark:text-zinc-400 flex-shrink-0"
@@ -713,7 +713,7 @@ const Schedule: React.FC<ScheduleProps> = ({
           >
             Pending Requests
             {pendingCount > 0 && (
-              <span className="min-w-[18px] h-[18px] flex items-center justify-center bg-amber-500 text-white text-[10px] font-semibold rounded-full px-1">
+              <span className="min-w-[1.125rem] h-[1.125rem] flex items-center justify-center bg-amber-500 text-white text-[0.625rem] font-semibold rounded-full px-1">
                 {pendingCount}
               </span>
             )}
@@ -743,7 +743,7 @@ const Schedule: React.FC<ScheduleProps> = ({
           >
             <div style={{ width: 'max-content', minWidth: '100%' }}>
               <div className="flex sticky top-0 z-30 bg-zinc-50 dark:bg-zinc-950 border-b border-zinc-200 dark:border-zinc-800 h-14">
-                <div className="sticky left-0 z-40 w-32 md:w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 px-2 py-3 md:p-3 text-[10px] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
+                <div className="sticky left-0 z-40 w-32 md:w-64 bg-zinc-50 dark:bg-zinc-950 border-r border-zinc-200 dark:border-zinc-800 px-2 py-3 md:p-3 text-[0.625rem] font-semibold uppercase text-zinc-500 tracking-wider flex items-center shadow-[1px_0_0_0_rgba(228,228,231,1)] dark:shadow-[1px_0_0_0_rgba(39,39,42,1)]">
                   <span className="md:hidden">Member</span>
                   <span className="hidden md:inline">Team Member</span>
                 </div>
@@ -755,7 +755,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                   return (
                     <div
                       key={day}
-                      className={`w-8 md:w-10 flex-shrink-0 text-center flex flex-col items-center justify-center border-r border-zinc-100 dark:border-zinc-800 text-[10px] text-zinc-400 font-medium last:border-r-0 select-none ${isToday ? 'bg-red-50/50 dark:bg-red-900/20' : isWeekend(day) ? 'bg-emerald-50/60 dark:bg-emerald-900/15' : ''}`}
+                      className={`w-8 md:w-10 flex-shrink-0 text-center flex flex-col items-center justify-center border-r border-zinc-100 dark:border-zinc-800 text-[0.625rem] text-zinc-400 font-medium last:border-r-0 select-none ${isToday ? 'bg-red-50/50 dark:bg-red-900/20' : isWeekend(day) ? 'bg-emerald-50/60 dark:bg-emerald-900/15' : ''}`}
                     >
                       <span
                         className={`text-zinc-900 dark:text-white font-bold ${isToday ? 'text-red-600 dark:text-red-400' : ''}`}
@@ -763,7 +763,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                         {day}
                       </span>
                       <span
-                        className={`text-[9px] md:text-[10px] uppercase ${isToday ? 'text-red-500 dark:text-red-400' : ''}`}
+                        className={`text-[0.5625rem] md:text-[0.625rem] uppercase ${isToday ? 'text-red-500 dark:text-red-400' : ''}`}
                       >
                         {getDayShortName(day)}
                       </span>
@@ -804,7 +804,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                           <Rocket size={11} aria-hidden className="flex-shrink-0 text-zinc-500 dark:text-zinc-400" />
                         )}
                         <span
-                          className={`whitespace-nowrap text-[10px] font-semibold uppercase tracking-wider ${isRapidResponse ? 'text-zinc-800 dark:text-zinc-100' : 'text-zinc-600 dark:text-zinc-300'}`}
+                          className={`whitespace-nowrap text-[0.625rem] font-semibold uppercase tracking-wider ${isRapidResponse ? 'text-zinc-800 dark:text-zinc-100' : 'text-zinc-600 dark:text-zinc-300'}`}
                         >
                           {group.team.name}
                         </span>
@@ -844,14 +844,16 @@ const Schedule: React.FC<ScheduleProps> = ({
                               <Avatar src={member.avatar} alt={member.name} size="sm" />
                               <div className="min-w-0 flex-1">
                                 <p
-                                  className="text-[11px] md:text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate"
+                                  className="text-[0.6875rem] md:text-xs font-medium text-zinc-900 dark:text-zinc-200 truncate"
                                   title={member.name}
                                 >
                                   <span className="md:hidden">{shortenName(member.name)}</span>
                                   <span className="hidden md:inline">{member.name}</span>
                                 </p>
                                 {/* The job title has no room beside seven day columns. */}
-                                <p className="hidden md:block text-[11px] text-zinc-400 truncate">{member.jobTitle}</p>
+                                <p className="hidden md:block text-[0.6875rem] text-zinc-400 truncate">
+                                  {member.jobTitle}
+                                </p>
                               </div>
                               {isAdminUser && (
                                 <div
@@ -940,7 +942,7 @@ const Schedule: React.FC<ScheduleProps> = ({
 
                                 content = (
                                   <div
-                                    className={`w-full h-full flex items-center justify-center ${bgClass} ${statusClass} text-[10px] font-semibold tracking-tight select-none relative`}
+                                    className={`w-full h-full flex items-center justify-center ${bgClass} ${statusClass} text-[0.625rem] font-semibold tracking-tight select-none relative`}
                                     title={[
                                       shift ? `${text} — shift ${describeShift(shift)} underneath` : text,
                                       birthdayLabel,
@@ -971,7 +973,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                                     }`}
                                   >
                                     <span
-                                      className={`text-[10px] font-semibold leading-none ${
+                                      className={`text-[0.625rem] font-semibold leading-none ${
                                         shift.shiftType === 'on_duty'
                                           ? 'text-indigo-700 dark:text-indigo-400'
                                           : 'text-pink-700 dark:text-pink-400'
@@ -985,16 +987,16 @@ const Schedule: React.FC<ScheduleProps> = ({
                                     className={`flex flex-col items-center justify-center h-full w-full select-none ${isToday ? 'bg-red-50/20 dark:bg-red-900/10' : 'bg-zinc-100 dark:bg-zinc-800'}`}
                                   >
                                     {shiftAllDay ? (
-                                      <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
+                                      <span className="text-[0.625rem] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
                                         All day
                                       </span>
                                     ) : (
                                       <>
-                                        <span className="text-[10px] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
+                                        <span className="text-[0.625rem] font-medium text-zinc-900 dark:text-zinc-100 leading-none">
                                           {shift.startTime.slice(0, 5)}
                                         </span>
                                         <div className="w-full h-px bg-zinc-200 dark:bg-zinc-800 my-0.5"></div>
-                                        <span className="text-[10px] text-zinc-500 leading-none">
+                                        <span className="text-[0.625rem] text-zinc-500 leading-none">
                                           {shift.endTime.slice(0, 5)}
                                         </span>
                                       </>
@@ -1223,7 +1225,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                       </span>
                       {cellTeam && (
                         <span
-                          className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-semibold ${cellIsRapidResponse ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
+                          className={`inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[0.625rem] font-semibold ${cellIsRapidResponse ? 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-100' : 'bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300'}`}
                         >
                           {cellIsRapidResponse && <Rocket size={10} aria-hidden />}
                           {cellTeam.name}
@@ -1244,7 +1246,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                         </span>
                       </div>
                       {holidayStats && (
-                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium">
+                        <span className="text-[0.625rem] text-amber-600 dark:text-amber-400 font-medium">
                           {24 - holidayStats.holidayDays} / 24 holiday days left
                         </span>
                       )}
@@ -1317,7 +1319,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                         <span className="text-xs font-semibold text-emerald-700 dark:text-emerald-300">Approved</span>
                       </div>
                       {decider && (
-                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400">
+                        <span className="text-[0.625rem] text-emerald-600 dark:text-emerald-400">
                           by {decider.name}
                           {existingAbsence.decidedAt ? ` on ${formatDateEU(existingAbsence.decidedAt)}` : ''}
                         </span>
@@ -1334,7 +1336,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                         <span className="text-xs font-semibold text-red-700 dark:text-red-300">Declined</span>
                       </div>
                       {decider && (
-                        <span className="text-[10px] text-red-600 dark:text-red-400">
+                        <span className="text-[0.625rem] text-red-600 dark:text-red-400">
                           by {decider.name}
                           {existingAbsence.decidedAt ? ` on ${formatDateEU(existingAbsence.decidedAt)}` : ''}
                         </span>
@@ -1377,7 +1379,7 @@ const Schedule: React.FC<ScheduleProps> = ({
                   {editType === 'absence' && coveredShift && (
                     <div className="mb-4 flex items-start gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2.5 dark:border-zinc-700 dark:bg-zinc-800/50">
                       <Clock size={14} className="mt-px flex-shrink-0 text-zinc-400" />
-                      <p className="text-[11px] leading-relaxed text-zinc-600 dark:text-zinc-400">
+                      <p className="text-[0.6875rem] leading-relaxed text-zinc-600 dark:text-zinc-400">
                         A shift of{' '}
                         <span className="font-medium text-zinc-900 dark:text-zinc-200">
                           {describeShift(coveredShift)}

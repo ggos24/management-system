@@ -14,7 +14,7 @@ import {
   Loader2,
   Eye,
   Code,
-} from 'lucide-react';
+} from './icons';
 import { Button, Input, FormField } from './ui';
 import { supabase } from '../lib/supabase';
 import { buildWeeklyDigestHtml, type DigestCard } from '../lib/emailTemplate';

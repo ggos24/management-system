@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Calendar, Check, Edit2, Plus, Trash2, User, X } from 'lucide-react';
+import { Calendar, Check, Edit2, Plus, Trash2, User, X } from './icons';
 import { toast } from 'sonner';
 import type { Member, TaskSubtask } from '../types';
 import { useDataStore } from '../stores/dataStore';
@@ -141,7 +141,7 @@ export const TaskSubtasksSection: React.FC<Props> = ({
                 >
                   {item.title}
                 </p>
-                <div className="mt-1 flex flex-wrap gap-x-3 text-[11px] text-zinc-500 dark:text-zinc-400">
+                <div className="mt-1 flex flex-wrap gap-x-3 text-[0.6875rem] text-zinc-500 dark:text-zinc-400">
                   {assignee && <span>{assignee.name}</span>}
                   <span>Created {formatDateEU(item.createdAt)}</span>
                   {item.startDate && <span>Start {formatDateEU(item.startDate)}</span>}

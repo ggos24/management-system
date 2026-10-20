@@ -16,7 +16,7 @@ import {
   Users,
   UserMinus,
   Cake,
-} from 'lucide-react';
+} from './icons';
 import { toast } from 'sonner';
 import { Modal } from './Modal';
 import { Avatar } from './Avatar';
@@ -131,6 +131,13 @@ const ENTITY_TYPE_OPTIONS = [
   { value: 'subscription', label: 'Subscription' },
 ];
 
+// Team Members lines up as columns from lg up: every row shares one grid template so the
+// columns line up, without any table lines. Below lg the cells flow and wrap.
+const MEMBER_COLUMNS_ADMIN = 'lg:grid-cols-[minmax(10rem,1fr)_11rem_6rem_5.5rem_7.5rem_6.5rem]';
+const MEMBER_COLUMNS_BASIC = 'lg:grid-cols-[minmax(10rem,1fr)_6rem]';
+const MEMBER_ROW = 'lg:grid lg:items-stretch lg:gap-0';
+const MEMBER_CELL = 'min-w-0 items-center lg:flex lg:px-3 lg:py-2.5';
+
 const LogsHistoryTab: React.FC<{ logs: LogEntry[]; members: Member[] }> = ({ logs, members }) => {
   const [searchText, setSearchText] = useState('');
   const [filterEntity, setFilterEntity] = useState('all');
@@ -219,7 +226,7 @@ const LogsHistoryTab: React.FC<{ logs: LogEntry[]; members: Member[] }> = ({ log
       </div>
 
       {/* Result count */}
-      <div className="text-[11px] text-zinc-400 flex-shrink-0">
+      <div className="text-[0.6875rem] text-zinc-400 flex-shrink-0">
         Showing {filteredLogs.length} of {logs.length} logs
       </div>
 
@@ -237,7 +244,7 @@ const LogsHistoryTab: React.FC<{ logs: LogEntry[]; members: Member[] }> = ({ log
               >
                 <div className="flex items-center gap-2 mb-1">
                   <Badge color={getActionColor(log.action)}>{log.action}</Badge>
-                  <span className="text-[10px] text-zinc-400">{new Date(log.timestamp).toLocaleString()}</span>
+                  <span className="text-[0.625rem] text-zinc-400">{new Date(log.timestamp).toLocaleString()}</span>
                 </div>
                 <p className="text-sm text-zinc-800 dark:text-zinc-200">{log.details}</p>
                 <div className="flex items-center gap-1.5 mt-2">
@@ -761,7 +768,25 @@ export const SettingsModal: React.FC = () => {
       case 'Team Members':
         return (
           <div>
-            <div className="border border-zinc-200 dark:border-zinc-700 rounded-lg divide-y divide-zinc-100 dark:divide-zinc-800">
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              <div
+                className={`hidden text-[0.625rem] font-semibold uppercase tracking-wider text-zinc-500 dark:text-zinc-400 ${MEMBER_ROW} ${isAdmin(currentUser.role) ? MEMBER_COLUMNS_ADMIN : MEMBER_COLUMNS_BASIC}`}
+              >
+                <div className={MEMBER_CELL}>Member</div>
+                {isAdmin(currentUser.role) && (
+                  <>
+                    <div className={MEMBER_CELL}>Teams</div>
+                    <div className={MEMBER_CELL}>Access</div>
+                  </>
+                )}
+                <div className={MEMBER_CELL}>Role</div>
+                {isAdmin(currentUser.role) && (
+                  <>
+                    <div className={MEMBER_CELL}>Telegram</div>
+                    <div className={MEMBER_CELL} />
+                  </>
+                )}
+              </div>
               {members.map((m) => {
                 const isMe = m.id === currentUser.id;
                 const canManage = isAdmin(currentUser.role);
@@ -780,9 +805,11 @@ export const SettingsModal: React.FC = () => {
                 const canSetBirthday = canManage && m.accessScope !== 'related_only';
                 const birthdayLabel = formatBirthday(m.birthday);
                 return (
-                  <div key={m.id} className="px-3 py-2.5 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
-                    <div className="flex flex-col gap-2 lg:flex-row lg:items-center lg:justify-between">
-                      <div className="flex min-w-0 items-center gap-3 lg:min-w-[200px] lg:flex-1">
+                  <div key={m.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors">
+                    <div
+                      className={`flex flex-col gap-2 px-3 py-2.5 lg:p-0 ${MEMBER_ROW} ${canManage ? MEMBER_COLUMNS_ADMIN : MEMBER_COLUMNS_BASIC}`}
+                    >
+                      <div className={`flex gap-3 ${MEMBER_CELL}`}>
                         <Avatar src={m.avatar} alt={m.name} size="md" />
                         <div className="min-w-0">
                           <p className="text-sm font-medium truncate">
@@ -815,10 +842,13 @@ export const SettingsModal: React.FC = () => {
                           )}
                         </div>
                       </div>
-                      <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                      {/* lg:contents lifts the cells below into the row's grid. */}
+                      <div className="flex flex-wrap items-center gap-2 lg:contents">
                         {canManage ? (
                           <>
-                            <div className="w-full min-w-0 sm:w-auto sm:min-w-[180px] sm:max-w-[260px] lg:w-auto">
+                            <div
+                              className={`w-full sm:w-auto sm:min-w-[180px] sm:max-w-[260px] lg:w-auto lg:min-w-0 lg:max-w-none ${MEMBER_CELL}`}
+                            >
                               <MultiSelect
                                 compact
                                 icon={Users}
@@ -857,124 +887,143 @@ export const SettingsModal: React.FC = () => {
                               />
                             </div>
                             {isMe && (
-                              <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">{roleLabel}</span>
+                              <>
+                                <div className={`hidden ${MEMBER_CELL}`} />
+                                <div className={`flex ${MEMBER_CELL}`}>
+                                  <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">
+                                    {roleLabel}
+                                  </span>
+                                </div>
+                                <div className={`hidden ${MEMBER_CELL}`} />
+                                <div className={`hidden ${MEMBER_CELL}`} />
+                              </>
                             )}
                             {!isMe && (
                               <>
-                                <CustomSelect
-                                  compact
-                                  value={m.accessScope || 'full'}
-                                  onChange={(newAccessScope) => {
-                                    if (newAccessScope === 'related_only') {
-                                      void updateMemberAccess(m.id, 'related_only', [], 'user')
-                                        .then(() => {
-                                          setPendingConversionTeamIds((current) => ({ ...current, [m.id]: [] }));
-                                          toast.success(`${m.name} is now an external collaborator`);
-                                        })
-                                        .catch(() => undefined);
-                                      return;
-                                    }
-                                    if (selectedTeamIds.length === 0) {
-                                      toast.error('Select at least one team before making this member internal');
-                                      return;
-                                    }
-                                    void updateMemberAccess(m.id, 'full', selectedTeamIds, m.role)
-                                      .then(() => {
-                                        setPendingConversionTeamIds((current) => ({ ...current, [m.id]: [] }));
-                                        toast.success(`${m.name} is now an internal member`);
-                                      })
-                                      .catch(() => undefined);
-                                  }}
-                                  options={[
-                                    { value: 'full', label: 'Internal member' },
-                                    { value: 'related_only', label: 'External collaborator' },
-                                  ]}
-                                  renderValue={(v) => (
-                                    <span className="flex items-center gap-1 text-xs">
-                                      {v === 'related_only' ? 'External' : 'Internal'}
-                                      <ChevronDown size={12} className="text-zinc-400" />
-                                    </span>
-                                  )}
-                                  dropdownMinWidth={170}
-                                  className="w-auto"
-                                />
-                                {m.accessScope === 'related_only' ? (
-                                  <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">User</span>
-                                ) : (
+                                <div className={`flex ${MEMBER_CELL}`}>
                                   <CustomSelect
                                     compact
-                                    value={m.role}
-                                    onChange={(newRole) => {
-                                      updateMemberRole(m.id, newRole as UserRole);
-                                      toast.success(
-                                        `${m.name} is now ${newRole === 'admin' ? 'Admin' : newRole === 'editor' ? 'Editor' : 'User'}`,
-                                      );
+                                    value={m.accessScope || 'full'}
+                                    onChange={(newAccessScope) => {
+                                      if (newAccessScope === 'related_only') {
+                                        void updateMemberAccess(m.id, 'related_only', [], 'user')
+                                          .then(() => {
+                                            setPendingConversionTeamIds((current) => ({ ...current, [m.id]: [] }));
+                                            toast.success(`${m.name} is now an external collaborator`);
+                                          })
+                                          .catch(() => undefined);
+                                        return;
+                                      }
+                                      if (selectedTeamIds.length === 0) {
+                                        toast.error('Select at least one team before making this member internal');
+                                        return;
+                                      }
+                                      void updateMemberAccess(m.id, 'full', selectedTeamIds, m.role)
+                                        .then(() => {
+                                          setPendingConversionTeamIds((current) => ({ ...current, [m.id]: [] }));
+                                          toast.success(`${m.name} is now an internal member`);
+                                        })
+                                        .catch(() => undefined);
                                     }}
-                                    options={roleOptions}
+                                    options={[
+                                      { value: 'full', label: 'Internal member' },
+                                      { value: 'related_only', label: 'External collaborator' },
+                                    ]}
                                     renderValue={(v) => (
                                       <span className="flex items-center gap-1 text-xs">
-                                        {v === 'admin' ? 'Admin' : v === 'editor' ? 'Editor' : 'User'}
+                                        {v === 'related_only' ? 'External' : 'Internal'}
                                         <ChevronDown size={12} className="text-zinc-400" />
                                       </span>
                                     )}
-                                    dropdownMinWidth={110}
+                                    dropdownMinWidth={170}
                                     className="w-auto"
                                   />
-                                )}
-                                {/* Most people never open Settings, so they can never
+                                </div>
+                                <div className={`flex ${MEMBER_CELL}`}>
+                                  {m.accessScope === 'related_only' ? (
+                                    <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">User</span>
+                                  ) : (
+                                    <CustomSelect
+                                      compact
+                                      value={m.role}
+                                      onChange={(newRole) => {
+                                        updateMemberRole(m.id, newRole as UserRole);
+                                        toast.success(
+                                          `${m.name} is now ${newRole === 'admin' ? 'Admin' : newRole === 'editor' ? 'Editor' : 'User'}`,
+                                        );
+                                      }}
+                                      options={roleOptions}
+                                      renderValue={(v) => (
+                                        <span className="flex items-center gap-1 text-xs">
+                                          {v === 'admin' ? 'Admin' : v === 'editor' ? 'Editor' : 'User'}
+                                          <ChevronDown size={12} className="text-zinc-400" />
+                                        </span>
+                                      )}
+                                      dropdownMinWidth={110}
+                                      className="w-auto"
+                                    />
+                                  )}
+                                </div>
+                                <div className={`flex flex-wrap gap-x-2 gap-y-1 ${MEMBER_CELL}`}>
+                                  {/* Most people never open Settings, so they can never
                                   link Telegram themselves — and without a link the
                                   Mini App cannot map them to a profile at all. */}
-                                <button
-                                  type="button"
-                                  aria-label={`Telegram link code for ${m.name}`}
-                                  onClick={async () => {
-                                    try {
-                                      const code = await adminGenerateTelegramLinkCode(m.id);
-                                      setIssuedCodes((previous) => ({ ...previous, [m.id]: code }));
-                                    } catch {
-                                      toast.error('Could not issue a link code');
-                                    }
-                                  }}
-                                  className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
-                                >
-                                  <Send size={13} />
-                                  {issuedCodes[m.id] ? issuedCodes[m.id] : 'Link code'}
-                                </button>
-                                {issuedCodes[m.id] && (
-                                  <a
-                                    href={`https://t.me/${TELEGRAM_BOT_USERNAME}?start=${issuedCodes[m.id]}`}
-                                    target="_blank"
-                                    rel="noopener noreferrer"
-                                    className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                  <button
+                                    type="button"
+                                    aria-label={`Telegram link code for ${m.name}`}
+                                    onClick={async () => {
+                                      try {
+                                        const code = await adminGenerateTelegramLinkCode(m.id);
+                                        setIssuedCodes((previous) => ({ ...previous, [m.id]: code }));
+                                      } catch {
+                                        toast.error('Could not issue a link code');
+                                      }
+                                    }}
+                                    className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-zinc-600 transition-colors hover:bg-zinc-50 dark:border-zinc-700 dark:text-zinc-300 dark:hover:bg-zinc-800"
                                   >
-                                    Send link
-                                  </a>
-                                )}
-                                {/* Was a bare zinc-400 label that read as disabled text and
+                                    <Send size={13} />
+                                    {issuedCodes[m.id] ? issuedCodes[m.id] : 'Link code'}
+                                  </button>
+                                  {issuedCodes[m.id] && (
+                                    <a
+                                      href={`https://t.me/${TELEGRAM_BOT_USERNAME}?start=${issuedCodes[m.id]}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-xs font-medium text-blue-600 hover:underline dark:text-blue-400"
+                                    >
+                                      Send link
+                                    </a>
+                                  )}
+                                </div>
+                                <div className={`flex ${MEMBER_CELL}`}>
+                                  {/* Was a bare zinc-400 label that read as disabled text and
                                   gave a tap target under 20px tall on a phone. */}
-                                <button
-                                  type="button"
-                                  aria-label={`Remove ${m.name}`}
-                                  onClick={() => {
-                                    if (confirm(`Remove ${m.name} from the team?`)) {
-                                      removeMember(m.id, currentUser.id);
-                                    }
-                                  }}
-                                  className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 dark:border-zinc-700 dark:text-red-400 dark:hover:border-red-900/60 dark:hover:bg-red-900/20"
-                                >
-                                  <UserMinus size={13} />
-                                  Remove
-                                </button>
+                                  <button
+                                    type="button"
+                                    aria-label={`Remove ${m.name}`}
+                                    onClick={() => {
+                                      if (confirm(`Remove ${m.name} from the team?`)) {
+                                        removeMember(m.id, currentUser.id);
+                                      }
+                                    }}
+                                    className="inline-flex flex-shrink-0 items-center gap-1.5 rounded-md border border-zinc-200 px-2.5 py-1.5 text-xs font-medium text-red-600 transition-colors hover:border-red-200 hover:bg-red-50 dark:border-zinc-700 dark:text-red-400 dark:hover:border-red-900/60 dark:hover:bg-red-900/20"
+                                  >
+                                    <UserMinus size={13} />
+                                    Remove
+                                  </button>
+                                </div>
                               </>
                             )}
                           </>
                         ) : (
-                          <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">{roleLabel}</span>
+                          <div className={`flex ${MEMBER_CELL}`}>
+                            <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">{roleLabel}</span>
+                          </div>
                         )}
                       </div>
                     </div>
                     {editingBirthdayMemberId === m.id && (
-                      <div className="mt-2 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-700 dark:bg-zinc-800/50">
+                      <div className="mx-3 mb-2.5 flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-50 p-2 dark:border-zinc-700 dark:bg-zinc-800/50">
                         <BirthdayInput key={m.id} value={memberBirthdayDraft} onChange={setMemberBirthdayDraft} />
                         <button
                           type="button"

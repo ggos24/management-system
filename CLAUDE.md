@@ -15,7 +15,7 @@ Notion-style team management & content pipeline tool for media companies. React 
 | Backend   | Supabase (Postgres, Auth, Realtime, Storage, Edge Functions)                    |
 | Rich Text | Tiptap (ProseMirror-based, used in docs editor)                                 |
 | Charts    | Recharts                                                                        |
-| Icons     | lucide-react                                                                    |
+| Icons     | Google Material Symbols (Outlined font, wrapped in `components/icons.tsx`)      |
 | Toasts    | sonner                                                                          |
 | Testing   | Vitest 4, Testing Library, jsdom                                                |
 | Linting   | ESLint 9 (flat config) + Prettier (120 cols, single quotes, trailing commas)    |
@@ -175,6 +175,8 @@ Schedule management (shifts, absences for others) is admin-only. Non-admins can 
   - `<Divider orientation="horizontal|vertical">` for separators
 - **AlertBanner pattern** (variant map + props): Follow this for any new component with variants.
 - **Font**: Inter (Google Fonts)
+- **Icons**: import from `./icons`, never from `lucide-react` (the package is removed). `components/icons.tsx` maps each Lucide-style name (`Trash2`, `Plus`, `X`…) to a Material Symbol (Outlined, weight 400, grade 0, optical size 20; font loaded in `index.html`, styled by `.material-symbol` in `app.css`). Icons are font glyphs rendered as `<span>`, not `<svg>`: size them with the `size` prop (px, converted to rem), not `h-*/w-*` classes. New icon: pick a name on fonts.google.com/icons and add one `createIcon('<symbol_name>', '<ExportName>')` line. Team/doc icons are stored in the DB by these export names (see `IconComponent.tsx`), so don't rename existing exports.
+- **Desktop density**: from 768px up, `html { font-size: 80% }` in `app.css`, so everything sized in rem renders at 80% (phones stay 100%). Text sizes `text-xs`…`text-2xl` are also fluid between 1280px and 1920px. **Don't use px for text** (`text-[10px]`) or for small boxes that hold text — px doesn't shrink with the page and overflows its rem-sized container. Use rem (`text-[0.625rem]` = 10px at 100%). Large layout widths may stay in px.
 
 ## Environment Variables
 

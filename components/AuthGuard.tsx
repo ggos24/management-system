@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Navigate, useLocation } from 'react-router-dom';
-import { Send } from 'lucide-react';
+import { Send } from './icons';
 import LoginPage from './LoginPage';
 import { useAuth } from '../hooks/useAuth';
 import { useRealtimeSync } from '../hooks/useRealtimeSync';

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { ChevronDown, X, Check, Plus, Search } from 'lucide-react';
+import { ChevronDown, X, Check, CheckSquare, Plus, Search, Square } from './icons';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
 import { useExitAnimation } from '../hooks/useExitAnimation';
 
@@ -28,6 +28,12 @@ interface MultiSelectProps {
   renderTrigger?: (onClick: () => void, selected: string[]) => React.ReactNode;
   searchable?: boolean;
   highlightValue?: string;
+  /**
+   * Toolbar-filter look: a single-row trigger (checkbox icon + first choice + "+N" badge) and a
+   * dropdown with checkboxes, a "Select several" hint and Clear — so a multi-choice filter reads
+   * differently from the single-choice CustomSelect filters next to it.
+   */
+  filterStyle?: boolean;
 }
 
 export const MultiSelect: React.FC<MultiSelectProps> = ({
@@ -47,6 +53,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
   renderTrigger,
   searchable,
   highlightValue,
+  filterStyle,
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [newItem, setNewItem] = useState('');
@@ -81,6 +88,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
 
   // Flat options list for chip label lookup (from groups or options)
   const allOptions = groups ? groups.flatMap((g) => g.options) : options;
+  const selectedLabels = selected.map((val) => allOptions.find((o) => o.value === val)?.label || val);
 
   const filteredOptions = useMemo(() => {
     if (!searchable || !searchQuery.trim()) return options;
@@ -110,10 +118,16 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
     <div
       key={`${group?.teamId || 'flat'}-${opt.value}`}
       onClick={() => toggleSelection(opt.value, group)}
-      className={`px-2 py-1.5 rounded text-sm cursor-pointer flex items-center justify-between hover:bg-zinc-100 dark:hover:bg-zinc-800 ${selected.includes(opt.value) ? 'bg-zinc-50 dark:bg-zinc-800/50 font-semibold' : opt.value === highlightValue ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
+      className={`px-2 py-1.5 rounded text-sm cursor-pointer flex items-center hover:bg-zinc-100 dark:hover:bg-zinc-800 ${filterStyle ? 'gap-2' : 'justify-between'} ${selected.includes(opt.value) ? 'bg-zinc-50 dark:bg-zinc-800/50 font-semibold' : opt.value === highlightValue ? 'bg-blue-50 dark:bg-blue-900/20' : ''}`}
     >
-      <span>{opt.label}</span>
-      {selected.includes(opt.value) && <Check size={12} className="text-black dark:text-white" />}
+      {filterStyle &&
+        (selected.includes(opt.value) ? (
+          <CheckSquare size={16} className="flex-shrink-0 text-zinc-900 dark:text-white" />
+        ) : (
+          <Square size={16} className="flex-shrink-0 text-zinc-400" />
+        ))}
+      <span className={filterStyle ? 'truncate' : undefined}>{opt.label}</span>
+      {!filterStyle && selected.includes(opt.value) && <Check size={12} className="text-black dark:text-white" />}
     </div>
   );
 
@@ -131,7 +145,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
           <label className="text-xs font-medium text-zinc-500 dark:text-zinc-400 flex items-center gap-1.5">
             <Icon size={12} /> {label}
           </label>
-          {hint && <p className="text-[10px] text-zinc-400 dark:text-zinc-500 mt-0.5">{hint}</p>}
+          {hint && <p className="text-[0.625rem] text-zinc-400 dark:text-zinc-500 mt-0.5">{hint}</p>}
         </div>
       )}
       {renderTrigger ? (
@@ -143,13 +157,43 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
             }),
           selected,
         )
+      ) : filterStyle ? (
+        <div
+          onClick={toggle}
+          role="button"
+          aria-haspopup="listbox"
+          aria-expanded={isOpen}
+          title={selected.length > 0 ? selectedLabels.join(', ') : undefined}
+          className={`w-full min-h-[2rem] pl-2 pr-7 py-1.5 rounded-lg border text-sm cursor-pointer flex items-center gap-1.5 relative transition-colors ${
+            selected.length > 0
+              ? 'bg-zinc-100 border-zinc-300 dark:bg-zinc-800 dark:border-zinc-600'
+              : 'bg-white border-zinc-200 hover:bg-zinc-50 dark:bg-zinc-800 dark:border-zinc-700'
+          }`}
+        >
+          <CheckSquare size={14} className="flex-shrink-0 text-zinc-400" />
+          {selected.length === 0 ? (
+            <span className="truncate text-zinc-400">{placeholder}</span>
+          ) : (
+            <>
+              <span className="truncate text-zinc-900 dark:text-zinc-100">{selectedLabels[0]}</span>
+              {selected.length > 1 && (
+                <span className="flex-shrink-0 rounded-full bg-zinc-900 px-1.5 text-[0.625rem] font-semibold leading-4 text-white dark:bg-white dark:text-zinc-900">
+                  +{selected.length - 1}
+                </span>
+              )}
+            </>
+          )}
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 pointer-events-none text-zinc-400">
+            <ChevronDown size={12} />
+          </div>
+        </div>
       ) : (
         <div
           onClick={toggle}
           className={
             compact
-              ? 'w-full min-h-[24px] px-1.5 py-0.5 rounded text-xs cursor-pointer flex flex-col gap-0.5 items-start transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 relative'
-              : 'w-full min-h-[32px] pl-2 pr-8 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 relative'
+              ? 'w-full min-h-[1.5rem] px-1.5 py-0.5 rounded text-xs cursor-pointer flex flex-col gap-0.5 items-start transition-colors hover:bg-zinc-100 dark:hover:bg-zinc-800 relative'
+              : 'w-full min-h-[2rem] pl-2 pr-8 py-2 bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm cursor-pointer flex flex-wrap gap-1 items-center transition-colors hover:bg-zinc-50 dark:hover:bg-zinc-800 relative'
           }
         >
           {selected.length === 0 && <span className="text-zinc-400">{placeholder}</span>}
@@ -164,7 +208,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                   return (
                     <span
                       key={val}
-                      className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-[11px] md:text-[10px] flex items-center gap-1 font-medium border border-zinc-200 dark:border-zinc-700"
+                      className="bg-zinc-100 dark:bg-zinc-800 px-1.5 py-0.5 rounded text-[0.6875rem] md:text-[0.625rem] flex items-center gap-1 font-medium border border-zinc-200 dark:border-zinc-700"
                     >
                       {optionLabel}
                       <button
@@ -180,7 +224,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                   );
                 })}
                 {hiddenCount > 0 && (
-                  <span className="text-[11px] md:text-[10px] font-medium text-zinc-500 dark:text-zinc-400 px-1 py-0.5">
+                  <span className="text-[0.6875rem] md:text-[0.625rem] font-medium text-zinc-500 dark:text-zinc-400 px-1 py-0.5">
                     +{hiddenCount}
                   </span>
                 )}
@@ -238,6 +282,25 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
               </div>
             )}
             <div className="overflow-y-auto p-1 flex-1">
+              {filterStyle && (
+                <div className="flex items-center justify-between gap-2 px-2 pt-1.5 pb-1">
+                  <span className="text-[0.625rem] uppercase tracking-wider font-semibold text-zinc-400">
+                    Select several
+                  </span>
+                  {selected.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onChange([]);
+                      }}
+                      className="text-xs font-medium text-zinc-500 hover:text-zinc-900 dark:text-zinc-400 dark:hover:text-white"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+              )}
               {(filteredGroups ?? filteredOptions).length === 0 && searchQuery ? (
                 <div className="px-3 py-4 text-xs text-zinc-400 text-center">No results found</div>
               ) : filteredGroups ? (
@@ -245,7 +308,7 @@ export const MultiSelect: React.FC<MultiSelectProps> = ({
                   <div key={group.teamId}>
                     {gi > 0 && <div className="border-t border-zinc-100 dark:border-zinc-700 my-1" />}
                     <div
-                      className={`text-[10px] uppercase tracking-wider font-semibold px-2 pt-2 pb-1 ${group.highlighted ? 'text-blue-500 dark:text-blue-400' : 'text-zinc-400'}`}
+                      className={`text-[0.625rem] uppercase tracking-wider font-semibold px-2 pt-2 pb-1 ${group.highlighted ? 'text-blue-500 dark:text-blue-400' : 'text-zinc-400'}`}
                     >
                       {group.label}
                     </div>
