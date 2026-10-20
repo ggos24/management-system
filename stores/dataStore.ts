@@ -1417,6 +1417,14 @@ export const useDataStore = create<DataState>((set, get) => ({
       teamId: incomingTeamId,
       statusId: incomingStatusId,
       priority: taskData.priority || 'medium',
+      // A caller that leaves startDate out keeps the stored one; this task is written whole,
+      // so dropping the field would send start_date = null and wipe it.
+      startDate:
+        taskData.startDate !== undefined
+          ? taskData.startDate
+            ? toDateOnly(taskData.startDate)
+            : null
+          : (existingTask?.startDate ?? null),
       dueDate: toDateOnly(taskData.dueDate),
       doneDate: resolvedDoneDate,
       placements: taskData.placements || [],
