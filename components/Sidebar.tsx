@@ -11,11 +11,11 @@ import {
   Trash2,
   HelpCircle,
   BookOpen,
-  LifeBuoy,
+  EmergencyHome,
   Wrench,
   Package,
   X,
-} from 'lucide-react';
+} from './icons';
 import { Team, UserRole } from '../types';
 import { IconComponent } from './IconComponent';
 import { isAdmin } from '../constants';
@@ -159,7 +159,7 @@ const Sidebar: React.FC<SidebarProps> = ({
               </span>
               {!isCollapsed && (taskCounts['my-workspace'] || 0) > 0 && (
                 <span
-                  className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'my-workspace' ? activeBadgeClass : inactiveBadgeClass}`}
+                  className={`ml-auto text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center ${currentView === 'my-workspace' ? activeBadgeClass : inactiveBadgeClass}`}
                 >
                   {taskCounts['my-workspace']}
                 </span>
@@ -195,7 +195,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     Schedule
                   </span>
                   {!isCollapsed && isAdmin(userRole) && pendingAbsenceCount > 0 && (
-                    <span className="ml-auto min-w-[18px] h-[18px] flex items-center justify-center bg-amber-500 text-white text-[10px] font-semibold rounded-full px-1">
+                    <span className="ml-auto min-w-[1.125rem] h-[1.125rem] flex items-center justify-center bg-amber-500 text-white text-[0.625rem] font-semibold rounded-full px-1">
                       {pendingAbsenceCount}
                     </span>
                   )}
@@ -209,7 +209,7 @@ const Sidebar: React.FC<SidebarProps> = ({
             <div>
               <div className={`px-3 flex items-center justify-between mb-2 ${isCollapsed ? 'justify-center' : ''}`}>
                 {!isCollapsed && (
-                  <h3 className="text-[10px] font-semibold text-zinc-400 uppercase tracking-wider">Workspaces</h3>
+                  <h3 className="text-[0.625rem] font-semibold text-zinc-400 uppercase tracking-wider">Teams</h3>
                 )}
                 {isCollapsed && <div className="h-px w-4 bg-zinc-200 dark:bg-zinc-800"></div>}
 
@@ -253,7 +253,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                           <div className="ml-auto flex items-center">
                             {(taskCounts[team.id] || 0) > 0 && (
                               <span
-                                className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center group-hover:hidden ${isActive ? activeBadgeClass : inactiveBadgeClass}`}
+                                className={`text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center group-hover:hidden ${isActive ? activeBadgeClass : inactiveBadgeClass}`}
                               >
                                 {taskCounts[team.id]}
                               </span>
@@ -340,7 +340,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                   Equipment
                 </span>
                 {!isCollapsed && overdueEquipmentCount > 0 && (
-                  <span className="ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+                  <span className="ml-auto text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
                     {overdueEquipmentCount}
                   </span>
                 )}
@@ -354,7 +354,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 } ${isCollapsed ? 'justify-center px-0' : ''}`}
                 title="Support"
               >
-                <LifeBuoy size={18} />
+                <EmergencyHome size={18} />
                 <span
                   className={`truncate transition-all duration-300 ${isCollapsed ? 'w-0 opacity-0 hidden' : 'w-auto opacity-100'}`}
                 >
@@ -362,7 +362,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </span>
                 {!isCollapsed && openTicketCount > 0 && (
                   <span
-                    className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'support' ? activeBadgeClass : inactiveBadgeClass}`}
+                    className={`ml-auto text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center ${currentView === 'support' ? activeBadgeClass : inactiveBadgeClass}`}
                   >
                     {openTicketCount}
                   </span>
@@ -386,7 +386,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                 </span>
                 {!isCollapsed && deletedTaskCount > 0 && (
                   <span
-                    className={`ml-auto text-[10px] font-medium px-1.5 py-0.5 rounded-full min-w-[20px] text-center ${currentView === 'bin' ? activeBadgeClass : inactiveBadgeClass}`}
+                    className={`ml-auto text-[0.625rem] font-medium px-1.5 py-0.5 rounded-full min-w-[1.25rem] text-center ${currentView === 'bin' ? activeBadgeClass : inactiveBadgeClass}`}
                   >
                     {deletedTaskCount}
                   </span>

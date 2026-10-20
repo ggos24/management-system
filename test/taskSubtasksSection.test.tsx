@@ -49,7 +49,7 @@ describe('new task subtask draft', () => {
     );
     await waitForElementToBeRemoved(() => document.querySelector('[data-state="closed"]'));
 
-    fireEvent.click(screen.getByRole('button', { name: 'Set end date' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Set due date' }));
     await waitFor(() => expect(document.querySelector('[data-state="open"]')).toBeInTheDocument());
     fireEvent.click(
       within(document.querySelector('[data-state="open"]') as HTMLElement).getByRole('button', { name: '4' }),

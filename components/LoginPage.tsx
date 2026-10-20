@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { Eye, EyeOff, ArrowRight, ArrowLeft } from 'lucide-react';
+import { Eye, EyeOff, ArrowRight, ArrowLeft } from './icons';
 import { supabase } from '../lib/supabase';
 import { AlertBanner } from './AlertBanner';
 import { ClockSkewBanner } from './ClockSkewBanner';

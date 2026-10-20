@@ -73,6 +73,9 @@ export interface Task {
   assigneeIds: string[];
   priority: Priority;
   dueDate: string;
+  /** Planned start of work (user-set). `dueDate` is the planned finish. */
+  startDate?: string | null;
+  /** Automatic completion stamp — set when the task enters a completed status; never shown or edited in the UI. */
   doneDate?: string | null;
   placements: string[];
   links?: TaskLink[];

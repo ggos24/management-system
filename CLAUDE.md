@@ -15,7 +15,7 @@ Notion-style team management & content pipeline tool for media companies. React 
 | Backend   | Supabase (Postgres, Auth, Realtime, Storage, Edge Functions)                    |
 | Rich Text | Tiptap (ProseMirror-based, used in docs editor)                                 |
 | Charts    | Recharts                                                                        |
-| Icons     | lucide-react                                                                    |
+| Icons     | Google Material Symbols (Outlined font, wrapped in `components/icons.tsx`)      |
 | Toasts    | sonner                                                                          |
 | Testing   | Vitest 4, Testing Library, jsdom                                                |
 | Linting   | ESLint 9 (flat config) + Prettier (120 cols, single quotes, trailing commas)    |
@@ -139,7 +139,13 @@ Two people can have the same task open. **A task edit is never written back from
 
 ### Subtasks
 
-Structured subtasks live in `public.task_subtasks`, linked to a task, with an optional assignee, automatic creation timestamp, optional planned start/end dates, and completion state. Progress counts only these rows. `TaskSubtasksSection` manages them in TaskModal; `SubtaskProgress` and `SubtaskList` render inline expansion on cards and table rows. A new task and its draft subtasks save atomically through `save_task_with_subtasks`. Full-access users manage all fields; a related-only user with task access can toggle completion only on a subtask assigned to them through `set_task_subtask_completion`. Realtime refetches `task_subtasks` after changes. Description checklists remain interactive HTML in `tasks.description` via `toggleDescriptionChecklist`, but never contribute to structured subtask progress or subtask completion activity.
+Structured subtasks live in `public.task_subtasks`, linked to a task, with an optional assignee, automatic creation timestamp, optional planned start/end dates (`end_date` is labelled "Due date" in the UI), and completion state. Progress counts only these rows. `TaskSubtasksSection` manages them in TaskModal. The `SubtaskProgress` chip (chevron + ring + `done/total`) is a dropdown toggle: on the board and mobile list `SubtaskList` renders the subtasks as rows hanging under the card; in the table `renderSubtaskTableRow` (Workspace.tsx) renders one real row per subtask under the parent, aligned with the parent's columns (tick in the subtask column, assignee/created/start/due in theirs). Subtasks are still behind `SUBTASKS_ENABLED` (`lib/features.ts`: on in dev and Vercel previews, off in production). A new task and its draft subtasks save atomically through `save_task_with_subtasks`. Full-access users manage all fields; a related-only user with task access can toggle completion only on a subtask assigned to them through `set_task_subtask_completion`. Realtime refetches `task_subtasks` after changes. Description checklists remain interactive HTML in `tasks.description` via `toggleDescriptionChecklist`, but never contribute to structured subtask progress or subtask completion activity.
+
+### Task dates
+
+A task has three dates, shown left to right in the table as its timeline: **Created** (`created_at`, automatic), **Start date** (`tasks.start_date`, user-set) and **Due date** (`tasks.due_date`, user-set — the old "Deadline"; call it "Due date" in every user-facing string). `done_date` is the automatic completion stamp (set/cleared by `resolveDoneDate` in `dataStore.ts` when a task crosses the `completed` category); it feeds Dashboard stats and the late/on-time label but is **never shown or edited in the UI** (the old "Pub Date" column/field is gone, and `doneDate` activity entries are filtered out of the task activity feed). A start date may not fall after the due date (`isDateOrderValid` in `lib/utils.ts`, enforced in TaskModal, the table and the board — deliberately not a DB constraint, so stale tabs never start failing saves). The deadline bar fills across the start→due window when a start date is set.
+
+`start_date` arrives in `20261013000000_task_start_date.sql`, which also teaches `save_task_with_relations` the field (preserving it when an older client omits the key). The client detects the column (`isTaskStartDateEnabled()` in `lib/database.ts`, mirrored as `taskStartDateEnabled` in the data store): until the migration is applied, task writes leave `start_date` out and the Start date UI stays hidden, so client and migration can ship in either order. These dates prepare for a Gantt view and for tracking shared creative people across teams.
 
 ### Permissions
 
@@ -179,6 +185,8 @@ Schedule management (shifts, absences for others) is admin-only. Non-admins can 
   - `<Divider orientation="horizontal|vertical">` for separators
 - **AlertBanner pattern** (variant map + props): Follow this for any new component with variants.
 - **Font**: Inter (Google Fonts)
+- **Icons**: import from `./icons`, never from `lucide-react` (the package is removed). `components/icons.tsx` maps each Lucide-style name (`Trash2`, `Plus`, `X`…) to a Material Symbol (Outlined, weight 400, grade 0, optical size 20; font loaded in `index.html`, styled by `.material-symbol` in `app.css`). Icons are font glyphs rendered as `<span>`, not `<svg>`: size them with the `size` prop (px, converted to rem), not `h-*/w-*` classes. New icon: pick a name on fonts.google.com/icons and add one `createIcon('<symbol_name>', '<ExportName>')` line. Team/doc icons are stored in the DB by these export names (see `IconComponent.tsx`), so don't rename existing exports.
+- **Desktop density**: from 768px up, `html { font-size: 80% }` in `app.css`, so everything sized in rem renders at 80% (phones stay 100%). Text sizes `text-xs`…`text-2xl` are also fluid between 1280px and 1920px. **Don't use px for text** (`text-[10px]`) or for small boxes that hold text — px doesn't shrink with the page and overflows its rem-sized container. Use rem (`text-[0.625rem]` = 10px at 100%). Large layout widths may stay in px.
 
 ## Environment Variables
 

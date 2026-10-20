@@ -70,7 +70,7 @@ export class DataReloadError extends Error {
   readonly reason: 'profile' | 'partial';
 
   constructor(reason: 'profile' | 'partial') {
-    super(reason === 'profile' ? 'Could not load the signed-in profile' : 'Some workspace data failed to reload');
+    super(reason === 'profile' ? 'Could not load the signed-in profile' : 'Some data failed to reload');
     this.name = 'DataReloadError';
     this.reason = reason;
   }

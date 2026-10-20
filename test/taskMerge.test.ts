@@ -217,4 +217,15 @@ describe('rebaseUntouched', () => {
 
     expect(rebaseUntouched(base, draft, theirs, options)).toBeNull();
   });
+
+  it('brings in a start date someone else set while the editor is open', () => {
+    const base = task();
+    const draft = task({ title: 'Changed by me' });
+    const theirs = task({ startDate: '2026-10-14' });
+
+    const rebased = rebaseUntouched(base, draft, theirs, options);
+
+    expect(rebased?.draft.startDate).toBe('2026-10-14');
+    expect(rebased?.base.startDate).toBe('2026-10-14');
+  });
 });

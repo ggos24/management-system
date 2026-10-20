@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { ArrowLeft, ScanLine, Check, AlertTriangle } from 'lucide-react';
+import { ArrowLeft, ScanLine, Check, AlertTriangle } from './icons';
 import { toast } from 'sonner';
 import { Badge, Button, Input } from './ui';
 import { useDataStore } from '../stores/dataStore';

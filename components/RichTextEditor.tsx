@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useCallback, useLayoutEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Bold, Italic, List, ListOrdered, CheckSquare, Link as LinkIcon, Strikethrough } from 'lucide-react';
+import { Bold, Italic, List, ListOrdered, CheckSquare, Link as LinkIcon, Strikethrough } from './icons';
 import { Avatar } from './Avatar';
 import { useViewportPortalPosition } from '../hooks/useViewportPortalPosition';
 import { DESCRIPTION_MENTION_ATTR, getDescriptionMentionLabel, withMentionLabels } from '../lib/mentions';

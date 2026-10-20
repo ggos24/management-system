@@ -12,7 +12,7 @@ import {
   Cell,
 } from 'recharts';
 import { Task, Member, Absence, Team, TeamStatus } from '../types';
-import { Briefcase, TrendingUp, TrendingDown, Minus } from 'lucide-react';
+import { Briefcase, TrendingUp, TrendingDown, Minus } from './icons';
 import { CustomSelect } from './CustomSelect';
 import { DateRangeFilter } from './DateRangeFilter';
 import { Avatar } from './Avatar';
@@ -37,7 +37,7 @@ const tooltipStyle = {
   borderRadius: '8px',
   border: '1px solid var(--color-tooltip-border, #e4e4e7)',
   color: 'var(--color-tooltip-text, #18181b)',
-  fontSize: '12px',
+  fontSize: '0.75rem',
   boxShadow: '0 4px 12px rgba(0,0,0,.08)',
 };
 
@@ -50,7 +50,7 @@ const TrendBadge: React.FC<{ value: number | null; invertColor?: boolean; suffix
   const rounded = Math.round(value);
   if (rounded === 0)
     return (
-      <span className="inline-flex items-center gap-0.5 text-[10px] font-medium text-zinc-400 mt-1">
+      <span className="inline-flex items-center gap-0.5 text-[0.625rem] font-medium text-zinc-400 mt-1">
         <Minus size={10} />0{suffix}
       </span>
     );
@@ -59,7 +59,7 @@ const TrendBadge: React.FC<{ value: number | null; invertColor?: boolean; suffix
   const colorClass = isGood ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400';
   const Icon = isPositive ? TrendingUp : TrendingDown;
   return (
-    <span className={`inline-flex items-center gap-0.5 text-[10px] font-medium mt-1 ${colorClass}`}>
+    <span className={`inline-flex items-center gap-0.5 text-[0.625rem] font-medium mt-1 ${colorClass}`}>
       <Icon size={10} />
       {isPositive ? '+' : ''}
       {rounded}
@@ -368,7 +368,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
           className="flex flex-col items-center justify-center text-center h-auto min-h-28 md:h-36 p-4 md:p-6"
         >
           <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-white mb-1">{metrics.active}</h2>
-          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">Active Tasks</p>
+          <p className="text-[0.625rem] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            Active Tasks
+          </p>
           <TrendBadge value={metrics.trends.active} />
         </Card>
 
@@ -377,7 +379,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
           className="flex flex-col items-center justify-center text-center h-auto min-h-28 md:h-36 p-4 md:p-6"
         >
           <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-white mb-1">{metrics.completed}</h2>
-          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">Completed</p>
+          <p className="text-[0.625rem] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">Completed</p>
           <TrendBadge value={metrics.trends.completed} />
         </Card>
 
@@ -386,11 +388,11 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
           className="flex flex-col items-center justify-center text-center h-auto min-h-28 md:h-36 p-4 md:p-6"
         >
           <h2 className="text-3xl md:text-4xl font-bold text-red-600 dark:text-red-400 mb-1">{metrics.overdue}</h2>
-          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">Overdue</p>
+          <p className="text-[0.625rem] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">Overdue</p>
           <div className="flex items-center gap-2 mt-1 flex-wrap justify-center">
             <TrendBadge value={metrics.trends.overdue} invertColor />
             {metrics.avgOverdueDays > 0 && (
-              <span className="text-[10px] text-zinc-400">avg {metrics.avgOverdueDays}d</span>
+              <span className="text-[0.625rem] text-zinc-400">avg {metrics.avgOverdueDays}d</span>
             )}
           </div>
         </Card>
@@ -402,7 +404,9 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
           <h2 className="text-3xl md:text-4xl font-bold text-zinc-900 dark:text-white mb-1">
             {metrics.onTimeRate !== null ? `${metrics.onTimeRate}%` : '\u2014'}
           </h2>
-          <p className="text-[10px] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">On-Time Rate</p>
+          <p className="text-[0.625rem] md:text-xs font-semibold uppercase tracking-wider text-zinc-500">
+            On-Time Rate
+          </p>
           <TrendBadge value={metrics.trends.onTimeRate} suffix="pp" />
         </Card>
       </div>
@@ -453,7 +457,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
                   </Pie>
                   <Tooltip
                     contentStyle={tooltipStyle}
-                    itemStyle={{ color: 'inherit', fontSize: '12px', fontWeight: 600 }}
+                    itemStyle={{ color: 'inherit', fontSize: '0.75rem', fontWeight: 600 }}
                   />
                   {/* Center total */}
                   <text
@@ -461,7 +465,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
                     y="46%"
                     textAnchor="middle"
                     dominantBaseline="central"
-                    style={{ fontSize: '24px', fontWeight: 700, fill: 'var(--color-chart-label)' }}
+                    style={{ fontSize: '1.5rem', fontWeight: 700, fill: 'var(--color-chart-label)' }}
                   >
                     {totalTasks}
                   </text>
@@ -470,7 +474,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
                     y="57%"
                     textAnchor="middle"
                     dominantBaseline="central"
-                    style={{ fontSize: '11px', fontWeight: 500, fill: 'var(--color-chart-text)' }}
+                    style={{ fontSize: '0.6875rem', fontWeight: 500, fill: 'var(--color-chart-text)' }}
                   >
                     Tasks
                   </text>
@@ -498,11 +502,11 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
                     <h4 className="text-sm font-semibold text-zinc-900 dark:text-white truncate">{member.name}</h4>
                     <div className="flex gap-1.5 flex-shrink-0">
                       {overdueCount > 0 && (
-                        <span className="text-[10px] font-semibold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 px-1.5 py-0.5 rounded-full">
+                        <span className="text-[0.625rem] font-semibold bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300 px-1.5 py-0.5 rounded-full">
                           {overdueCount} overdue
                         </span>
                       )}
-                      <span className="text-[10px] font-semibold bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 px-1.5 py-0.5 rounded-full tabular-nums">
+                      <span className="text-[0.625rem] font-semibold bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-300 px-1.5 py-0.5 rounded-full tabular-nums">
                         {total}
                       </span>
                     </div>
@@ -529,7 +533,7 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
                     {Object.entries(statusCounts).map(([status, count]) => (
                       <div
                         key={status}
-                        className="flex items-center gap-1 bg-zinc-50 dark:bg-zinc-800/50 px-1.5 py-0.5 rounded text-[10px] text-zinc-600 dark:text-zinc-400"
+                        className="flex items-center gap-1 bg-zinc-50 dark:bg-zinc-800/50 px-1.5 py-0.5 rounded text-[0.625rem] text-zinc-600 dark:text-zinc-400"
                       >
                         <div
                           className="w-1.5 h-1.5 rounded-full flex-shrink-0"
@@ -571,13 +575,13 @@ const Dashboard: React.FC<DashboardProps> = ({ tasks, members, absences, teams, 
                 dataKey="name"
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 12, fill: 'var(--color-chart-text)' }}
+                tick={{ fontSize: '0.75rem', fill: 'var(--color-chart-text)' }}
                 dy={10}
               />
               <YAxis
                 axisLine={false}
                 tickLine={false}
-                tick={{ fontSize: 12, fill: 'var(--color-chart-text)' }}
+                tick={{ fontSize: '0.75rem', fill: 'var(--color-chart-text)' }}
                 allowDecimals={false}
               />
               <Tooltip contentStyle={tooltipStyle} />

@@ -30,7 +30,7 @@ import {
   Palette,
   Music,
   Camera,
-} from 'lucide-react';
+} from './icons';
 
 export const ICONS = [
   'FileText',

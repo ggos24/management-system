@@ -1,6 +1,6 @@
 import React from 'react';
 import DOMPurify from 'dompurify';
-import { Pencil, Trash2, ChevronRight } from 'lucide-react';
+import { Pencil, Trash2, ChevronRight } from './icons';
 import { Doc } from '../types';
 import { Button } from './ui';
 import { formatDateEU } from '../lib/utils';

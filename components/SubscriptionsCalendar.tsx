@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight } from './icons';
 import { Button } from './ui';
 import { WEEKDAYS_MON_SHORT, mondayIndex } from '../lib/utils';
 import { DUE_SOON_DAYS, addDays, formatMoney, projectPayments, todayDateOnly } from '../lib/renewals';
@@ -186,7 +186,7 @@ export const SubscriptionsCalendar: React.FC<SubscriptionsCalendarProps> = ({ su
           )}
         </div>
         <div className="ml-auto text-right">
-          <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400 whitespace-nowrap">
+          <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-zinc-400 whitespace-nowrap">
             Charged this month
           </p>
           <p className="text-sm font-semibold text-zinc-900 dark:text-white">
@@ -199,7 +199,7 @@ export const SubscriptionsCalendar: React.FC<SubscriptionsCalendarProps> = ({ su
         {WEEKDAYS_MON_SHORT.map((weekday) => (
           <div
             key={weekday}
-            className="p-2 text-center text-[10px] font-semibold text-zinc-400 uppercase tracking-wider border-r border-zinc-200 dark:border-zinc-800 last:border-r-0"
+            className="p-2 text-center text-[0.625rem] font-semibold text-zinc-400 uppercase tracking-wider border-r border-zinc-200 dark:border-zinc-800 last:border-r-0"
           >
             {weekday}
           </div>
@@ -254,7 +254,7 @@ export const SubscriptionsCalendar: React.FC<SubscriptionsCalendarProps> = ({ su
               }`}
             >
               <div
-                className={`px-1.5 pt-1 text-[10px] font-medium text-right ${
+                className={`px-1.5 pt-1 text-[0.625rem] font-medium text-right ${
                   cell.date === today
                     ? 'text-blue-600 dark:text-blue-400 font-bold'
                     : cell.inMonth
@@ -294,8 +294,8 @@ const ChargeChip: React.FC<{ charge: Charge; tone: Tone; onOpen: (id: string) =>
     title={`${charge.subscription.serviceName} — ${formatMoney(charge.subscription.amount, charge.subscription.currency)} · ${TONE[tone].label}`}
     className={`w-full text-left px-1.5 py-1 rounded border border-l-[3px] leading-tight transition-colors hover:brightness-95 dark:hover:brightness-125 ${TONE[tone].className}`}
   >
-    <span className="block text-[11px] font-medium truncate">{charge.subscription.serviceName}</span>
-    <span className="block text-[10px] opacity-80 truncate">
+    <span className="block text-[0.6875rem] font-medium truncate">{charge.subscription.serviceName}</span>
+    <span className="block text-[0.625rem] opacity-80 truncate">
       {formatMoney(charge.subscription.amount, charge.subscription.currency)}
     </span>
   </button>

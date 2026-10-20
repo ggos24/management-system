@@ -14,7 +14,7 @@ import {
   Download,
   Copy,
   Search,
-} from 'lucide-react';
+} from './icons';
 import { toast } from 'sonner';
 import { Avatar } from './Avatar';
 import { Modal } from './Modal';
@@ -747,7 +747,7 @@ const ItemDetailModal: React.FC<ItemDetailModalProps> = ({
 
 const Detail: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div>
-    <p className="text-[10px] font-semibold uppercase tracking-wider text-zinc-400">{label}</p>
+    <p className="text-[0.625rem] font-semibold uppercase tracking-wider text-zinc-400">{label}</p>
     <p className="text-zinc-900 dark:text-white capitalize">{value}</p>
   </div>
 );

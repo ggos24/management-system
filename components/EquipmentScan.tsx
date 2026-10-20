@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { useShallow } from 'zustand/react/shallow';
-import { Package, ArrowLeft, Wrench, ScanLine, X } from 'lucide-react';
+import { Package, ArrowLeft, Wrench, ScanLine, X } from './icons';
 import { Avatar } from './Avatar';
 import { CustomSelect } from './CustomSelect';
 import { toast } from 'sonner';
@@ -261,7 +261,7 @@ const TakeControls: React.FC<{ form: TakeForm; onChange: (next: TakeForm) => voi
         />
       )}
       {form.preset === 'longterm' && (
-        <p className="text-[11px] text-amber-600 dark:text-amber-400">
+        <p className="text-[0.6875rem] text-amber-600 dark:text-amber-400">
           No due date — this unit will never be flagged overdue.
         </p>
       )}
@@ -352,7 +352,7 @@ const CodeEntry: React.FC<{
               <p className="text-xs text-zinc-500">{scanner.reason}</p>
               {/* Detected platform, so a report of "it still does not work" can
                   be diagnosed without guessing. */}
-              <p className="text-[10px] text-zinc-400 mt-0.5">detected: {scanner.platform}</p>
+              <p className="text-[0.625rem] text-zinc-400 mt-0.5">detected: {scanner.platform}</p>
             </div>
           )
         )}

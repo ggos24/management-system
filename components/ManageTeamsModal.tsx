@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { toast } from 'sonner';
-import { Eye, EyeOff, Edit2, Archive, Trash2, Lock, Unlock, Rocket, Users as UsersIcon, RotateCcw } from 'lucide-react';
+import { Eye, EyeOff, Edit2, Archive, Trash2, Lock, Unlock, Rocket, Users as UsersIcon, RotateCcw } from './icons';
 import { Modal } from './Modal';
 import { IconComponent, ICONS } from './IconComponent';
 import { Button, Input, Label, Badge, Divider } from './ui';
@@ -19,7 +19,7 @@ const PersonFieldsPanel: React.FC<{ teamId: string }> = ({ teamId }) => {
 
   return (
     <div className="border-t border-zinc-200 dark:border-zinc-800 bg-zinc-50/60 dark:bg-zinc-900/40 px-3 py-3 space-y-2">
-      <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
+      <p className="text-[0.6875rem] font-semibold uppercase tracking-wide text-zinc-500 dark:text-zinc-400">
         Person fields
       </p>
       {PERSON_FIELD_KEYS.map((key) => {
@@ -106,7 +106,7 @@ export const ManageTeamsModal: React.FC = () => {
   const handleAddTeam = () => {
     if (!newTeamName) return;
     if (!currentUser || !isAdmin(currentUser.role)) {
-      toast.error('Only admins can create workspaces.');
+      toast.error('Only admins can create teams.');
       return;
     }
     const newTeam: Team = {
@@ -125,7 +125,7 @@ export const ManageTeamsModal: React.FC = () => {
 
   const handleDeleteTeam = (id: string) => {
     if (!currentUser || !isAdmin(currentUser.role)) {
-      toast.error('Only admins can delete workspaces.');
+      toast.error('Only admins can delete teams.');
       return;
     }
     setTeamToDelete(id);
@@ -154,12 +154,12 @@ export const ManageTeamsModal: React.FC = () => {
     <Modal
       isOpen={isManageTeamsModalOpen}
       onClose={() => setIsManageTeamsModalOpen(false)}
-      title="Manage Workspaces"
-      size="mdx"
+      title="Manage Teams"
+      size="lg"
     >
       <div className="space-y-6 min-h-[400px] flex flex-col">
         <div className="bg-zinc-50 dark:bg-zinc-900/50 p-4 rounded-lg border border-zinc-200 dark:border-zinc-800 space-y-4">
-          <Label variant="section">Create New Workspace</Label>
+          <Label variant="section">Create New Team</Label>
           <div className="flex gap-2">
             <div className="relative">
               <button
@@ -187,7 +187,7 @@ export const ManageTeamsModal: React.FC = () => {
             </div>
             <Input
               type="text"
-              placeholder="Workspace Name (e.g. Design Team)"
+              placeholder="Team name (e.g. Design Team)"
               value={newTeamName}
               onChange={(e) => setNewTeamName(e.target.value)}
               className="flex-1"
@@ -201,7 +201,7 @@ export const ManageTeamsModal: React.FC = () => {
         <Divider />
 
         <div className="space-y-2 flex-1 overflow-hidden flex flex-col">
-          <Label variant="section">Existing Workspaces</Label>
+          <Label variant="section">Existing Teams</Label>
           <div className="space-y-2 flex-1 overflow-y-auto pr-2 custom-scrollbar">
             {teams.map((team) => (
               <div
@@ -209,7 +209,7 @@ export const ManageTeamsModal: React.FC = () => {
                 className={`border border-zinc-200 dark:border-zinc-800 rounded bg-white dark:bg-zinc-900 group ${team.archived ? 'opacity-60 grayscale' : ''}`}
               >
                 <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-3">
-                  <div className="flex items-center gap-3 min-w-0">
+                  <div className="flex items-center gap-3 min-w-0 sm:flex-1">
                     <div className="w-8 h-8 flex items-center justify-center bg-zinc-100 dark:bg-zinc-800 rounded text-zinc-500">
                       <IconComponent name={team.icon} size={16} />
                     </div>
@@ -233,24 +233,24 @@ export const ManageTeamsModal: React.FC = () => {
                       <p className="text-sm font-semibold">
                         {team.name}{' '}
                         {team.adminOnly && (
-                          <span className="inline-flex items-center gap-1 ml-2 text-[10px] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded">
+                          <span className="inline-flex items-center gap-1 ml-2 text-[0.625rem] font-semibold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 px-1.5 py-0.5 rounded">
                             <Lock size={10} />
                             Admin Only
                           </span>
                         )}
                         {team.rapidResponse && (
-                          <span className="inline-flex items-center gap-1 ml-2 text-[10px] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 px-1.5 py-0.5 rounded">
+                          <span className="inline-flex items-center gap-1 ml-2 text-[0.625rem] font-semibold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/20 border border-rose-200 dark:border-rose-800 px-1.5 py-0.5 rounded">
                             <Rocket size={10} />
                             Rapid Response
                           </span>
                         )}
                         {team.archived && (
-                          <span className="text-[10px] font-normal text-zinc-400 uppercase ml-2">(Archived)</span>
+                          <span className="text-[0.625rem] font-normal text-zinc-400 uppercase ml-2">(Archived)</span>
                         )}
                       </p>
                     )}
                   </div>
-                  <div className="flex items-center gap-2 flex-wrap">
+                  <div className="flex items-center gap-2 flex-wrap sm:flex-nowrap sm:shrink-0">
                     {currentUser && isAdmin(currentUser.role) && (
                       <button
                         onClick={() => toggleTeamAdminOnly(team.id)}
@@ -325,7 +325,7 @@ export const ManageTeamsModal: React.FC = () => {
         {teamToDelete && (
           <div className="bg-red-50 dark:bg-red-900/20 p-4 rounded-lg border border-red-200 dark:border-red-900 space-y-2 animate-slide-down">
             <p className="text-sm text-red-700 dark:text-red-300 font-semibold">
-              Are you sure you want to delete this workspace?
+              Are you sure you want to delete this team?
             </p>
             <p className="text-xs text-red-600 dark:text-red-400">
               Type <span className="font-mono bg-red-100 dark:bg-red-900/50 px-1 rounded">/iwanttodelete</span> to

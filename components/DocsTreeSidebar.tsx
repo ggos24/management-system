@@ -1,5 +1,5 @@
 import React, { useState, useMemo } from 'react';
-import { ChevronRight, ChevronDown, FileText, Folder, FolderOpen } from 'lucide-react';
+import { ChevronRight, ChevronDown, FileText, Folder, FolderOpen } from './icons';
 import { Doc } from '../types';
 import { IconComponent } from './IconComponent';
 

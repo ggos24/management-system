@@ -408,8 +408,8 @@ export async function authorizeNotificationRecipients({
           subject: `Task updated — ${taskTitle}`,
         },
         task_deadline_reminder: {
-          message: `The deadline is approaching for "${taskTitle}"`,
-          subject: `Task deadline approaching — ${taskTitle}`,
+          message: `The due date is approaching for "${taskTitle}"`,
+          subject: `Task due date approaching — ${taskTitle}`,
         },
         comment_mention: {
           message: `${actorName} mentioned you in a comment on "${taskTitle}"`,
