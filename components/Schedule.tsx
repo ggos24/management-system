@@ -825,6 +825,9 @@ const Schedule: React.FC<ScheduleProps> = ({
                         // Zebra striping: every second row in a team gets a light tint so long
                         // rosters are easier to follow across the day columns.
                         const isStriped = memberIndex % 2 === 1;
+                        // The tint actually shown on the row: the current user's blue
+                        // highlight replaces it, except on rapid-response teams.
+                        const showsStripe = isStriped && (isRapidResponse || !isCurrentUser);
                         const isMemberDragOver = dragState.dragType === 'member' && dragState.dragOverId === member.id;
                         const memberDropClass = isMemberDragOver
                           ? dragState.dropPosition === 'after'
@@ -1023,6 +1026,16 @@ const Schedule: React.FC<ScheduleProps> = ({
                                   className={`w-8 md:w-10 flex-shrink-0 border-r relative cursor-pointer last:border-r-0 transition-colors ${shift || isRapidResponse ? 'border-zinc-200 dark:border-zinc-700' : 'border-zinc-100 dark:border-zinc-800'} ${cellClass} ${inSelection ? 'ring-2 ring-inset ring-blue-500 z-20 bg-blue-50 dark:bg-blue-900/20' : ''} ${isToday && !content ? 'bg-red-50/10 dark:bg-red-900/5' : !content && isWeekend(day) ? 'bg-emerald-50/40 dark:bg-emerald-900/10' : ''}`}
                                 >
                                   {content}
+                                  {/* Absence and shift blocks fill the cell with an
+                                      opaque colour that hides the row's stripe, so
+                                      striped rows darken them a shade to keep the
+                                      rhythm going across the filled days. */}
+                                  {content && showsStripe && (
+                                    <span
+                                      aria-hidden
+                                      className="pointer-events-none absolute inset-0 bg-black/[0.05] dark:bg-white/[0.04]"
+                                    />
+                                  )}
                                   {/* An outline drawn over the day rather than a
                                       fill replacing it, so whatever the person is
                                       already rostered for stays readable. It has
